@@ -13,10 +13,7 @@ using TerraTechETCUtil;
 
 #if !STEAM
 using ModHelper.Config;
-#else
-using ModHelper;
 #endif
-using Nuterra.NativeOptions;
 
 
 namespace TAC_AI
@@ -24,7 +21,7 @@ namespace TAC_AI
     public class KickStartConfigHelper
     {
         public static bool CullFarEnemyBasesDevStartup = false;
-        private static ModConfig modConfig;
+        private static ModHelper.ModConfig modConfig;
         internal static void Save()
         {
             modConfig.WriteConfigJsonFile();
@@ -37,9 +34,9 @@ namespace TAC_AI
 
             OverrideManPop.ChangeToRagnarokPop(KickStart.CommitDeathMode);
         }
-        internal static ModConfig PushExtModConfigSetup()
+        internal static ModHelper.ModConfig PushExtModConfigSetup()
         {
-            ModConfig thisModConfig = new ModConfig();
+            ModHelper.ModConfig thisModConfig = new ModHelper.ModConfig();
             if (!thisModConfig.ReadConfigJsonFile())
             {
                 LoadingHintsExt.MandatoryHints.Add(new LocExtStringNonReg(AltUI.ObjectiveString("Advanced AI") + 
@@ -137,53 +134,53 @@ namespace TAC_AI
     public class KickStartNativeOptions
     {
         // NativeOptions Parameters
-        public static OptionKey retreatHotkey;
-        public static OptionKey commandHotKey;
-        public static OptionKey commandBoltsHotKey;
-        public static OptionKey groupSelectKey;
-        public static OptionKey modeSelectKey;
-        public static OptionKey nptInteractKey;
-        public static OptionToggle commandClassic;
-        public static OptionToggle betterAI;
-        public static OptionToggle aiSelfRepair;
-        public static OptionToggle aiSelfRepair2;
-        public static OptionRange dodgePeriod;
-        public static OptionRange aiUpkeepRefresh; //AIClockPeriod
-        public static OptionRange aiPathing;
-        public static OptionToggle muteNonPlayerBuildRacket;
-        public static OptionToggle allowOverLevelBlocksDrop;
-        public static OptionToggle exportReadableRAW;
-        public static OptionToggle displayEvents;
-        public static OptionToggle painfulEnemies;
-        public static OptionRange diff;
-        public static OptionRange landEnemyChangeChance;
-        public static OptionRange blockRecoveryChance;
-        public static OptionToggle permitEradication;
-        public static OptionToggle infEnemySupplies;
-        public static OptionRange founderOnScene;
-        public static OptionToggle founderAlwaysUnloaded;
-        public static OptionRange founderWorldGen;
-        public static OptionRange enemyExpandLim;
-        public static OptionRange enemyAirSpawn;
-        public static OptionToggle enemySeaSpawn;
-        public static OptionToggle playerMadeTechsOnly;
-        public static OptionToggle localPlayerMadeTechsOnly;
-        public static OptionRange enemyBaseCount;
-        public static OptionRange enemyMaxCount;
-        public static OptionRange enemyMaxCountForceLim;
-        public static OptionRange existingTeamBaseChance;
-        public static OptionRange nonHostileBaseChance;
-        public static OptionRange nonHostileAttackableBaseChance;
-        public static OptionRange nonHostileAlliedBaseChance;
-        public static OptionToggle ragnarok;
-        public static OptionToggle copycat;
-        public static OptionToggle playerStrategic;
-        public static OptionToggle enemyStrategic;
-        public static OptionToggle enemyMiners;
-        public static OptionToggle useKeypadForGroups;
+        public static Nuterra.NativeOptions.OptionKey retreatHotkey;
+        public static Nuterra.NativeOptions.OptionKey commandHotKey;
+        public static Nuterra.NativeOptions.OptionKey commandBoltsHotKey;
+        public static Nuterra.NativeOptions.OptionKey groupSelectKey;
+        public static Nuterra.NativeOptions.OptionKey modeSelectKey;
+        public static Nuterra.NativeOptions.OptionKey nptInteractKey;
+        public static Nuterra.NativeOptions.OptionToggle commandClassic;
+        public static Nuterra.NativeOptions.OptionToggle betterAI;
+        public static Nuterra.NativeOptions.OptionToggle aiSelfRepair;
+        public static Nuterra.NativeOptions.OptionToggle aiSelfRepair2;
+        public static Nuterra.NativeOptions.OptionRange dodgePeriod;
+        public static Nuterra.NativeOptions.OptionRange aiUpkeepRefresh; //AIClockPeriod
+        public static Nuterra.NativeOptions.OptionRange aiPathing;
+        public static Nuterra.NativeOptions.OptionToggle muteNonPlayerBuildRacket;
+        public static Nuterra.NativeOptions.OptionToggle allowOverLevelBlocksDrop;
+        public static Nuterra.NativeOptions.OptionToggle exportReadableRAW;
+        public static Nuterra.NativeOptions.OptionToggle displayEvents;
+        public static Nuterra.NativeOptions.OptionToggle painfulEnemies;
+        public static Nuterra.NativeOptions.OptionRange diff;
+        public static Nuterra.NativeOptions.OptionRange landEnemyChangeChance;
+        public static Nuterra.NativeOptions.OptionRange blockRecoveryChance;
+        public static Nuterra.NativeOptions.OptionToggle permitEradication;
+        public static Nuterra.NativeOptions.OptionToggle infEnemySupplies;
+        public static Nuterra.NativeOptions.OptionRange founderOnScene;
+        public static Nuterra.NativeOptions.OptionToggle founderAlwaysUnloaded;
+        public static Nuterra.NativeOptions.OptionRange founderWorldGen;
+        public static Nuterra.NativeOptions.OptionRange enemyExpandLim;
+        public static Nuterra.NativeOptions.OptionRange enemyAirSpawn;
+        public static Nuterra.NativeOptions.OptionToggle enemySeaSpawn;
+        public static Nuterra.NativeOptions.OptionToggle playerMadeTechsOnly;
+        public static Nuterra.NativeOptions.OptionToggle localPlayerMadeTechsOnly;
+        public static Nuterra.NativeOptions.OptionRange enemyBaseCount;
+        public static Nuterra.NativeOptions.OptionRange enemyMaxCount;
+        public static Nuterra.NativeOptions.OptionRange enemyMaxCountForceLim;
+        public static Nuterra.NativeOptions.OptionRange existingTeamBaseChance;
+        public static Nuterra.NativeOptions.OptionRange nonHostileBaseChance;
+        public static Nuterra.NativeOptions.OptionRange nonHostileAttackableBaseChance;
+        public static Nuterra.NativeOptions.OptionRange nonHostileAlliedBaseChance;
+        public static Nuterra.NativeOptions.OptionToggle ragnarok;
+        public static Nuterra.NativeOptions.OptionToggle copycat;
+        public static Nuterra.NativeOptions.OptionToggle playerStrategic;
+        public static Nuterra.NativeOptions.OptionToggle enemyStrategic;
+        public static Nuterra.NativeOptions.OptionToggle enemyMiners;
+        public static Nuterra.NativeOptions.OptionToggle useKeypadForGroups;
 
-        public static OptionToggle WarnEnemyLock;
-        public static OptionToggle HoldFireOnNeutral;
+        public static Nuterra.NativeOptions.OptionToggle WarnEnemyLock;
+        public static Nuterra.NativeOptions.OptionToggle HoldFireOnNeutral;
         public static bool ShownRebootWarning = false;
 
 
@@ -220,15 +217,15 @@ namespace TAC_AI
             betterAI = new OptionToggle("<b>Enable Mod</b>", TACAI, KickStart.EnableBetterAI);
             betterAI.onValueSaved.AddListener(() => { KickStart.EnableBetterAI = betterAI.SavedValue; });
 #endif
-            OptionToggle togTest = new OptionToggle("Flying Enemy Warnings", TACAI, KickStart.WarnOnEnemyLock);
+            Nuterra.NativeOptions.OptionToggle togTest = new Nuterra.NativeOptions.OptionToggle("Flying Enemy Warnings", TACAI, KickStart.WarnOnEnemyLock);
             togTest.onValueSaved.AddListener(() => { KickStart.WarnOnEnemyLock = togTest.SavedValue; });
             WarnEnemyLock = togTest;
-            muteNonPlayerBuildRacket = new OptionToggle("Mute Non-Player Build Racket", TACAI, KickStart.MuteNonPlayerRacket);
+            muteNonPlayerBuildRacket = new Nuterra.NativeOptions.OptionToggle("Mute Non-Player Build Racket", TACAI, KickStart.MuteNonPlayerRacket);
             muteNonPlayerBuildRacket.onValueSaved.AddListener(() => { KickStart.MuteNonPlayerRacket = muteNonPlayerBuildRacket.SavedValue; });
-            exportReadableRAW = new OptionToggle("Export .JSON instead of .RAWTECH", TACAI, RawTechExporter.ExportJSONInsteadOfRAWTECH);
+            exportReadableRAW = new Nuterra.NativeOptions.OptionToggle("Export .JSON instead of .RAWTECH", TACAI, RawTechExporter.ExportJSONInsteadOfRAWTECH);
             exportReadableRAW.onValueSaved.AddListener(() => { RawTechExporter.ExportJSONInsteadOfRAWTECH = exportReadableRAW.SavedValue; });
 
-            retreatHotkey = new OptionKey("Retreat Button", TACAI, KickStart.RetreatHotkey);
+            retreatHotkey = new Nuterra.NativeOptions.OptionKey("Retreat Button", TACAI, KickStart.RetreatHotkey);
             retreatHotkey.onValueSaved.AddListener(() =>
             {
                 KickStart.RetreatHotkey = retreatHotkey.SavedValue;
@@ -250,7 +247,7 @@ namespace TAC_AI
             aiPathing.onValueSaved.AddListener(() => {
                 AIEPathMapper.PathRequestsToCalcPerFrame = (int)aiPathing.SavedValue;
             });
-            HoldFireOnNeutral = new OptionToggle("Don't auto-attack neutrals", TACAI, AIGlobals.AllowWeaponsDisarm2);
+            HoldFireOnNeutral = new Nuterra.NativeOptions.OptionToggle("Don't auto-attack neutrals", TACAI, AIGlobals.AllowWeaponsDisarm2);
             HoldFireOnNeutral.onValueSaved.AddListener(() => { AIGlobals.AllowWeaponsDisarm2 = HoldFireOnNeutral.SavedValue; });
 
             var TACAISP = KickStart.ModID + " - A.I. Single Player";
@@ -261,16 +258,16 @@ namespace TAC_AI
                     return Mathf.RoundToInt((value - 5) * (100f / 45f)) + "%";
                 });
             aiUpkeepRefresh.onValueSaved.AddListener(() => { KickStart.AIClockPeriodSet = (short)aiUpkeepRefresh.SavedValue; });
-            aiSelfRepair = new OptionToggle("Allow Mobile A.I.s to Build", TACAISP, KickStart.AllowAISelfRepair);
+            aiSelfRepair = new Nuterra.NativeOptions.OptionToggle("Allow Mobile A.I.s to Build", TACAISP, KickStart.AllowAISelfRepair);
             aiSelfRepair.onValueSaved.AddListener(() => { KickStart.AllowAISelfRepair = aiSelfRepair.SavedValue; });
 
             var TACAIMP = KickStart.ModID + " - A.I. MP Host";
-            aiSelfRepair2 = new OptionToggle("Mobile A.I. Building - Requires Beefy Networking", TACAIMP, KickStart.AllowAISelfRepairInMP);
+            aiSelfRepair2 = new Nuterra.NativeOptions.OptionToggle("Mobile A.I. Building - Requires Beefy Networking", TACAIMP, KickStart.AllowAISelfRepairInMP);
             aiSelfRepair2.onValueSaved.AddListener(() => { KickStart.AllowAISelfRepairInMP = aiSelfRepair2.SavedValue; });
 
 
             var TACAIRTS = KickStart.ModID + " - Real-Time Strategy [RTS] Mode";
-            playerStrategic = new OptionToggle("Enable A.I. Click-based Control", TACAIRTS, KickStart.AllowPlayerRTSHUD);//\nRandomAdditions and TweakTech highly advised for best experience
+            playerStrategic = new Nuterra.NativeOptions.OptionToggle("Enable A.I. Click-based Control", TACAIRTS, KickStart.AllowPlayerRTSHUD);//\nRandomAdditions and TweakTech highly advised for best experience
             playerStrategic.onValueSaved.AddListener(() => { 
                 KickStart.AllowPlayerRTSHUD = playerStrategic.SavedValue;
                 if (KickStart.AllowPlayerRTSHUD)
@@ -284,7 +281,7 @@ namespace TAC_AI
                     // ManUI.inst.ShowErrorPopup("A game restart is required to let the changes take effect"); // causes settings fail
                 }
             });
-            enemyStrategic = new OptionToggle("Allow A.I. to Act When Out of View", TACAIRTS, KickStart.AllowStrategicAI);//\nRandomAdditions and TweakTech highly advised for best experience
+            enemyStrategic = new Nuterra.NativeOptions.OptionToggle("Allow A.I. to Act When Out of View", TACAIRTS, KickStart.AllowStrategicAI);//\nRandomAdditions and TweakTech highly advised for best experience
             enemyStrategic.onValueSaved.AddListener(() => {
                 KickStart.AllowStrategicAI = enemyStrategic.SavedValue;
                 if (KickStart.AllowStrategicAI)
@@ -298,42 +295,42 @@ namespace TAC_AI
                     // ManUI.inst.ShowErrorPopup("A game restart is required to let the changes take effect"); // causes settings fail
                 }
             });
-            commandHotKey = new OptionKey("Enable RTS Overlay Hotkey", TACAIRTS, KickStart.CommandHotkey);
+            commandHotKey = new Nuterra.NativeOptions.OptionKey("Enable RTS Overlay Hotkey", TACAIRTS, KickStart.CommandHotkey);
             commandHotKey.onValueSaved.AddListener(() =>
             {
                 KickStart.CommandHotkey = commandHotKey.SavedValue;
                 KickStart.CommandHotkeySav = (int)KickStart.CommandHotkey;
             });
-            groupSelectKey = new OptionKey("Multi-Select Hotkey", TACAIRTS, KickStart.MultiSelect);
+            groupSelectKey = new Nuterra.NativeOptions.OptionKey("Multi-Select Hotkey", TACAIRTS, KickStart.MultiSelect);
             groupSelectKey.onValueSaved.AddListener(() =>
             {
                 KickStart.MultiSelect = groupSelectKey.SavedValue;
                 KickStart.MultiSelectKeySav = (int)KickStart.MultiSelect;
             });
-            commandBoltsHotKey = new OptionKey("Detonate Bolts Hotkey", TACAIRTS, KickStart.CommandBoltsHotkey);
+            commandBoltsHotKey = new Nuterra.NativeOptions.OptionKey("Detonate Bolts Hotkey", TACAIRTS, KickStart.CommandBoltsHotkey);
             commandBoltsHotKey.onValueSaved.AddListener(() =>
             {
                 KickStart.CommandBoltsHotkey = commandBoltsHotKey.SavedValue;
                 KickStart.CommandBoltsHotkeySav = (int)KickStart.CommandBoltsHotkey;
             });
-            modeSelectKey = new OptionKey("A.I. Menu Hotkey", TACAIRTS, KickStart.ModeSelect);
+            modeSelectKey = new Nuterra.NativeOptions.OptionKey("A.I. Menu Hotkey", TACAIRTS, KickStart.ModeSelect);
             modeSelectKey.onValueSaved.AddListener(() =>
             {
                 KickStart.ModeSelect = modeSelectKey.SavedValue;
                 KickStart.ModeSelectKeySav = (int)KickStart.ModeSelect;
             });
-            nptInteractKey = new OptionKey("NPT Interact Hotkey", TACAIRTS, KickStart.NPTInteract);
+            nptInteractKey = new Nuterra.NativeOptions.OptionKey("NPT Interact Hotkey", TACAIRTS, KickStart.NPTInteract);
             nptInteractKey.onValueSaved.AddListener(() =>
             {
                 KickStart.NPTInteract = nptInteractKey.SavedValue;
                 KickStart.NPTInteractKeySav = (int)KickStart.NPTInteract;
             });
-            commandClassic = new OptionToggle("Classic RTS Controls", TACAIRTS, KickStart.UseClassicRTSControls);
+            commandClassic = new Nuterra.NativeOptions.OptionToggle("Classic RTS Controls", TACAIRTS, KickStart.UseClassicRTSControls);
             commandClassic.onValueSaved.AddListener(() => { KickStart.UseClassicRTSControls = commandClassic.SavedValue; });
-            useKeypadForGroups = new OptionToggle("Enable Keypad for Grouping - Check Num Lock", TACAIRTS, KickStart.UseNumpadForGrouping);
+            useKeypadForGroups = new Nuterra.NativeOptions.OptionToggle("Enable Keypad for Grouping - Check Num Lock", TACAIRTS, KickStart.UseNumpadForGrouping);
             useKeypadForGroups.onValueSaved.AddListener(() => { KickStart.UseNumpadForGrouping = useKeypadForGroups.SavedValue; });
 
-            var enemyBaseTeamsUpdateLaziness = new OptionList<BaseTeamsUpdateRate>("Unloaded Base Update Rate", TACAIRTS,
+            var enemyBaseTeamsUpdateLaziness = new Nuterra.NativeOptions.OptionList<BaseTeamsUpdateRate>("Unloaded Base Update Rate", TACAIRTS,
                 KickStart.limitAIBaseRate, (int)KickStart.EnemyBaseUpdateMode);
             enemyBaseTeamsUpdateLaziness.onValueSaved.AddListener(() =>
             {
@@ -342,7 +339,7 @@ namespace TAC_AI
 
 
             var TACAIEnemies = KickStart.ModID + " - Non-Player Techs (NPT) General";
-            painfulEnemies = new OptionToggle("<b>Enable Advanced NPTs</b>", TACAIEnemies, KickStart.enablePainMode);
+            painfulEnemies = new Nuterra.NativeOptions.OptionToggle("<b>Enable Advanced NPTs</b>", TACAIEnemies, KickStart.enablePainMode);
             painfulEnemies.onValueSaved.AddListener(() => {
                 if (KickStart.enablePainMode != painfulEnemies.SavedValue)
                 {
@@ -378,9 +375,9 @@ namespace TAC_AI
                 KickStart.difficulty = (int)diff.SavedValue;
                 AIERepair.RefreshDelays();
             });
-            displayEvents = new OptionToggle("Show NPT Events", TACAIEnemies, KickStart.DisplayEnemyEvents);
+            displayEvents = new Nuterra.NativeOptions.OptionToggle("Show NPT Events", TACAIEnemies, KickStart.DisplayEnemyEvents);
             displayEvents.onValueSaved.AddListener(() => { KickStart.DisplayEnemyEvents = displayEvents.SavedValue; });
-            enemyMiners = new OptionToggle("NPTs Can Mine", TACAIEnemies, KickStart.AllowEnemiesToMine);
+            enemyMiners = new Nuterra.NativeOptions.OptionToggle("NPTs Can Mine", TACAIEnemies, KickStart.AllowEnemiesToMine);
             enemyMiners.onValueSaved.AddListener(() => { KickStart.AllowEnemiesToMine = enemyMiners.SavedValue; });
             blockRecoveryChance = SuperNativeOptions.OptionRangeAutoDisplay("NPT Block Drop Chance", 
                 TACAIEnemies, KickStart.EnemyBlockDropChance, 0, 100, 10, (float value) => {
@@ -401,7 +398,7 @@ namespace TAC_AI
                 else
                     Globals.inst.moduleDamageParams.detachMeterFillFactor = KickStart.SavedDefaultEnemyFragility;
             });
-            infEnemySupplies = new OptionToggle("All NPTechs Cheat Blocks", TACAIEnemies, KickStart.EnemiesHaveCreativeInventory);
+            infEnemySupplies = new Nuterra.NativeOptions.OptionToggle("All NPTechs Cheat Blocks", TACAIEnemies, KickStart.EnemiesHaveCreativeInventory);
             infEnemySupplies.onValueSaved.AddListener(() => { KickStart.EnemiesHaveCreativeInventory = infEnemySupplies.SavedValue; });
 
             founderOnScene = SuperNativeOptions.OptionRangeAutoDisplay("Base Invader Spawn Chance", 
@@ -422,7 +419,7 @@ namespace TAC_AI
                     return Mathf.RoundToInt(value * 100) + "%";
                 });
             founderWorldGen.onValueSaved.AddListener(() => { KickStart.SpawnFoundersPositional = founderWorldGen.SavedValue; });
-            founderAlwaysUnloaded = new OptionToggle("Natural Bases Respawn", TACAIEnemies, KickStart.ActiveSpawnFoundersOffScene);
+            founderAlwaysUnloaded = new Nuterra.NativeOptions.OptionToggle("Natural Bases Respawn", TACAIEnemies, KickStart.ActiveSpawnFoundersOffScene);
             founderAlwaysUnloaded.onValueSaved.AddListener(() => { KickStart.ActiveSpawnFoundersOffScene = founderAlwaysUnloaded.SavedValue; });
 
             existingTeamBaseChance = SuperNativeOptions.OptionRangeAutoDisplay("Team Growth Chance", 
@@ -476,7 +473,7 @@ namespace TAC_AI
                     return Mathf.RoundToInt(value).ToString();
                 });
             enemyExpandLim.onValueSaved.AddListener(() => { KickStart.MaxBasesPerTeam = (int)enemyExpandLim.SavedValue; });
-            var SpawnLimiterSettings = new OptionList<EnemyMaxDistLimit>("Remove Far NPT Bases", TACAIEnemies, KickStart.limitTypes, (int)KickStart.CullFarEnemyBasesMode);
+            var SpawnLimiterSettings = new Nuterra.NativeOptions.OptionList<EnemyMaxDistLimit>("Remove Far NPT Bases", TACAIEnemies, KickStart.limitTypes, (int)KickStart.CullFarEnemyBasesMode);
             SpawnLimiterSettings.onValueSaved.AddListener(() =>
             {
                 KickStart.CullFarEnemyBasesMode = SpawnLimiterSettings.SavedValue;
@@ -539,9 +536,9 @@ namespace TAC_AI
                         KickStart.AllowAirEnemiesToSpawn = true;
                     }
                 });
-                enemySeaSpawn = new OptionToggle("NPT Sea Spawning (Needs Water Mod)", TACAIEnemiesPop, KickStart.AllowSeaEnemiesToSpawn);
+                enemySeaSpawn = new Nuterra.NativeOptions.OptionToggle("NPT Sea Spawning (Needs Water Mod)", TACAIEnemiesPop, KickStart.AllowSeaEnemiesToSpawn);
                 enemySeaSpawn.onValueSaved.AddListener(() => { KickStart.AllowSeaEnemiesToSpawn = enemySeaSpawn.SavedValue; });
-                playerMadeTechsOnly = new OptionToggle("Try Exclude Vanilla Spawns", TACAIEnemiesPop, KickStart.TryForceOnlyPlayerSpawns);
+                playerMadeTechsOnly = new Nuterra.NativeOptions.OptionToggle("Try Exclude Vanilla Spawns", TACAIEnemiesPop, KickStart.TryForceOnlyPlayerSpawns);
                 playerMadeTechsOnly.onValueSaved.AddListener(() => {
                     if (KickStart.TryForceOnlyPlayerSpawns != playerMadeTechsOnly.SavedValue)
                     {
@@ -571,7 +568,7 @@ namespace TAC_AI
                         }
                     }
                 });
-                localPlayerMadeTechsOnly = new OptionToggle("Try Only Use Local Spawns", TACAIEnemiesPop, KickStart.TryForceOnlyPlayerLocalSpawns);
+                localPlayerMadeTechsOnly = new Nuterra.NativeOptions.OptionToggle("Try Only Use Local Spawns", TACAIEnemiesPop, KickStart.TryForceOnlyPlayerLocalSpawns);
                 localPlayerMadeTechsOnly.onValueSaved.AddListener(() => {
                     if (KickStart.TryForceOnlyPlayerLocalSpawns != localPlayerMadeTechsOnly.SavedValue)
                     {
@@ -580,9 +577,9 @@ namespace TAC_AI
                         EnoughLocalTechsSanityCheck();
                     }
                 });
-                permitEradication = new OptionToggle("<b>Eradicators</b> - Huge NPT Tech Spawns - Requires Beefy Computer", TACAIEnemiesPop, KickStart.EnemyEradicators);
+                permitEradication = new Nuterra.NativeOptions.OptionToggle("<b>Eradicators</b> - Huge NPT Tech Spawns - Requires Beefy Computer", TACAIEnemiesPop, KickStart.EnemyEradicators);
                 permitEradication.onValueSaved.AddListener(() => { KickStart.EnemyEradicators = permitEradication.SavedValue; });
-                ragnarok = new OptionToggle("<b>Ragnarok</b> - Death To All (Anything Can Spawn) - Requires Beefy Computer", TACAIEnemiesPop, KickStart.CommitDeathMode);
+                ragnarok = new Nuterra.NativeOptions.OptionToggle("<b>Ragnarok</b> - Death To All (Anything Can Spawn) - Requires Beefy Computer", TACAIEnemiesPop, KickStart.CommitDeathMode);
                 ragnarok.onValueSaved.AddListener(() =>
                 {
                     KickStart.CommitDeathMode = ragnarok.SavedValue;
@@ -610,11 +607,11 @@ namespace TAC_AI
             }
         }
 
-        internal static void PushExtModOptionsHandling(ModConfig thisModConfig)
+        internal static void PushExtModOptionsHandling(ModHelper.ModConfig thisModConfig)
         {
             PushExtModOptionsHandling();
             if (thisModConfig != null)
-                NativeOptionsMod.onOptionsSaved.AddListener(() => { thisModConfig.WriteConfigJsonFile(); });
+                Nuterra.NativeOptions.NativeOptionsMod.onOptionsSaved.AddListener(() => { thisModConfig.WriteConfigJsonFile(); });
         }
     }
 }

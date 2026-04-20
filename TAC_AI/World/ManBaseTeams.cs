@@ -755,19 +755,28 @@ namespace TAC_AI
                     yield return item;
             }
         }
+        private static int GetNewTeamID()
+        {
+            try
+            {
+                while (inst.teams.ContainsKey(inst.lowTeam))
+                    inst.lowTeam--;
+                return inst.lowTeam;
+            }
+            finally
+            {
+                inst.lowTeam--;
+            }
+        }
         public static EnemyTeamData GetNewBaseTeam(TeamRelations defaultRelations)
         {
             checked
             {
                 try
                 {
-                    while (inst.teams.ContainsKey(inst.lowTeam))
-                    {
-                        inst.lowTeam--;
-                    }
-                    var valNew = new EnemyTeamData(inst.lowTeam, false, defaultRelations);
-                    inst.teams.Add(inst.lowTeam, valNew);
-                    inst.lowTeam--;
+                    int newTeamID = GetNewTeamID();
+                    var valNew = new EnemyTeamData(newTeamID, false, defaultRelations);
+                    inst.teams.Add(newTeamID, valNew);
                     return valNew;
                 }
                 catch (OverflowException)
@@ -786,15 +795,11 @@ namespace TAC_AI
                     var findable = IterateBaseTeams(x => x.Alignment_Internal(team) == TeamRelations.AITeammate).FirstOrDefault();
                     if (findable != null)
                         return findable;
-                    while (inst.teams.ContainsKey(inst.lowTeam))
-                    {
-                        inst.lowTeam--;
-                    }
-                    var valNew = new EnemyTeamData(inst.lowTeam, false);
+                    int newTeamID = GetNewTeamID();
+                    var valNew = new EnemyTeamData(newTeamID, false);
                     valNew.PlayerTeam = team;
-                    inst.teams.Add(inst.lowTeam, valNew);
+                    inst.teams.Add(newTeamID, valNew);
                     SetRelations(valNew.teamID, team, TeamRelations.AITeammate);
-                    inst.lowTeam--;
                     DebugTAC_AI.Assert("Team " + valNew.teamName + " has spawned as a player auto team!");
                     if (!IsPlayerOwnedAIBaseTeam(valNew.teamID))
                         DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but not properly marked as player's AI base team");

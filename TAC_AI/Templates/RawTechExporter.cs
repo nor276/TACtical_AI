@@ -66,7 +66,7 @@ namespace TAC_AI.Templates
     {
         public static RawTechExporter inst;
         public static GameObject GUIWindow;
-        private static Rect HotWindow = new Rect(0, 0, 200, 230);   // the "window"
+        private static Rect HotWindow = new Rect(0, 0, 230, 230);   // the "window"
         public static bool isOpen;
         public static bool pendingInGameReload;
 
@@ -291,7 +291,7 @@ namespace TAC_AI.Templates
             {
                 if (isOpen)
                 {
-                    HotWindow = AltUI.Window(RawTechExporterID, HotWindow, GUIHandler, "Enemy Spawns");
+                    HotWindow = AltUI.Window(RawTechExporterID, HotWindow, GUIHandler, "Enemy Spawns", true, true);
                 }
             }
         }
@@ -561,7 +561,7 @@ namespace TAC_AI.Templates
                         errorLevel++; // 3
                         temp.purposes = RawTechTemplate.GetHandler(ext.Blueprint, (FactionTypesExt)MainCorp, ext.IsAnchored, out BaseTerrain terra, out int minCorpGrade);
                         temp.IntendedGrade = minCorpGrade;
-                        temp.faction = (FactionTypesExt)MainCorp;
+                        temp.factionName = ManMods.inst.FindCorpShortName(MainCorp);
                         temp.terrain = terra;
 
                         temps.Add(temp);

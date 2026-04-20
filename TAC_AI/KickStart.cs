@@ -21,10 +21,7 @@ using Snapshots;
 
 #if !STEAM
 using ModHelper.Config;
-#else
-using ModHelper;
 #endif
-using Nuterra.NativeOptions;
 
 
 namespace TAC_AI
@@ -495,6 +492,8 @@ namespace TAC_AI
                 isAnimeAIPresent = true;
             }
             else isAnimeAIPresent = false;
+
+            SafeSaves.ManSafeSaves.DisableExternalBackupSaving = true;// Speed it up
             return true;
         }
 
@@ -595,6 +594,7 @@ namespace TAC_AI
 
             //TinySettingsUtil.TryLoadFromDiskStatic<AIGlobals>("TAC_AI_Globals");
 
+            LegModExt.InsurePatches();
             ManBaseTeams.Initiate();
             TankAIManager.Initiate();
             AIGlobals.InitSharedMenu();

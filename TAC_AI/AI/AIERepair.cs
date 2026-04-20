@@ -196,12 +196,8 @@ namespace TAC_AI.AI
 
                 foreach (TankBlock bloc in tank.blockman.IterateBlocks())
                 {
-                    RawBlockMem mem = new RawBlockMem
-                    {
-                        t = bloc.name,
-                        p = bloc.cachedLocalPosition,
-                        r = bloc.cachedLocalRotation.rot
-                    };
+                    RawBlockMem mem = new RawBlockMem(bloc.name, 
+                        bloc.cachedLocalPosition, bloc.cachedLocalRotation.rot);
                     SavedTech.Add(mem);
                 }
                 if (!SavedTech.Any())
@@ -223,12 +219,8 @@ namespace TAC_AI.AI
                 SavedTech.Clear();
                 foreach (TankBlock bloc in overwrite)
                 {
-                    RawBlockMem mem = new RawBlockMem
-                    {
-                        t = bloc.name,
-                        p = bloc.cachedLocalPosition,
-                        r = bloc.cachedLocalRotation.rot
-                    };
+                    RawBlockMem mem = new RawBlockMem(bloc.name,
+                        bloc.cachedLocalPosition, bloc.cachedLocalRotation.rot);
                     SavedTech.Add(mem);
                 }
                 DebugTAC_AI.Log(KickStart.ModID + ":  DesignMemory - Overwrote(SaveTech) " + tank.name);

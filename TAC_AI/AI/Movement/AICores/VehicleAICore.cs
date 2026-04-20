@@ -664,7 +664,6 @@ namespace TAC_AI.AI.Movement.AICores
             helper.Navi3DUp = Vector3.up;
             if (helper.DoSteerCore)
             {
-                float turnValF;
                 if (helper.AdviseAwayCore)
                 {   //Move from target
                     if (core.DriveDir == EDriveFacing.Perpendicular)

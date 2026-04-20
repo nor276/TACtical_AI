@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using FMOD.Studio;
 using HarmonyLib;
 using TAC_AI.AI;
 using TAC_AI.AI.Enemy;
@@ -349,7 +350,11 @@ namespace TAC_AI
                         if (trackedVisible.RadarTeamID == ManSpawn.NeutralTeam)
                         {
                         }
-                        if (ManBaseTeams.IsFriendlyBaseTeam(trackedVisible.RadarTeamID))
+                        else if (ManBaseTeams.IsAlliedPlayerAIBaseTeam(trackedVisible.RadarTeamID))
+                        {
+                            iconColour = AIGlobals.PlayerAutoColor;
+                        }
+                        else if (ManBaseTeams.IsFriendlyBaseTeam(trackedVisible.RadarTeamID))
                         {
                             iconColour = AIGlobals.FriendlyColor;
                         }

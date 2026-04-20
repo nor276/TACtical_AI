@@ -257,7 +257,11 @@ namespace TAC_AI
             //    helper.RefreshAI();
             SavedAI = AIType.Escort;
         }
-        public static void Insure(ModuleAIBot AIBot)
+        internal static bool CanAdd(ModuleAIBot AIBot)
+        {
+            return AIBot != null && (AIBot.AITypesEnabled.Contains(TechAI.AITypes.Guard) || AIBot.AITypesEnabled.Contains(TechAI.AITypes.Escort));
+        }
+        internal static void Insure(ModuleAIBot AIBot)
         {
             ModuleAIExtension valid = AIBot.GetComponent<ModuleAIExtension>();
             if (valid)
@@ -272,7 +276,7 @@ namespace TAC_AI
                 valid.AlterExisting();
             }
         }
-        public void AlterExisting()
+        private void AlterExisting()
         {
             try
             {

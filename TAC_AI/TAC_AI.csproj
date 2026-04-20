@@ -113,6 +113,10 @@
     <Reference Include="System.Workflow.ComponentModel">
       <Private>False</Private>
     </Reference>
+    <Reference Include="TerraTechETCUtil, Version=1.4.104.25, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\TTETCUtil\TerraTechETCUtil\TerraTechETCUtil\bin\Steam\TerraTechETCUtil.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine">
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\TerraTech\TerraTechWin64_Data\Managed\UnityEngine.dll</HintPath>
       <Private>False</Private>
@@ -178,6 +182,9 @@
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\TerraTech\TerraTechWin64_Data\Managed\UnityEngine.UIModule.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="TerraTechETCUtil">
+      <HintPath>..\..\TTETCUtil\TerraTechETCUtil\TerraTechETCUtil\obj\Release\TerraTechETCUtil.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)'=='Steam'OR'$(Configuration)'=='SteamDev'">
     <!--> zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz </!-->
@@ -206,9 +213,6 @@
     <Reference Include="Control Block">
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\workshop\content\285920\2758880180\Control Block.dll</HintPath>
       <Private>False</Private>
-    </Reference>
-    <Reference Include="TerraTechETCUtil">
-      <HintPath>..\..\TTETCUtil\TerraTechETCUtil\TerraTechETCUtil\obj\Steam\TerraTechETCUtil.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)'=='Release'OR'$(Configuration)'=='Debug'">
@@ -253,9 +257,6 @@
     <Reference Include="WaterMod">
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\TerraTech\QMods\Water Mod\WaterMod.dll</HintPath>
       <Private>False</Private>
-    </Reference>
-    <Reference Include="TerraTechETCUtil">
-      <HintPath>..\..\TTETCUtil\TerraTechETCUtil\TerraTechETCUtil\obj\Release\TerraTechETCUtil.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>

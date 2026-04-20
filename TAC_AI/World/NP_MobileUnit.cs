@@ -46,7 +46,6 @@ namespace TAC_AI.World
         public override float GetEvasion()
         {
             return MoveSpeed * ManEnemyWorld.MobileSpeedToEvasion;
-            return ManEnemyWorld.BaseEvasion;
         }
 
         internal override void MovementSceneDelta(float timeDelta)

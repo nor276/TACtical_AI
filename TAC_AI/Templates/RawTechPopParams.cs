@@ -57,8 +57,15 @@ namespace TAC_AI.Templates
             SpawnCharged = true;
             ForceCompleted = false;
         }
-
+        /// <summary>
+        /// The dominant faction that composes the Tech, and what faction it should spawn under
+        /// Built at runtime, so it should be accurate
+        /// </summary>
         public FactionSubTypes Faction;
+        /// <summary>
+        /// How far the player is in terms of progression.  This is weighed in against the highest FactionLevel block on the Tech.
+        /// To prevent Techs with high-level blocks from spawning in too early.
+        /// </summary>
         public FactionLevel Progression;
         public BaseTerrain Terrain;
         private HashSet<BasePurpose> _purposes;

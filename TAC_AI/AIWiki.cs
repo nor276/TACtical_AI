@@ -39,7 +39,7 @@ namespace TAC_AI
                 if (prefab)
                 {
                     ModuleAIBot aiBot = prefab.GetComponent<ModuleAIBot>();
-                    if (aiBot)
+                    if (ModuleAIExtension.CanAdd(aiBot))
                     {
                         ModuleAIExtension.Insure(aiBot);
                         AllValidAIs.Add(item);
@@ -85,7 +85,7 @@ namespace TAC_AI
 
         private static void InitHelpers()
         {
-            new WikiPageInfo(modID, ManIngameWiki.LOC_Tools, ManIngameWiki.ToolsSprite, PageTools);
+            new WikiPageTools(modID, PageTools);
         }
         internal static void OpenInExplorer(string directory)
         {

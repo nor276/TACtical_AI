@@ -234,137 +234,143 @@ namespace TAC_AI.World
                 if (!ManPauseGame.inst.IsPaused && !ManWorldRTS.BoxSelecting)
                 {
                     AltUI.StartUI();
-                    if (SmallTextTitle == null)
+                    try
                     {
-                        SmallTextTitle = new GUIStyle(AltUI.LabelBlueTitle);
-                        SmallTextTitle.fontSize = 10;
-                        SmallTextTitle.clipping = TextClipping.Overflow;
-                        SmallTextTitle.wordWrap = true;
-                        SmallTextTitle.alignment = TextAnchor.UpperLeft;
-                        var border2 = SmallTextTitle.contentOffset;
-                        border2.y -= 4;
-                        SmallTextTitle.contentOffset = border2;
+                        if (SmallTextTitle == null)
+                        {
+                            SmallTextTitle = new GUIStyle(AltUI.LabelBlueTitle);
+                            SmallTextTitle.fontSize = 10;
+                            SmallTextTitle.clipping = TextClipping.Overflow;
+                            SmallTextTitle.wordWrap = true;
+                            SmallTextTitle.alignment = TextAnchor.UpperLeft;
+                            var border2 = SmallTextTitle.contentOffset;
+                            border2.y -= 4;
+                            SmallTextTitle.contentOffset = border2;
 
-                        SmallTextDesc = new GUIStyle(AltUI.LabelBlackTitle);
-                        SmallTextDesc.font = AltUI.ExoFontExtraBold;
-                        SmallTextDesc.fontSize = 9;
-                        SmallTextDesc.clipping = TextClipping.Overflow;
-                        SmallTextDesc.wordWrap = false;
+                            SmallTextDesc = new GUIStyle(AltUI.LabelBlackTitle);
+                            SmallTextDesc.font = AltUI.ExoFontExtraBold;
+                            SmallTextDesc.fontSize = 9;
+                            SmallTextDesc.clipping = TextClipping.Overflow;
+                            SmallTextDesc.wordWrap = false;
 
-                        SmallTextDescW = new GUIStyle(AltUI.LabelWhiteTitle);
-                        SmallTextDescW.font = AltUI.ExoFontExtraBold;
-                        SmallTextDescW.fontSize = 9;
-                        SmallTextDescW.clipping = TextClipping.Overflow;
-                        SmallTextDescW.wordWrap = false;
+                            SmallTextDescW = new GUIStyle(AltUI.LabelWhiteTitle);
+                            SmallTextDescW.font = AltUI.ExoFontExtraBold;
+                            SmallTextDescW.fontSize = 9;
+                            SmallTextDescW.clipping = TextClipping.Overflow;
+                            SmallTextDescW.wordWrap = false;
 
-                        ButtonSmallText = new GUIStyle(AltUI.ButtonBlue);
-                        ButtonSmallText.font = AltUI.ExoFontExtraBold;
-                        ButtonSmallText.fontSize = 9;
-                        /*
-                        ButtonSmallText.normal = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.normal.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };
-                        ButtonSmallText.hover = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.hover.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };
-                        ButtonSmallText.active = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.active.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };
-                        ButtonSmallText.focused = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.focused.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };
-                        ButtonSmallText.onNormal = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.onNormal.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };
-                        ButtonSmallText.onHover = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.onHover.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };
-                        ButtonSmallText.onActive = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.onActive.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };
-                        ButtonSmallText.onFocused = new GUIStyleState()
-                        {
-                            background = ButtonSmallText.onFocused.background,
-                            textColor = AltUI.ColorDefaultWhite,
-                        };*/
-
-                        hudBack = ManHUD.inst.GetComponent<Canvas>();
-                        hudBackOrigin = hudBack.pixelRect.position;
-                    }
-                    if (unitListActive && !AIGlobals.HideHud)
-                    {
-                        if (ManWorldRTS.inst.Leading || ManWorldRTS.PlayerRTSOverlay)
-                        {
-                            DisplayHud(true);
-                            HideHotbar(true);
-                            string controlName;
-                            if (CommandQueued != null)
-                                controlName = CommandQueued.Method.Name.Replace("_", " ");
-                            else
-                                controlName = LOC_AISelect;
-                            if (!CurrentBuilder)
+                            ButtonSmallText = new GUIStyle(AltUI.ButtonBlue);
+                            ButtonSmallText.font = AltUI.ExoFontExtraBold;
+                            ButtonSmallText.fontSize = 9;
+                            /*
+                            ButtonSmallText.normal = new GUIStyleState()
                             {
-                                if (ManWorldRTS.inst.LocalPlayerTechsControlled.Any())
-                                    CommandBar = GUI.Window(AIRTSDisplayID, CommandBar, GUIHandlerControl, controlName, AltUI.MenuLeft);
+                                background = ButtonSmallText.normal.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };
+                            ButtonSmallText.hover = new GUIStyleState()
+                            {
+                                background = ButtonSmallText.hover.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };
+                            ButtonSmallText.active = new GUIStyleState()
+                            {
+                                background = ButtonSmallText.active.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };
+                            ButtonSmallText.focused = new GUIStyleState()
+                            {
+                                background = ButtonSmallText.focused.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };
+                            ButtonSmallText.onNormal = new GUIStyleState()
+                            {
+                                background = ButtonSmallText.onNormal.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };
+                            ButtonSmallText.onHover = new GUIStyleState()
+                            {
+                                background = ButtonSmallText.onHover.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };
+                            ButtonSmallText.onActive = new GUIStyleState()
+                            {
+                                background = ButtonSmallText.onActive.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };
+                            ButtonSmallText.onFocused = new GUIStyleState()
+                            {
+                                background = ButtonSmallText.onFocused.background,
+                                textColor = AltUI.ColorDefaultWhite,
+                            };*/
+
+                            hudBack = ManHUD.inst.GetComponent<Canvas>();
+                            hudBackOrigin = hudBack.pixelRect.position;
+                        }
+                        if (unitListActive && !AIGlobals.HideHud)
+                        {
+                            if (ManWorldRTS.inst.Leading || ManWorldRTS.PlayerRTSOverlay)
+                            {
+                                DisplayHud(true);
+                                HideHotbar(true);
+                                string controlName;
+                                if (CommandQueued != null)
+                                    controlName = CommandQueued.Method.Name.Replace("_", " ");
                                 else
-                                    CommandBarSmall = GUI.Window(AIRTSDisplayID, CommandBarSmall, GUIHandlerControlSmall, controlName, AltUI.MenuLeft);
-                            }
-                            else if (!ManHUD.inst.IsHudElementVisible(ManHUD.HUDElementType.TechLoader))
+                                    controlName = LOC_AISelect;
+                                if (!CurrentBuilder)
+                                {
+                                    if (ManWorldRTS.inst.LocalPlayerTechsControlled.Any())
+                                        CommandBar = GUI.Window(AIRTSDisplayID, CommandBar, GUIHandlerControl, controlName, AltUI.MenuLeft);
+                                    else
+                                        CommandBarSmall = GUI.Window(AIRTSDisplayID, CommandBarSmall, GUIHandlerControlSmall, controlName, AltUI.MenuLeft);
+                                }
+                                else if (!ManHUD.inst.IsHudElementVisible(ManHUD.HUDElementType.TechLoader))
                                     CurrentBuilder = null;
 
-                            IDStep = AIRTSHealthStartID;
-                            if (HPBarGreen == null)
-                                InitTextures();
-                            foreach (var item in ManTechs.inst.IteratePlayerTechs())
-                            {
-                                GUIShowHP(item);
-                            }
-                            if (ManWorldRTS.inst.OtherHovered != null)
-                            {
-                                GUIShowHP(ManWorldRTS.inst.OtherHovered.tank);
-                            }
-                            else if (ManPointer.inst.targetVisible != null)
-                            {
-                                var HP = ManPointer.inst.targetVisible.damageable;
-                                if (HP && !HP.Invulnerable)
+                                IDStep = AIRTSHealthStartID;
+                                if (HPBarGreen == null)
+                                    InitTextures();
+                                foreach (var item in ManTechs.inst.IteratePlayerTechs())
                                 {
-                                    GUIShowHP(ManPointer.inst.targetVisible);
+                                    GUIShowHP(item);
+                                }
+                                if (ManWorldRTS.inst.OtherHovered != null)
+                                {
+                                    GUIShowHP(ManWorldRTS.inst.OtherHovered.tank);
+                                }
+                                else if (ManPointer.inst.targetVisible != null)
+                                {
+                                    var HP = ManPointer.inst.targetVisible.damageable;
+                                    if (HP && !HP.Invulnerable)
+                                    {
+                                        GUIShowHP(ManPointer.inst.targetVisible);
+                                    }
+                                }
+                                while (Pending.Any())
+                                {
+                                    Pending.Dequeue();
+                                }
+                                while (Did.Any())
+                                {
+                                    var windowD = Did.Dequeue();
+                                    windowD.Display();
+                                    Pending.Enqueue(windowD);
                                 }
                             }
-                            while (Pending.Any())
+                            else
                             {
-                                Pending.Dequeue();
-                            }
-                            while (Did.Any())
-                            {
-                                var windowD = Did.Dequeue();
-                                windowD.Display();
-                                Pending.Enqueue(windowD);
+                                HideHotbar(false);
+                                DisplayHud(false);
                             }
                         }
                         else
-                        {
                             HideHotbar(false);
-                            DisplayHud(false);
-                        }
                     }
-                    else
-                        HideHotbar(false);
-                    AltUI.EndUI();
+                    finally
+                    {
+                        AltUI.EndUI();
+                    }
                     if (!setHovered && hovered?.tank?.visible && hovered.tank.visible.isActive)
                     {
                         string action = hovered.GetActionStatus(out bool notAble);
@@ -412,7 +418,7 @@ namespace TAC_AI.World
                 data.HealthPos = new Rect(OnScreenPos.x - ((data.WidthHealthBar / 2) + BorderSize), 
                     Display.main.renderingHeight - (OnScreenPos.y + height),
                     data.WidthHealthBar + BorderSize + BorderSize, height);
-                UIHelpersExt.ClampMenuToScreen(ref data.HealthPos, false);
+                UIHelpersExt.ClampGUIToScreen(ref data.HealthPos, false);
 
                 if (storeE)
                 {
@@ -454,7 +460,7 @@ namespace TAC_AI.World
                 data.HealthPos = new Rect(OnScreenPos.x - ((data.WidthHealthBar / 2) + BorderSize),
                     Display.main.renderingHeight - (OnScreenPos.y + height),
                     data.WidthHealthBar + BorderSize + BorderSize, height);
-                UIHelpersExt.ClampMenuToScreen(ref data.HealthPos, false);
+                UIHelpersExt.ClampGUIToScreen(ref data.HealthPos, false);
                 data.EnergyMax = 0;
                 data.name = StringLookup.GetItemName(vis.m_ItemType);
                 IDStep++;
@@ -552,7 +558,7 @@ namespace TAC_AI.World
         {
             if (GUILayout.Button(GUIAIManager.LOC_SelectAll, AltUI.ButtonBlue))
                 ManWorldRTS.inst.ControlAllPlayer();
-            if (UIHelpersExt.MouseIsOverSubMenu(CommandBarSmall))
+            if (UIHelpersExt.MouseIsOverGUIMenu(CommandBarSmall))
             ManModGUI.IsMouseOverAnyModGUI = 2;
         }
         private static void GUIHandlerControl(int ID)
@@ -638,7 +644,7 @@ namespace TAC_AI.World
                 //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                 ManWorldRTS.inst.SelectUnitSFX();
             }
-            if (UIHelpersExt.MouseIsOverSubMenu(CommandBar))
+            if (UIHelpersExt.MouseIsOverGUIMenu(CommandBar))
             {
                 ManModGUI.IsMouseOverAnyModGUI = 2;
                 if (setHovered)

@@ -747,7 +747,7 @@ namespace TAC_AI.Templates
             {
                 var namesav = BookmarkBuilder.Init(theTech, toSpawn);
                 namesav.infBlocks = GetEnemyBaseSupplies(toSpawn);
-                namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.faction);
+                namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.curSessionFaction);
                 namesav.unprovoked = false;
                 namesav.instant = false;
             }
@@ -780,7 +780,7 @@ namespace TAC_AI.Templates
         internal static int SpawnBase(Vector3 pos, Vector3 facing, int Team, RawTech toSpawn, bool storeBB, int ExtraBB = 0)
         {
 #if DEBUG
-            if (!AIGlobals.IsBaseTeamDynamic(Team) && !BypassSpawnCheckOnce)
+            if (!ManBaseTeams.IsBaseTeamDynamic(Team) && !BypassSpawnCheckOnce)
             {
                 //*
                 DebugTAC_AI.Assert(KickStart.ModID + ": SpawnBase - Unexpected non-base team assigned to base spawn " + Team);
@@ -820,7 +820,7 @@ namespace TAC_AI.Templates
                 {
                     var namesav = BookmarkBuilder.Init(theBase, toSpawn);
                     namesav.infBlocks = GetEnemyBaseSupplies(toSpawn);
-                    namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.faction);
+                    namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.curSessionFaction);
                     namesav.unprovoked = false;
                     namesav.instant = false;
                 }
@@ -837,7 +837,7 @@ namespace TAC_AI.Templates
                 {
                     var namesav = BookmarkBuilder.Init(theBase, toSpawn);
                     namesav.infBlocks = GetEnemyBaseSupplies(toSpawn);
-                    namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.faction);
+                    namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.curSessionFaction);
                     namesav.unprovoked = false;
                     namesav.instant = false;
                 }
@@ -917,7 +917,7 @@ namespace TAC_AI.Templates
             theBase.gameObject.GetOrAddComponent<RequestAnchored>();
             var namesav = BookmarkBuilder.Init(theBase, toSpawn);
             namesav.infBlocks = GetEnemyBaseSupplies(toSpawn);
-            namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.faction);
+            namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.curSessionFaction);
             namesav.unprovoked = false;
             namesav.instant = true;
             return theBase;
@@ -972,7 +972,7 @@ namespace TAC_AI.Templates
             theBase.gameObject.GetOrAddComponent<RequestAnchored>();
             var namesav = BookmarkBuilder.Init(theBase, toSpawn);
             namesav.infBlocks = GetEnemyBaseSupplies(toSpawn);
-            namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.faction);
+            namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.curSessionFaction);
             namesav.unprovoked = false;
             namesav.instant = false;
             DebugTAC_AI.Log(KickStart.ModID + ": - SpawnLandBase: Spawning Land Base " + toSpawn.techName + ", ID (Still pending...)");
@@ -1121,6 +1121,7 @@ namespace TAC_AI.Templates
 
         /// <summary>
         /// Spawns a Tech at a position with a directional heading from any cached RAWTECH population.
+        /// Automatically null on errorTech
         /// </summary>
         /// <param name="pos">SCENE position of where to spawn</param>
         /// <param name="forwards">The forwards LookRotation of the spawn relative to the world</param>
@@ -1323,7 +1324,7 @@ namespace TAC_AI.Templates
 
                 var namesav = BookmarkBuilder.Init(theTech, Blueprint);
                 namesav.infBlocks = false;
-                namesav.faction = RawTechUtil.CorpExtToCorp(Blueprint.faction);
+                namesav.faction = RawTechUtil.CorpExtToCorp(Blueprint.curSessionFaction);
                 namesav.unprovoked = subNeutral;
             }
 
@@ -1411,7 +1412,7 @@ namespace TAC_AI.Templates
 
                 var namesav = BookmarkBuilder.Init(theTech, baseTemplate);
                 namesav.infBlocks = GetEnemyBaseSupplies(baseTemplate);
-                namesav.faction = RawTechUtil.CorpExtToCorp(baseTemplate.faction);
+                namesav.faction = RawTechUtil.CorpExtToCorp(baseTemplate.curSessionFaction);
             }
 
             if (theTech.IsNotNull())
@@ -1546,18 +1547,19 @@ namespace TAC_AI.Templates
             {
                 if (!ManGameMode.inst.CanEarnXp())
                     return FactionLevel.ALL;
-                if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.GC))
-                    lvl = FactionLevel.GC;
-                if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.VEN))
-                    lvl = FactionLevel.VEN;
-                if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.HE))
-                    lvl = FactionLevel.HE;
-                if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.BF))
-                    lvl = FactionLevel.BF;
-                if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.SJ))
-                    lvl = FactionLevel.SJ;
+
                 if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.EXP))
                     lvl = FactionLevel.EXP;
+                else if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.SJ))
+                    lvl = FactionLevel.SJ;
+                else if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.BF))
+                    lvl = FactionLevel.BF;
+                else if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.HE))
+                    lvl = FactionLevel.HE;
+                else if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.VEN))
+                    lvl = FactionLevel.VEN;
+                else if (Singleton.Manager<ManLicenses>.inst.IsLicenseDiscovered(FactionSubTypes.GC))
+                    lvl = FactionLevel.GC;
             }
             catch { }
             return lvl;
@@ -2470,7 +2472,7 @@ namespace TAC_AI.Templates
 
             var namesav = BookmarkBuilder.Init(theTech, BT);
             namesav.infBlocks = GetEnemyBaseSupplies(BT);
-            namesav.faction = RawTechUtil.CorpExtToCorp(BT.faction);
+            namesav.faction = RawTechUtil.CorpExtToCorp(BT.curSessionFaction);
             namesav.unprovoked = filter.Disarmed;
 
             ForceAllBubblesUp(theTech);
@@ -2911,16 +2913,33 @@ namespace TAC_AI.Templates
             {   // Filter by SPECIFIC Corp
                 FactionTypesExt FST = (FactionTypesExt)filter.Faction;
                 if (ManMods.inst.IsModdedCorp(filter.Faction))
-                {
-                    if (tech.FactionActual.GetHashCode() != ManMods.inst.FindCorpShortName(filter.Faction).GetHashCode())
-                        return false;
+                {   // Modded corp
+                    // Try get corp for legacy FactionTypesExt
+                    FactionLicense FL = ManLicenses.inst.GetLicense(RawTechUtil.CorpExtToCorp(tech.curSessionFaction));
+                    if (FL != null)
+                    {
+                        if (!FL.HasReachedMaxLevel && tech.IntendedGrade > FL.CurrentLevel)
+                            return false;   // Tests FactionTypesExt for matches
+
+                    }
+                    else
+                    {   // Try get corp for all official modded corps 
+                        if (tech.FactionActual.GetHashCode() == ManMods.inst.FindCorpShortName(filter.Faction).GetHashCode())
+                        { // Tests all official mods for matches
+                            FL = ManLicenses.inst.GetLicense(filter.Faction);
+                            if (FL != null && !FL.HasReachedMaxLevel && tech.IntendedGrade > FL.CurrentLevel)
+                                return false;   // Tests FactionTypesExt for matches
+                        }
+                        else
+                            return false;
+                    }
                 }
                 else
-                {
-                    if (tech.faction != FST || tech.factionLim > filter.Progression)
+                {   // Vanilla corp
+                    if (tech.curSessionFaction != FST || filter.Progression < tech.factionLim)
                         return false;
                 }
-                if (filter.TargetFactionGrade != 99 && tech.faction != FactionTypesExt.NULL)
+                if (filter.TargetFactionGrade != 99 && tech.curSessionFaction != FactionTypesExt.NULL)
                 {
                     if (tech.IntendedGrade > filter.TargetFactionGrade)
                         return false;
@@ -2928,7 +2947,7 @@ namespace TAC_AI.Templates
             }
             else
             {   // Filter out by player grade
-                FactionLicense FL = ManLicenses.inst.GetLicense(RawTechUtil.CorpExtToCorp(tech.faction));
+                FactionLicense FL = ManLicenses.inst.GetLicense(RawTechUtil.CorpExtToCorp(tech.curSessionFaction));
                 if (FL != null && !FL.HasReachedMaxLevel && tech.IntendedGrade > FL.CurrentLevel)
                     return false;
             }
@@ -3032,7 +3051,7 @@ namespace TAC_AI.Templates
                 if (faction != FactionSubTypes.NULL)
                 {
                     canidates.RemoveAll(x => {
-                        return (FactionSubTypes)x.Value.faction != faction ||
+                        return (FactionSubTypes)x.Value.curSessionFaction != faction ||
                         !x.Value.purposes.Contains(BasePurpose.Fallback) ||
                         (ManNetwork.IsNetworked && x.Value.purposes.Contains(BasePurpose.MPUnsafe));
                     });
@@ -3207,7 +3226,7 @@ namespace TAC_AI.Templates
 
         internal static FactionSubTypes GetMainCorp(SpawnBaseTypes toSpawn)
         {
-            return RawTechUtil.CorpExtToCorp(GetBaseTemplate(toSpawn).faction);
+            return RawTechUtil.CorpExtToCorp(GetBaseTemplate(toSpawn).curSessionFaction);
         }
 
         internal static bool IsHQ(SpawnBaseTypes toSpawn)
@@ -3381,12 +3400,8 @@ namespace TAC_AI.Templates
                 {   // intel
                     if (chain.GetComponent<ModuleItemConveyor>())
                     {
-                        RawBlockMem BM = new RawBlockMem
-                        {
-                            t = chain.name,
-                            p = chain.cachedLocalPosition,
-                            r = chain.cachedLocalRotation.rot,
-                        };
+                        RawBlockMem BM = new RawBlockMem(chain.name,
+                            chain.cachedLocalPosition, chain.cachedLocalRotation.rot);
                         mems.Add(BM);
                         blocs.Add(chain);
                         if (!types.Contains(chain.BlockType))

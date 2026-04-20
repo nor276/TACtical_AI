@@ -93,7 +93,7 @@ namespace TAC_AI
                 return;
             if (NotErrored)
             {
-                ManUI.inst.ShowErrorPopup("ERROR with Advanced AI\n" + message + "\nContinue with caution");
+                ManModGUI.ShowErrorPopup("ERROR with Advanced AI\n" + message + "\nContinue with caution: \n" + e);
                 NotErrored = false;
             }
             UnityEngine.Debug.Log(KickStart.ModID + ": "  + message + e);

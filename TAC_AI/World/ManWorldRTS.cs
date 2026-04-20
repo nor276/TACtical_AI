@@ -863,7 +863,7 @@ namespace TAC_AI.World
                         }
                     }
                 }
-                else if (AIGlobals.IsBaseTeamDynamic(grabbedTech.Team))
+                else if (ManBaseTeams.IsBaseTeamDynamic(grabbedTech.Team))
                 {
                     GUINPTInteraction.GetTank(grabbedTech);
                 }
@@ -956,7 +956,7 @@ namespace TAC_AI.World
                         }
                     }
                 }
-                else if (AIGlobals.IsBaseTeamDynamic(selectTech.Team))
+                else if (ManBaseTeams.IsBaseTeamDynamic(selectTech.Team))
                 {
                     GUINPTInteraction.GetTank(selectTech);
                 }
@@ -2298,10 +2298,16 @@ namespace TAC_AI.World
                     if (inst.LocalPlayerTechsControlled.Contains(Singleton.playerTank.GetHelperInsured()))
                     {
                         AltUI.StartUI();
-                        autopilotMenu = GUI.Window(PlayerAutopilotID, autopilotMenu, GUIHandlerPlayerAutopilot, "", AltUI.MenuLeft);
-                        if (UIHelpersExt.MouseIsOverSubMenu(autopilotMenu))
-                            ManModGUI.IsMouseOverAnyModGUI = 2;
-                        AltUI.EndUI();
+                        try
+                        {
+                            autopilotMenu = GUI.Window(PlayerAutopilotID, autopilotMenu, GUIHandlerPlayerAutopilot, "", AltUI.MenuLeft);
+                            if (UIHelpersExt.MouseIsOverGUIMenu(autopilotMenu))
+                                ManModGUI.IsMouseOverAnyModGUI = 2;
+                        }
+                        finally
+                        {
+                            AltUI.EndUI();
+                        }
                     } 
                 }
                 else

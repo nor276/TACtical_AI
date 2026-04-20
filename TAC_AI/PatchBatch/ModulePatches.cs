@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityEngine;
 using System.Reflection;
-using TerraTechETCUtil;
+using HarmonyLib;
 using TAC_AI.AI;
 using TAC_AI.AI.Enemy;
 using TAC_AI.Templates;
-using HarmonyLib;
+using TerraTechETCUtil;
+using UnityEngine;
+using static LocalisationEnums;
 
 namespace TAC_AI
 {
@@ -20,7 +21,8 @@ namespace TAC_AI
             //ImproveAI
             private static void OnAttached_Postfix(ModuleAIBot __instance)
             {
-                ModuleAIExtension.Insure(__instance);
+                if (ModuleAIExtension.CanAdd(__instance))
+                    ModuleAIExtension.Insure(__instance);
             }
         }
         internal static class ModuleWeaponPatches
@@ -147,7 +149,7 @@ namespace TAC_AI
                     team = TeamOwner;
                 else if (__instance.block?.tank)
                     team = __instance.block.tank.Team;
-                if (ManNetwork.IsHost && AIGlobals.IsBaseTeamDynamic(team))
+                if (ManNetwork.IsHost && ManBaseTeams.IsBaseTeamDynamic(team))
                 {
                     ModuleItemConsume.Progress pog = (ModuleItemConsume.Progress)progress.GetValue(__instance);
                     if (pog.currentRecipe.m_OutputType == RecipeTable.Recipe.OutputType.Money && sellStolen.GetValue(__instance) == null)
@@ -192,7 +194,7 @@ namespace TAC_AI
                 if (ManNetwork.IsHost && valid)
                 {
                     int team = __instance.block.tank.Team;
-                    if (AIGlobals.IsBaseTeamDynamic(team))
+                    if (ManBaseTeams.IsBaseTeamDynamic(team))
                     {
                         ModuleItemHolder.Stack stack = valid.SingleStack;
                         Vector3 vec = stack.BasePosWorld();

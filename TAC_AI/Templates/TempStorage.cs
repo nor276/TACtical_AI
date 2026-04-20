@@ -5,6 +5,7 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.Templates
 {
+#pragma warning disable CS0612 // Type or member is obsolete
     // Old BoltsName \"GSO_Exploder_A_111"
     // New BoltsName \"GSO_Exploder_A1_111"
     internal struct TempStorage
@@ -1152,4 +1153,5 @@ namespace TAC_AI.Templates
             } },
         };
     }
+#pragma warning restore CS0612 // Type or member is obsolete
 }

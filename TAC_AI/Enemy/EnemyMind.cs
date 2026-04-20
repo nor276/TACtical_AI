@@ -108,8 +108,8 @@ namespace TAC_AI.AI.Enemy
 
         public bool AttackPlayer => CommanderAlignment == EnemyStanding.Enemy;
         //public bool AttackAny => CommanderAlignment < EnemyStanding.SubNeutral;
-        public bool CanCallRetreat => AIGlobals.IsBaseTeamAny(Tank.Team);
-        public bool CanDoRetreat => AIGlobals.IsBaseTeamAny(Tank.Team) || IsPopulation;
+        public bool CanCallRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team);
+        public bool CanDoRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team) || IsPopulation;
 
 
         public void Initiate()

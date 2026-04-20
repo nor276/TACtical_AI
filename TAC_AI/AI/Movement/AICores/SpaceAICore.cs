@@ -320,7 +320,6 @@ namespace TAC_AI.AI.Movement.AICores
             Vector3 TurnVal = Vector3.zero;
             if (helper.DoSteerCore)
             {
-                float turnValF;
                 if (helper.AdviseAwayCore)
                 {   //Move from target
                     if (core.DriveDir == EDriveFacing.Perpendicular)

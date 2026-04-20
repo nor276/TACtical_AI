@@ -7,8 +7,6 @@ namespace TAC_AI.AI
     {
         public static void WeaponDirector(TankControl thisControl, TankAIHelper helper, Tank tank)
         {
-            float FinalAim;
-
             try
             {
                 if (!tank.beam.IsActive)

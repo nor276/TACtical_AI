@@ -117,7 +117,6 @@ namespace TAC_AI.AI
         private static Vector3[] location = new Vector3[9];
         internal static bool TryFindOpenBuildLocation(Tank tank, Vector3 targetWorld, float placeSize, float searchRadius, int radiusDivisions, out Vector3 pos, bool IgnoreCurrentlyBuilding = false)
         {
-            float offsetRadApprox = 80;
             bool buildingCancel = false;
             Vector3 coreOffset = tank.boundsCentreWorld - tank.transform.position;
             foreach (Vector3 IterateVec in IterateManhattanDiamondCreep(Vector3.zero, placeSize, searchRadius, radiusDivisions))

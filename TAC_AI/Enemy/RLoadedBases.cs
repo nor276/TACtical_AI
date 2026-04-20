@@ -968,7 +968,7 @@ namespace TAC_AI.AI.Enemy
                                 funds.SetupPurposes(BT);
                                 DebugTAC_AI.Log(KickStart.ModID + ": Registered EXTERNAL base " + baseName);
                                 mind.TechMemor.SetupForNewTechConstruction(helper, BT.savedTech);
-                                tank.MainCorps.Add(RawTechUtil.CorpExtToCorp(BT.faction));
+                                tank.MainCorps.Add(RawTechUtil.CorpExtToCorp(BT.curSessionFaction));
                                 activated = true;
                             }
                         }
@@ -1023,7 +1023,7 @@ namespace TAC_AI.AI.Enemy
                                 SetupBaseType(BT, mind);
                                 //DebugTAC_AI.Log(KickStart.ModID + ": Registered EXTERNAL base defense " + defName);
                                 mind.TechMemor.SetupForNewTechConstruction(helper, BT.savedTech);
-                                tank.MainCorps.Add(RawTechUtil.CorpExtToCorp(BT.faction));
+                                tank.MainCorps.Add(RawTechUtil.CorpExtToCorp(BT.curSessionFaction));
                                 activated = true;
                             }
                         }

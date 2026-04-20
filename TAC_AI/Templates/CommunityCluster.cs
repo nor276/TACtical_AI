@@ -219,14 +219,14 @@ namespace TAC_AI.Templates
 
         internal static void Organize(ref Dictionary<SpawnBaseTypes, RawTechTemplate> dict)
         {
-            dict = dict.OrderBy(x => x.Value.faction).ThenBy(x => x.Value.terrain)
+            dict = dict.OrderBy(x => x.Value.curSessionFaction).ThenBy(x => x.Value.terrain)
                 .ThenBy(x => x.Value.purposes.Contains(BasePurpose.NotStationary))
                 .ThenBy(x => x.Value.purposes.Contains(BasePurpose.NANI))
                 .ThenBy(x => x.Value.techName).ToDictionary(x => x.Key, x => x.Value);
         }
         internal static void Organize(ref Dictionary<SpawnBaseTypes, RawTech> dict)
         {
-            dict = dict.OrderBy(x => x.Value.faction).ThenBy(x => x.Value.terrain)
+            dict = dict.OrderBy(x => x.Value.curSessionFaction).ThenBy(x => x.Value.terrain)
                 .ThenBy(x => x.Value.purposes.Contains(BasePurpose.NotStationary))
                 .ThenBy(x => x.Value.purposes.Contains(BasePurpose.NANI))
                 .ThenBy(x => x.Value.techName).ToDictionary(x => x.Key, x => x.Value);

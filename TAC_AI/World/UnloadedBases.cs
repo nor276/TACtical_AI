@@ -216,7 +216,7 @@ namespace TAC_AI.World
                 DebugTAC_AI.Assert(cand == null, "TileHasEnemy - cand IS NULL");
                 if (cand.tech == null)
                     return false;
-                return AIGlobals.IsBaseTeamDynamic(cand.tech.m_TeamID)  
+                return ManBaseTeams.IsBaseTeamDynamic(cand.tech.m_TeamID)  
                 && ManBaseTeams.IsEnemy(EP.Team, cand.tech.m_TeamID); 
             });
         }
@@ -283,7 +283,7 @@ namespace TAC_AI.World
         // Base Operations
         public static bool CanPurgeTeam(NP_Presence EP, NP_BaseUnit EBU)
         {
-            return KickStart.CullFarEnemyBases && !ManBaseTeams.IsPlayerOwnedAIBaseTeam(EP.Team) && 
+            return KickStart.CullFarEnemyBases && AIGlobals.CanPurgeTeamNotPlayerOwned(EP.Team) && 
                 (EBU.tilePos - WorldPosition.FromScenePosition(Singleton.playerPos).TileCoord).WithinBox(
                     AIGlobals.IgnoreBaseCullingTilesFromOrigin);
         }
@@ -303,7 +303,10 @@ namespace TAC_AI.World
                     }
                 }
             }
-            catch { }
+            catch (Exception e) 
+            {
+                throw e;
+            }
             return false;
         }
 

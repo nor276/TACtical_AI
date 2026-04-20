@@ -11,6 +11,7 @@ using TAC_AI.AI.Movement;
 using TAC_AI.World;
 using TerraTechETCUtil;
 using UnityEngine;
+using static System.Net.WebRequestMethods;
 
 
 namespace TAC_AI.Templates
@@ -112,19 +113,19 @@ namespace TAC_AI.Templates
                     {
                         case DebugMenus.Prefabs:
                             HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerPreset, 
-                                "RawTech Prefab Spawns", CloseCallback);
+                                "RawTech Prefab Spawns", CloseCallback, true, true);
                             break;
                         case DebugMenus.Local:
                             HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerPlayer,
-                                "RawTech Local Spawns", CloseCallback);
+                                "RawTech Local Spawns", CloseCallback, true, true);
                             break;
                         case DebugMenus.RawTechsFolders:
                             HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerFolderSelect,
-                                "RawTech Folders", CloseCallback);
+                                "RawTech Folders", CloseCallback, true, true);
                             break;
                         default:
                             HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerDebug, 
-                                "Advanced AI Mod Info", CloseCallback);
+                                "Advanced AI Mod Info", CloseCallback, true, true);
                             break;
                     }
                 }
@@ -183,6 +184,66 @@ namespace TAC_AI.Templates
                 if (VertPosOff >= MaxWindowHeight)
                     MaxExtensionY = true;
             }
+        }
+
+        private static void DisplayRawTechInfoOnHoverLocal(List<RawTech> temps, int selectIndex)
+        {
+            try
+            {
+                DisplayRawTechInfoOnHover(temps[index]);
+            }
+            catch { }
+        }
+        private static void DisplayRawTechInfoOnHoverPreset(SpawnBaseTypes type)
+        {
+            try
+            {
+                if (ModTechsDatabase.InternalPopTechs.TryGetValue(type, out RawTech val))
+                    DisplayRawTechInfoOnHover(val);
+            }
+            catch { }
+        }
+        private static StringBuilder SB = new StringBuilder();
+        private static void DisplayRawTechInfoOnHover(RawTech data)
+        {
+            try
+            {
+                if (Event.current.type == EventType.Repaint && data != null && GUILayoutUtility.GetLastRect().Contains(Event.current.mousePosition))
+                {
+                    int playerGrade = 99;
+                    var corpIndex = ManMods.inst.GetCorpIndex(data.FactionActual);
+                    FactionLicense FL = ManLicenses.inst.GetLicense(corpIndex);
+                    if (FL != null)
+                        playerGrade = FL.CurrentLevel;
+                    var playerLevel = RawTechLoader.TryGetPlayerLicenceLevel();
+
+                    SB.AppendLine(data.techName.NullOrEmpty() ? "<NULL>" : data.techName);
+                    SB.AppendLine("Block Count: <b>" + data.savedTech.Count + "</b>");
+                    SB.AppendLine("Main Corp: " + (data.FactionActual.NullOrEmpty() ? "<NULL>" : data.FactionActual));
+                    SB.AppendLine("Grade - Tech:" + data.IntendedGrade + " | Yours:" + playerGrade);
+                    SB.AppendLine("Level - Tech: " + data.factionLim + " | Yours: " + playerLevel);
+                    switch (AIGlobals.SpawnDebugOverride)
+                    {
+                        case AIGlobals.EDebugSpawnOverride.Ally:
+                            SB.AppendLine(AIGlobals.FriendlyColor.ToRGBA255().ColorString("SPAWNING AS ALLY"));
+                            break;
+                        case AIGlobals.EDebugSpawnOverride.SubNeutral:
+                            SB.AppendLine(AIGlobals.SubNeutralColor.ToRGBA255().ColorString("SPAWNING AS SUB-NEUTRAL"));
+                            break;
+                        case AIGlobals.EDebugSpawnOverride.DefaultEnemy:
+                            SB.AppendLine(AIGlobals.EnemyColor.ToRGBA255().ColorString("SPAWNING AS DEFAULT ENEMY TEAM"));
+                            break;
+                        case AIGlobals.EDebugSpawnOverride.Player:
+                            SB.AppendLine(AIGlobals.PlayerColor.ToRGBA255().ColorString("SPAWNING AS PLAYER"));
+                            break;
+                        case AIGlobals.EDebugSpawnOverride.Randomized:
+                        default:
+                            break;
+                    }
+                    AltUI.Tooltip.GUITooltip(SB.ToString().TrimEnd(new char[] { '\n', '\t', ' ' }), false);
+                }
+            }
+            finally { SB.Clear(); }
         }
 
         private static void GUIHandlerDebug(int ID)
@@ -696,6 +757,7 @@ namespace TAC_AI.Templates
                             index = step;
                             clicked = true;
                         }
+                        DisplayRawTechInfoOnHoverLocal(listTemp, step);
                         HoriPosOff += ButtonWidth;
                     }
                     catch { }// error on handling something
@@ -871,7 +933,7 @@ namespace TAC_AI.Templates
             foreach (KeyValuePair<SpawnBaseTypes, RawTech> temp in ModTechsDatabase.InternalPopTechs)
             {
                 StepMenuPlacerPartial();
-                FactionSubTypes FST = RawTechUtil.CorpExtToCorp(temp.Value.faction);
+                FactionSubTypes FST = RawTechUtil.CorpExtToCorp(temp.Value.curSessionFaction);
                 if (currentFaction != FST)
                 {
                     currentFaction = FST;
@@ -885,12 +947,12 @@ namespace TAC_AI.Templates
                     }
                     if (FST == FactionSubTypes.EXP)
                         disp = "RR";
-                    else if (RawTechUtil.IsFactionExtension(temp.Value.faction))
-                        disp = temp.Value.faction.ToString();
+                    else if (RawTechUtil.IsFactionExtension(temp.Value.curSessionFaction))
+                        disp = temp.Value.curSessionFaction.ToString();
                     else if (ManMods.inst.IsModdedCorp(FST))
                         disp = ManMods.inst.FindCorpShortName(FST);
                     else
-                        disp = temp.Value.faction.ToString();
+                        disp = temp.Value.curSessionFaction.ToString();
                     if (GUILayout.Button("<b>" + disp + "</b>"))
                     {
                         if (openedFactions.Contains(currentFaction))
@@ -940,24 +1002,7 @@ namespace TAC_AI.Templates
                         type = temp.Key;
                         clicked = true;
                     }
-                    switch (AIGlobals.SpawnDebugOverride)
-                    {
-                        case AIGlobals.EDebugSpawnOverride.Ally:
-                            AltUI.Tooltip.GUITooltip(AIGlobals.FriendlyColor.ToRGBA255().ColorString("SPAWNING AS ALLY"));
-                            break;
-                        case AIGlobals.EDebugSpawnOverride.SubNeutral:
-                            AltUI.Tooltip.GUITooltip(AIGlobals.SubNeutralColor.ToRGBA255().ColorString("SPAWNING AS SUB-NEUTRAL"));
-                            break;
-                        case AIGlobals.EDebugSpawnOverride.DefaultEnemy:
-                            AltUI.Tooltip.GUITooltip(AIGlobals.EnemyColor.ToRGBA255().ColorString("SPAWNING AS DEFAULT ENEMY TEAM"));
-                            break;
-                        case AIGlobals.EDebugSpawnOverride.Player:
-                            AltUI.Tooltip.GUITooltip(AIGlobals.PlayerColor.ToRGBA255().ColorString("SPAWNING AS PLAYER"));
-                            break;
-                        case AIGlobals.EDebugSpawnOverride.Randomized:
-                        default:
-                            break;
-                    }
+                    DisplayRawTechInfoOnHoverPreset(temp.Key);
                     HoriPosOff += ButtonWidth;
                 }
             }
@@ -1547,10 +1592,12 @@ namespace TAC_AI.Templates
         private static bool DoCullInvalidVisibles = true;
         internal static void CheckAndDestroyAllInvalidVisibles(bool checkALLJSONTilesToo)
         {
-            AIGlobals.LogAllTrackedEnemyBaseVisibles();
+            AIGlobals.LogAllTrackedEnemyBaseVisibles(DoCullInvalidVisibles);
+            return;
             if (DoCullInvalidVisibles)
             {
-                foreach (var item in new List<TrackedVisible>(ManVisible.inst.AllTrackedVisibles))
+                var cullList = new List<TrackedVisible>(ManVisible.inst.AllTrackedVisibles);
+                foreach (var item in cullList)
                 {
                     if (item == null)
                         continue;
@@ -1574,7 +1621,7 @@ namespace TAC_AI.Templates
                                         DebugTAC_AI.Info("  Invalid Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
                                         ManVisible.inst.StopTrackingVisible(item.ID);
                                     }
-                                    else if (AIGlobals.IsBaseTeamDynamicOrUnregistered(item.TeamID))
+                                    else if (ManBaseTeams.IsBaseTeamDynamicOrUnregistered(item.TeamID))
                                     {
                                         DebugTAC_AI.Info("  Invalid UNREGISTERED Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
                                         ManVisible.inst.StopTrackingVisible(item.ID);
@@ -1589,7 +1636,7 @@ namespace TAC_AI.Templates
                                         DebugTAC_AI.Info("  NULL Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
                                         ManVisible.inst.StopTrackingVisible(item.ID);
                                     }
-                                    else if (AIGlobals.IsBaseTeamDynamicOrUnregistered(item.TeamID))
+                                    else if (ManBaseTeams.IsBaseTeamDynamicOrUnregistered(item.TeamID))
                                     {
                                         DebugTAC_AI.Info("  NULL UNREGISTERED Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
                                         ManVisible.inst.StopTrackingVisible(item.ID);
@@ -1733,7 +1780,7 @@ namespace TAC_AI.Templates
         {
             try
             {
-                var listTemp = list.OrderBy(x => x.faction).ThenBy(x => x.terrain)
+                var listTemp = list.OrderBy(x => x.curSessionFaction).ThenBy(x => x.terrain)
                 .ThenBy(x => x.purposes.Contains(BasePurpose.NotStationary))
                 .ThenBy(x => x.purposes.Contains(BasePurpose.NANI))
                     .ThenBy(x => x.techName.NullOrEmpty() ? "<NULL>" : x.techName).ToList();

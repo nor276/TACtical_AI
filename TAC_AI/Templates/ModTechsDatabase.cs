@@ -45,10 +45,36 @@ namespace TAC_AI.Templates
             return ExtPopTechsAll.Find(delegate (RawTech cand) { return cand.techName == name; });
         }
 
+        private static void InsureFactionLevel(RawTech tech)
+        {
+            if (tech.factionLim == FactionLevel.NULL)
+            {
+                foreach (var item in tech.savedTech)
+                {
+                    if (BlockIndexer.StringToBlockType(item.t, out var BT))
+                    {
+                        var corp = ManSpawn.inst.GetCorporation(BT);
+                        if (corp != FactionSubTypes.NULL)
+                        {
+                            var level = RawTechUtil.GetFactionLevel(corp);
+                            if (tech.factionLim <= level)
+                                tech.factionLim = level;
+                        }
+                    }
+                }
+#if DEBUG
+                DebugTAC_AI.Log(KickStart.ModID + ": (RawTechs) The tech \"" + tech.techName +
+                    "\" was not assigned a proper factionLim, so it was given " + tech.factionLim);
+#endif
+            }
+        }
         private static void AddInternalTechs(List<KeyValuePair<SpawnBaseTypes, RawTech>> compile)
         {
             foreach (KeyValuePair<SpawnBaseTypes, RawTech> pair in compile)
+            {
+                InsureFactionLevel(pair.Value);
                 InternalPopTechs.Add(pair.Key, pair.Value);
+            }
         }
         internal static void ValidateAndAdd(Dictionary<SpawnBaseTypes, RawTechTemplate> preCompile, Dictionary<SpawnBaseTypes, RawTech> target)
         {
@@ -59,6 +85,7 @@ namespace TAC_AI.Templates
                 {
                     if (inst.ValidateBlocksInTech(false, true))
                     {
+                        InsureFactionLevel(inst);
                         target.Add(pair.Key, inst);
                     }
                     else
@@ -86,6 +113,7 @@ namespace TAC_AI.Templates
                     {
                         if (inst.ValidateBlocksInTech(true, false))
                         {
+                            InsureFactionLevel(inst);
                             target.Add(new KeyValuePair<SpawnBaseTypes, RawTech>(pair.Key, inst));
                         }
                         else
@@ -117,6 +145,7 @@ namespace TAC_AI.Templates
                     RawTech inst = pair.Value.ToActive();
                     if (inst.ValidateBlocksInTech(true, false))
                     {
+                        InsureFactionLevel(inst);
                         target.Add(pair.Key, inst);
                     }
                     else

@@ -91,12 +91,18 @@ namespace TAC_AI
                 if (isCurrentlyOpen && KickStart.CanUseMenu)
                 {
                     AltUI.StartUI();
-                    var title = AltUI.UIAlphaText + (!lastTank.name.NullOrEmpty() ? lastTank.name == "recycled tech" ? "None Selected" : lastTank.name : "NO NAME") + "</color>";
-                    //"AI Mode Select"
-                    HotWindow = GUI.Window(AIManagerID, HotWindow, GUIHandler, title, AltUI.MenuLeft);
-                    if (UIHelpersExt.MouseIsOverSubMenu(HotWindow))
-                        ManModGUI.IsMouseOverAnyModGUI = 2;
-                    AltUI.EndUI();
+                    try
+                    {
+                        var title = AltUI.UIAlphaText + (!lastTank.name.NullOrEmpty() ? lastTank.name == "recycled tech" ? "None Selected" : lastTank.name : "NO NAME") + "</color>";
+                        //"AI Mode Select"
+                        HotWindow = GUI.Window(AIManagerID, HotWindow, GUIHandler, title, AltUI.MenuLeft);
+                        if (UIHelpersExt.MouseIsOverGUIMenu(HotWindow))
+                            ManModGUI.IsMouseOverAnyModGUI = 2;
+                    }
+                    finally
+                    {
+                        AltUI.EndUI();
+                    }
                 }
             }
         }
@@ -897,8 +903,6 @@ namespace TAC_AI
             HotWindow = new Rect(HotWindow.x, HotWindow.y, 200, 420);
             bool clicked = false;
             bool clickedDriver = false;
-            Sprite sprite;
-            GUIContent tankI;
             GUILayoutOption GLO = GUILayout.MinWidth(HotWindow.width / 2.5f);
             GUILayoutOption GLH = GUILayout.Height(HotWindow.width / 6f);
 
@@ -1983,7 +1987,7 @@ namespace TAC_AI
             {
                 windowTimer -= Time.deltaTime;
             }
-            if (windowTimer < 0 && !UIHelpersExt.MouseIsOverSubMenu(HotWindow))
+            if (windowTimer < 0 && !UIHelpersExt.MouseIsOverGUIMenu(HotWindow))
             {
                 CloseSubMenuClickable();
                 windowTimer = 0;

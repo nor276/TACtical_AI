@@ -180,7 +180,9 @@ namespace TAC_AI.AI
                 helper.SetAIControl(AITreeType.AITypes.Escort);
                 if (BM.blockCount > 0)
                 {
-                    if (BM.IterateBlockComponents<ModuleWheels>().Count() > 0 || BM.IterateBlockComponents<ModuleHover>().Count() > 0)
+                    int wheelCount = BM.IterateBlockComponents<ModuleWheels>().Count();
+                    int hoverCount = BM.IterateBlockComponents<ModuleHover>().Count();
+                    if (!(hoverCount == 1 && wheelCount > 0) && (wheelCount > 0 || hoverCount > 0))
                         helper.DediAI = AIType.Escort;
                     else
                     {

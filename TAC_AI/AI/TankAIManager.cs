@@ -132,6 +132,7 @@ namespace TAC_AI.AI
         private static void InsureLoadedCorrectly()
         {
             //ForceReloadAll();
+            AICommands.AreYouSurePurge = AICommands.PurgeState.None;
         }
         public static void RegisterMissionTechVisID(int vis)
         {

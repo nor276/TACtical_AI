@@ -718,7 +718,7 @@ namespace TAC_AI.AI.Enemy
             else
                 mind.EnemyOpsController.Execute();
             //CommanderMind is handled in each seperate class
-            if (AIGlobals.IsBaseTeamDynamic(tank.Team))
+            if (ManBaseTeams.IsBaseTeamDynamic(tank.Team))
             {
                 EControlOperatorSet direct = helper.GetDirectedControl();
                 if (ProccessIfRetreat(helper, tank, mind, ref direct))
@@ -843,7 +843,7 @@ namespace TAC_AI.AI.Enemy
                 if (helper.lastEnemyGet?.tank)
                 {
                     int teamAttacker = helper.lastEnemyGet.tank.Team;
-                    if (AIGlobals.IsBaseTeamDynamic(teamAttacker) || teamAttacker == ManPlayer.inst.PlayerTeam)
+                    if (ManBaseTeams.IsBaseTeamDynamic(teamAttacker) || teamAttacker == ManPlayer.inst.PlayerTeam)
                     {
                         if (ManBaseTeams.TryGetBaseTeamDynamicOnly(tank.Team, out var ETD))
                             ETD.DegradeRelations(teamAttacker);
@@ -1019,7 +1019,7 @@ namespace TAC_AI.AI.Enemy
                     if (!tank.name.Contains('Ω'))
                         tank.SetName(tank.name + " Ω");
                     newMind.CommanderMind = EnemyAttitude.NPCBaseHost;
-                    if (!AIGlobals.IsBaseTeamDynamic(tank.Team))
+                    if (!ManBaseTeams.IsBaseTeamDynamic(tank.Team))
                     {
                         if (tank.blockman.IterateBlockComponents<ModuleItemHolder>().Count() > 0)
                         {
@@ -1037,7 +1037,7 @@ namespace TAC_AI.AI.Enemy
                 case EnemyAttitude.Boss:
                     if (!tank.name.Contains('⦲'))
                         tank.SetName(tank.name + " ⦲");
-                    if (!AIGlobals.IsBaseTeamDynamic(tank.Team) && RawTechLoader.TryStartBase(tank, helper, BasePurpose.Headquarters))
+                    if (!ManBaseTeams.IsBaseTeamDynamic(tank.Team) && RawTechLoader.TryStartBase(tank, helper, BasePurpose.Headquarters))
                         DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " is a base boss with dangerous potential!  " + newMind.EvilCommander.ToString() + " based " + newMind.CommanderAlignment.ToString() + " with attitude " + newMind.CommanderAttack.ToString() + " | Mind " + newMind.CommanderMind.ToString() + " | Smarts " + newMind.CommanderSmarts.ToString() + " inbound!");
                     else
                         DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " is a raid boss with dangerous potential!  " + newMind.EvilCommander.ToString() + " based " + newMind.CommanderAlignment.ToString() + " with attitude " + newMind.CommanderAttack.ToString() + " | Mind " + newMind.CommanderMind.ToString() + " | Smarts " + newMind.CommanderSmarts.ToString() + " inbound!");

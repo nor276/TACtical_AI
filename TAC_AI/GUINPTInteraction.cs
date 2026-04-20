@@ -115,7 +115,7 @@ namespace TAC_AI.AI
             if (button == ManPointer.Event.RMB && down && KickStart.IsIngame && Input.GetKey(KeyCode.T) && ManPointer.inst.targetTank)
             {
                 int team = ManPointer.inst.targetTank.Team;
-                if (team == ManPlayer.inst.PlayerTeam || AIGlobals.IsBaseTeamDynamic(team))
+                if (team == ManPlayer.inst.PlayerTeam || ManBaseTeams.IsBaseTeamDynamic(team))
                 {
                     if (ManPointer.inst.targetTank)
                         GetTank(ManPointer.inst.targetTank);
@@ -188,8 +188,14 @@ namespace TAC_AI.AI
                 if (isCurrentlyOpen && KickStart.CanUseMenu)
                 {
                     AltUI.StartUI();
-                    HotWindow = GUILayout.Window(EvictionID, HotWindow, GUIHandler, "You Say:", AltUI.MenuLeft);
-                    AltUI.EndUI();
+                    try
+                    {
+                        HotWindow = GUILayout.Window(EvictionID, HotWindow, GUIHandler, "You Say:", AltUI.MenuLeft);
+                    }
+                    finally
+                    {
+                        AltUI.EndUI();
+                    }
                 }
             }
         }

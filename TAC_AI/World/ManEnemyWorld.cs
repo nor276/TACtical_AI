@@ -362,7 +362,21 @@ namespace TAC_AI.World
                 {
                     loaded.Add(item.visible.ID);
                 }
-                foreach (var item in ManVisible.inst.AllTrackedVisibles)
+                if (ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore != null)
+                {
+                    int purgery = ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore.RemoveAll(x => x != null && x is ManSaveGame.StoredTech ST &&
+                         ManBaseTeams.IsBaseTeamDynamicOrUnregistered(ST.m_TeamID));
+                    int purgeryTS = ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore.RemoveAll(x => x != null && x is ManSaveGame.StoredTech ST &&
+                        ST.m_TechData?.LocalisedName != null && AIGlobals.CanPurgeTradingStation(ST.m_TeamID, ST.m_TechData.LocalisedName.m_Id));
+                    if (purgery != 0)
+                    {
+                        ManUI.inst.ShowErrorPopup("Looks like [" + purgery + "] Enemy techs from " + KickStart.ModID + " failed to load properly!");
+                        ManUI.inst.ShowErrorPopup("Add [" + purgeryTS + "] trading stations that also failed to load and began stacking like mad from past mod versions.");
+                        ManUI.inst.ShowErrorPopup("They have been automatically removed.  This shouldn't cause any problems and should fix some performance issues.");
+                    }
+                }
+                var iterator = new List<TrackedVisible>(ManVisible.inst.AllTrackedVisibles);
+                foreach (var item in iterator)
                 {
                     if (item != null && item.ObjectType == ObjectTypes.Vehicle)
                     {
@@ -375,7 +389,7 @@ namespace TAC_AI.World
                             {
                                 if (Vis is ManSaveGame.StoredTech tech && !loaded.Contains(tech.m_ID))
                                 {
-                                    if (TryRegisterTechUnloaded(tech, ManBaseTeams.inst.HiddenVisibles.Contains(tech.m_ID), true, false))
+                                    if (TryRegisterTechUnloaded(tech, tech.m_ID, ManBaseTeams.inst.HiddenVisibles.Contains(tech.m_ID), true, false))
                                         count++;
                                 }
                             }
@@ -448,8 +462,8 @@ namespace TAC_AI.World
                 try
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": Visible " + tech.m_ID + " saved to disk");
-                    if (ManBaseTeams.IsBaseTeamAny(tech.m_TeamID))
-                        TryRegisterTechUnloaded(tech, ManBaseTeams.inst.HiddenVisibles.Contains(tech.m_ID), true, false);
+                    if (ManBaseTeams.IsBaseTeamDynamic(tech.m_TeamID))
+                        TryRegisterTechUnloaded(tech, tech.m_ID, ManBaseTeams.inst.HiddenVisibles.Contains(tech.m_ID), true, false);
                 }
                 catch (Exception e)
                 {
@@ -725,22 +739,24 @@ namespace TAC_AI.World
         /// <param name="tech"></param>
         /// <param name="tilePos"></param>
         /// <param name="isNew"></param>
-        public static bool TryRegisterTechUnloaded(ManSaveGame.StoredTech tech, bool hide, bool isNew, bool forceRegister)
+        public static bool TryRegisterTechUnloaded(ManSaveGame.StoredTech tech, int ID, bool hide, bool isNew, bool forceRegister)
         {
-            var TV = AIGlobals.GetTrackedVisible(tech.m_ID);
+            var TV = AIGlobals.GetTrackedVisible(ID);
             bool isBase = tech.m_TechData.IsBase();
             if (TV == null)
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": Tech unit " + tech.m_TechData.Name + " lacked TrackedVisible, fixing...");
-                TV = RawTechLoader.InsureTrackingTank(tech, tech.m_ID, hide, isBase);
+                TV = RawTechLoader.InsureTrackingTank(tech, ID, hide, isBase);
             }
-            TV.RadarType = AIGlobals.DetermineRadarType(tech.m_ID, AIGlobals.GetWorldPos(tech).ScenePosition, isBase);
+            if (TV.ID != ID)
+                throw new Exception("saved tech ID and TrackedVisible ID Mismatch");
+            TV.RadarType = AIGlobals.DetermineRadarType(ID, AIGlobals.GetWorldPos(tech).ScenePosition, isBase);
             int team = TV.RadarTeamID;
             //if (TV.TeamID != tech.m_TeamID)
             //    throw new Exception("NP_BaseUnit and TrackedVisible TeamID Mismatch " + TV.TeamID + " vs " + tech.m_TeamID);
             //if (TV.TeamID != TV.RadarTeamID)
             //    throw new Exception("NP_BaseUnit and TrackedVisible RadarTeamID Mismatch " + TV.TeamID + " vs " + TV.RadarTeamID);
-            if (AIGlobals.IsBaseTeamDynamic(team) || forceRegister)
+            if (ManBaseTeams.IsBaseTeamDynamic(team) || forceRegister)
             {   // Enemy Team
                 if (isBase)
                 {
@@ -748,7 +764,7 @@ namespace TAC_AI.World
                     {
                         NP_BaseUnit EBU = new NP_BaseUnit(tech, InsureTeam(team));
                         EBU.SetTracked(TV);
-                        if (TV.ID != tech.m_ID)
+                        if (TV.ID != ID)
                             throw new Exception("NP_BaseUnit and TrackedVisible ID Mismatch");
                         /* // disabled check since it hasn't been assigned yet
                         if (!IsTechOnSetTile(EBU))
@@ -768,7 +784,7 @@ namespace TAC_AI.World
                     {
                         NP_TechUnit ETU = new NP_MobileUnit(tech, InsureTeam(team), tech.m_TechData.GetMainCorp());
                         ETU.SetTracked(TV);
-                        if (TV.ID != tech.m_ID)
+                        if (TV.ID != ID)
                             throw new Exception("NP_TechUnit and TrackedVisible ID Mismatch");
                         /* // disabled check since it hasn't been assigned yet
                         if (!IsTechOnSetTile(ETU))
@@ -1152,7 +1168,7 @@ namespace TAC_AI.World
                 var sTech = (ManSaveGame.StoredTech)SV.Last();
                 RawTechLoader.InsureTrackingTank(sTech, newVisibleID, hide, anchored);
                 sTech.m_ID = newVisibleID;
-                TryRegisterTechUnloaded(sTech, true, true, false);
+                TryRegisterTechUnloaded(sTech, sTech.m_ID, true, true, false);
             }
             else
                 throw new Exception("AddTechToTile added saved tech but could not find the added saved Tech afterwards!");
@@ -1334,7 +1350,7 @@ namespace TAC_AI.World
             {
                 NPTTeams.Remove(Team);
                 EP.ChangeTeamOfAllTechsUnloaded(newTeam);
-                if (AIGlobals.IsBaseTeamDynamic(newTeam))
+                if (ManBaseTeams.IsBaseTeamDynamic(newTeam))
                     NPTTeams.Add(newTeam, EP);
 
             }

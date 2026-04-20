@@ -166,7 +166,6 @@ namespace TAC_AI.AI.Movement.AICores
                 case EDrivePathing.Path:
                     Target = helper.AvoidAssist(Target);
                     break;
-                    break;
                 case EDrivePathing.PrecisePathIgnoreScenery:
                     Target = helper.AvoidAssistPrecise(Target, IgnoreDestructable: true);
                     break;
@@ -409,7 +408,6 @@ namespace TAC_AI.AI.Movement.AICores
             // STEERING
             if (helper.DoSteerCore)
             {
-                float turnVal;
                 switch (core.DriveDir)
                 {
                     case EDriveFacing.Perpendicular:
