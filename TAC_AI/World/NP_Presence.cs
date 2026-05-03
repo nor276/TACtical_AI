@@ -462,11 +462,11 @@ namespace TAC_AI.World
                     case AITeamMode.Idle:
                     default:
                         lastEventTile = homeTile;
-                        if (canSiege && UnloadedBases.IsPlayerWithinProvokeDist(MainBase.tilePos))
+                        if (canSiege && UnloadedBases.IsPlayerWithinProvokeDist(MainBase.tilePos, out Tank offender))
                         {
                             PresenceDebug("Team " + TeamNamer.GetTeamName(team) +  " can attack your base!  Threshold: " + EMUs.Count + " / " + (KickStart.EnemyTeamTechLimit / 2f));
                             var player = Singleton.playerTank;
-                            if (player != null && ManEnemySiege.CheckShouldLaunchSiege(this))
+                            if (player != null && ManEnemySiege.CheckShouldLaunchSiege(this, offender))
                             {
                                 SetSiegeMode(ManWorld.inst.TileManager.SceneToTileCoord(player.boundsCentreWorldNoCheck));
                             }

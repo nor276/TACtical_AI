@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using UnityEngine;
-using TerraTechETCUtil;
-using TAC_AI.Templates;
 using TAC_AI.AI.Enemy;
+using TAC_AI.Templates;
+using TerraTechETCUtil;
+using UnityEngine;
+using static WaterMod.SurfacePool;
 
 namespace TAC_AI.World
 {
@@ -266,17 +267,29 @@ namespace TAC_AI.World
             }
         }
 
-        public static bool IsPlayerWithinProvokeDist(IntVector2 tilePos)
+        public static bool IsPlayerWithinProvokeDist(IntVector2 tilePos, out Tank offender)
         {
-            if (Singleton.playerTank)
+            var list = AIGlobals.GetAllPlayerControlledTechs();
+            if (list.Any())
             {
-                if ((tilePos - WorldPosition.FromScenePosition(Singleton.playerTank.boundsCentreWorld).TileCoord).
-                    WithinBox(ManEnemyWorld.EnemyRaidProvokeExtents))
+                list.Shuffle();
+                foreach (var item in list)
                 {
-                    return true;
+                    if (item != null && (tilePos - WorldPosition.FromScenePosition(item.boundsCentreWorld).TileCoord).
+                        WithinBox(ManEnemyWorld.EnemyRaidProvokeExtents))
+                    {
+                        offender = item;
+                        return true;
+                    }
                 }
             }
+            offender = null;
             return false;
+        }
+        public static bool IsPlayerWithinProvokeDist(IntVector2 tilePos, Tank offender)
+        {
+            return offender != null && (tilePos - WorldPosition.FromScenePosition(offender.boundsCentreWorld).TileCoord).
+                WithinBox(ManEnemyWorld.EnemyRaidProvokeExtents);
         }
 
 

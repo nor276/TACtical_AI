@@ -18,6 +18,16 @@ using ModHelper.Config;
 
 namespace TAC_AI
 {
+
+    public struct BaseTeamsUpdateRate
+    {
+        public string name;
+        public BaseTeamsUpdateRate(string name)
+        {
+            this.name = name;
+        }
+        public override string ToString() => name;
+    }
     public class KickStartConfigHelper
     {
         public static bool CullFarEnemyBasesDevStartup = false;
@@ -83,6 +93,7 @@ namespace TAC_AI
             // RTS
             thisModConfig.BindConfig<KickStart>(null, "AllowPlayerRTSHUD");
             thisModConfig.BindConfig<KickStart>(null, "AllowStrategicAI");
+            thisModConfig.BindConfig<ManWorldRTS>(null, "RTSUIScale");
             thisModConfig.BindConfig<KickStart>(null, "UseClassicRTSControls");
             thisModConfig.BindConfig<KickStart>(null, "UseNumpadForGrouping");
             thisModConfig.BindConfig<KickStart>(null, "CommandHotkeySav");
@@ -120,16 +131,6 @@ namespace TAC_AI
                 OverrideManPop.ChangeToRagnarokPop(KickStart.CommitDeathMode);
             }
         }
-    }
-
-    public struct BaseTeamsUpdateRate
-    {
-        public string name;
-        public BaseTeamsUpdateRate(string name)
-        {
-            this.name = name;
-        }
-        public override string ToString() => name;
     }
     public class KickStartNativeOptions
     {
@@ -174,8 +175,10 @@ namespace TAC_AI
         public static Nuterra.NativeOptions.OptionRange nonHostileAlliedBaseChance;
         public static Nuterra.NativeOptions.OptionToggle ragnarok;
         public static Nuterra.NativeOptions.OptionToggle copycat;
+
         public static Nuterra.NativeOptions.OptionToggle playerStrategic;
         public static Nuterra.NativeOptions.OptionToggle enemyStrategic;
+        public static Nuterra.NativeOptions.OptionRange guiScaler;
         public static Nuterra.NativeOptions.OptionToggle enemyMiners;
         public static Nuterra.NativeOptions.OptionToggle useKeypadForGroups;
 
@@ -210,6 +213,7 @@ namespace TAC_AI
                     });
             }
         }
+
         internal static void PushExtModOptionsHandling()
         {
             var TACAI = KickStart.ModID + " - A.I. General";
@@ -294,6 +298,13 @@ namespace TAC_AI
                     ManEnemyWorld.DeInit();
                     // ManUI.inst.ShowErrorPopup("A game restart is required to let the changes take effect"); // causes settings fail
                 }
+            });
+            guiScaler = SuperNativeOptions.OptionRangeAutoDisplay("RTS GUI Scaling", TACAIRTS, ManWorldRTS.RTSUIScale, 
+                0.5f, 1.5f, 0.05f, (float inVal) => inVal.ToString("P"));
+            guiScaler.onValueSaved.AddListener(delegate
+            {
+                ManWorldRTS.RTSUIScale = guiScaler.SavedValue;
+                ManWorldRTS.RecalcUIScale();
             });
             commandHotKey = new Nuterra.NativeOptions.OptionKey("Enable RTS Overlay Hotkey", TACAIRTS, KickStart.CommandHotkey);
             commandHotKey.onValueSaved.AddListener(() =>

@@ -1286,6 +1286,29 @@ namespace TAC_AI.AI
             DebugTAC_AI.Log(KickStart.ModID + ": ExecuteAutoSetNoCalibrate() " + tank.name + " guessing driver is " + DriverType);
         }
 
+
+
+        public static ExtUsageHint.UsageHint UnitAttacked = 
+            new ExtUsageHint.UsageHint(KickStart.ModID, "TankAIHelper.UnitBesieged", new LocExtStringMod(
+            new Dictionary<LocalisationEnums.Languages, string>()
+            {
+                { LocalisationEnums.Languages.US_English, "Your team " + AltUI.EnemyString("is under attack")},
+                { LocalisationEnums.Languages.Japanese, "あなたのチーム" + AltUI.EnemyString("が攻撃されています！")},
+            }), 3, true);
+        public static LocExtStringMod LOC_PlayerAttacked = new LocExtStringMod(
+            new Dictionary<LocalisationEnums.Languages, string>()
+            {
+                { LocalisationEnums.Languages.US_English, "You are under attack"},
+                { LocalisationEnums.Languages.Japanese, "攻撃を受けている！"},
+            });
+
+        public static LocExtStringMod LOC_PlayerBaseAttacked = new LocExtStringMod(
+            new Dictionary<LocalisationEnums.Languages, string>()
+            {
+                { LocalisationEnums.Languages.US_English, "Base is under attack"},
+                { LocalisationEnums.Languages.Japanese, "基地が攻撃を受けている！"},
+            });
+
         /// <summary>
         /// React when hit by an attack from another Tech. 
         /// Must be un-subbed and resubbed when switching to and from enemy
@@ -1320,22 +1343,22 @@ namespace TAC_AI.AI
                 }
                 Provoked = AIGlobals.ProvokeTime;
                 FIRE_ALL = true;
-                if (ManWorldRTS.PlayerIsInRTS)
+                if (ManWorldRTS.PlayerIsInRTS && tank.Team == ManPlayer.inst.PlayerTeam)
                 {
-                    if (tank.IsAnchored)
-                    {
-                        PlayerRTSUI.RTSDamageWarnings(0.5f, 0.25f);
-
-                        ManEnemySiege.BigF5broningWarning("Base is Under Attack", true);
-                    }
-                    else if (tank.PlayerFocused)
+                    if (tank.PlayerFocused)
                     {
                         PlayerRTSUI.RTSDamageWarnings(1.5f, 0.75f);
-                        ManEnemySiege.BigF5broningWarning("You are under attack", false);
+                        UIHelpersExt.BigF5broningBannerSP(LOC_PlayerAttacked.ToString(), false);
+                    }
+                    else if (tank.IsAnchored)
+                    {
+                        PlayerRTSUI.RTSDamageWarnings(0.5f, 0.25f);
+                        UIHelpersExt.BigF5broningBannerSP(LOC_PlayerBaseAttacked.ToString(), true);
                     }
                     else
                     {
                         ManSFX.inst.PlayUISFX(ManSFX.UISfxType.RadarOn);
+                        UnitAttacked.Show();
                     }
                 }
             }

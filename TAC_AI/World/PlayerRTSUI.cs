@@ -307,6 +307,8 @@ namespace TAC_AI.World
                             hudBack = ManHUD.inst.GetComponent<Canvas>();
                             hudBackOrigin = hudBack.pixelRect.position;
                         }
+
+                        GUI.matrix = ManWorldRTS.RTSUIMatrix;
                         if (unitListActive && !AIGlobals.HideHud)
                         {
                             if (ManWorldRTS.inst.Leading || ManWorldRTS.PlayerRTSOverlay)
@@ -411,12 +413,12 @@ namespace TAC_AI.World
                 bool storeE = curHP.CanStoreEnergy();
                 float height = 38;
                 Vector3 AboveTechUI = Singleton.cameraTrans.up * curHP.lastTechExtents;
-                Vector3 OnScreenPos = Singleton.camera.WorldToScreenPoint(tech.boundsCentreWorldNoCheck + AboveTechUI);
+                Vector3 OnScreenPos = Singleton.camera.WorldToScreenPoint(tech.boundsCentreWorldNoCheck + AboveTechUI) * ManWorldRTS.RTSUIScaleInv;
                 if (OnScreenPos.z <= 0)
                     return;
 
-                data.HealthPos = new Rect(OnScreenPos.x - ((data.WidthHealthBar / 2) + BorderSize), 
-                    Display.main.renderingHeight - (OnScreenPos.y + height),
+                data.HealthPos = new Rect(OnScreenPos.x - ((data.WidthHealthBar / 2) + BorderSize),
+                    ManWorldRTS.RTSScaledHeight - (OnScreenPos.y + height),
                     data.WidthHealthBar + BorderSize + BorderSize, height);
                 UIHelpersExt.ClampGUIToScreen(ref data.HealthPos, false);
 
@@ -453,12 +455,12 @@ namespace TAC_AI.World
                 float height = 38;
                 
                 Vector3 AboveTechUI = Singleton.cameraTrans.up * vis.GetCheapBounds();
-                Vector3 OnScreenPos = Singleton.camera.WorldToScreenPoint(vis.centrePosition + AboveTechUI);
+                Vector3 OnScreenPos = Singleton.camera.WorldToScreenPoint(vis.centrePosition + AboveTechUI) * ManWorldRTS.RTSUIScaleInv;
                 if (OnScreenPos.z <= 0)
                     return;
 
                 data.HealthPos = new Rect(OnScreenPos.x - ((data.WidthHealthBar / 2) + BorderSize),
-                    Display.main.renderingHeight - (OnScreenPos.y + height),
+                    ManWorldRTS.RTSScaledHeight - (OnScreenPos.y + height),
                     data.WidthHealthBar + BorderSize + BorderSize, height);
                 UIHelpersExt.ClampGUIToScreen(ref data.HealthPos, false);
                 data.EnergyMax = 0;
@@ -496,7 +498,7 @@ namespace TAC_AI.World
                 if (AlwaysShowName || Input.GetKey(KickStart.MultiSelect))
                 {
                     GUI.DrawTexture(new Rect(0, 0, WidthHealthBarExt, 14), OutlineBlack, ScaleMode.ScaleAndCrop);
-                    GUI.Label(new Rect(0, 0, WidthHealthBarExt, 14), name, SmallTextTitle);
+                    GUI.Label(new Rect(0, 7, WidthHealthBarExt, 14), name, SmallTextTitle);
                 }
                 //GUI.DrawTexture(new Rect(0, 10, WidthHealthBar, 16), OutlineBlack, ScaleMode.ScaleAndCrop);
                 if (EnergyMax > 0)
@@ -644,23 +646,23 @@ namespace TAC_AI.World
                 //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                 ManWorldRTS.inst.SelectUnitSFX();
             }
-            if (UIHelpersExt.MouseIsOverGUIMenu(CommandBar))
+            if (ManWorldRTS.MouseIsOverGUIMenu(CommandBar))
             {
                 ManModGUI.IsMouseOverAnyModGUI = 2;
                 if (setHovered)
                 {
                     string action = hovered.GetActionStatus(out bool notAble);
-                    Vector3 Mous = Input.mousePosition;
-                    Mous.y = Display.main.renderingHeight - Mous.y;
+                    Vector3 Mous = Input.mousePosition * ManWorldRTS.RTSUIScaleInv;
+                    Mous.y = ManWorldRTS.RTSScaledHeight - Mous.y;
                     Vector2 newPos = Vector2.zero;
-                    newPos.x = Mathf.Clamp(Mous.x + 16, 0, Display.main.renderingWidth - toolWindow.width);
-                    newPos.y = Mathf.Clamp(Mous.y + 16, 0, Display.main.renderingHeight - toolWindow.height);
+                    newPos.x = Mathf.Clamp(Mous.x + 16, 0, ManWorldRTS.RTSScaledWidth - toolWindow.width);
+                    newPos.y = Mathf.Clamp(Mous.y + 16, 0, ManWorldRTS.RTSScaledHeight - toolWindow.height);
                     Vector2 hotWindowLocal = newPos - CommandBar.position;
                     GUI.Box(new Rect(hotWindowLocal.x, hotWindowLocal.y, toolWindow.width, toolWindow.height), LOC_AIStatus, AltUI.MenuLeft);
                     if (notAble)
-                        GUI.Label(new Rect(20 + hotWindowLocal.x, 15 + hotWindowLocal.y, 160, 60), AltUI.UIAlphaText + action + LOC_AIUnable + "</color>");
+                        GUI.Label(new Rect(6 + hotWindowLocal.x, 15 + hotWindowLocal.y, 188, 60), AltUI.UIAlphaText + action + LOC_AIUnable + "</color>");
                     else
-                        GUI.Label(new Rect(20 + hotWindowLocal.x, 15 + hotWindowLocal.y, 160, 60), AltUI.UIAlphaText + action + "</color>");
+                        GUI.Label(new Rect(6 + hotWindowLocal.x, 15 + hotWindowLocal.y, 188, 60), AltUI.UIAlphaText + action + "</color>");
                 }
                 else
                     ManWorldRTS.inst.SetPlayerHovered(null);
@@ -1114,10 +1116,10 @@ namespace TAC_AI.World
 
         internal static void ResetPos()
         {
-            CommandBar.x = (Display.main.renderingWidth - CommandBar.width) / 2;
-            CommandBar.y = Display.main.renderingHeight - CommandBar.height;
-            CommandBarSmall.x = (Display.main.renderingWidth - CommandBarSmall.width) / 2;
-            CommandBarSmall.y = Display.main.renderingHeight - CommandBarSmall.height;
+            CommandBar.x = (ManWorldRTS.RTSScaledWidth - CommandBar.width) / 2;
+            CommandBar.y = ManWorldRTS.RTSScaledHeight - CommandBar.height;
+            CommandBarSmall.x = (ManWorldRTS.RTSScaledWidth - CommandBarSmall.width) / 2;
+            CommandBarSmall.y = ManWorldRTS.RTSScaledHeight - CommandBarSmall.height;
         }
 
 
@@ -1130,9 +1132,9 @@ namespace TAC_AI.World
             {
                 string action = hovered.GetActionStatus(out bool notAble);
                 if (notAble)
-                    GUI.Label(new Rect(20, 15, 160, 60), action + " (Unable)", AltUI.LabelBlack);
+                    GUI.Label(new Rect(6, 15, 188, 60), action + " (Unable)", AltUI.LabelBlackWrap);
                 else
-                    GUI.Label(new Rect(20, 15, 160, 60), action, AltUI.LabelBlack);
+                    GUI.Label(new Rect(6, 15, 188, 60), action, AltUI.LabelBlackWrap);
             }
         }
 
@@ -1223,21 +1225,6 @@ namespace TAC_AI.World
                 return false;
             }
 
-            public static bool MouseIsOver(Rect bax)
-            {
-                Vector3 Mous = Input.mousePosition;
-                Mous.y = Display.main.renderingHeight - Mous.y;
-                float xMenuMin = CommandBar.x + bax.x;
-                float xMenuMax = CommandBar.x + bax.x + bax.width;
-                float yMenuMin = CommandBar.y + bax.y;
-                float yMenuMax = CommandBar.y + bax.y + bax.height;
-                //DebugTAC_AI.Log(Mous + " | " + xMenuMin + " | " + xMenuMax + " | " + yMenuMin + " | " + yMenuMax);
-                if (Mous.x > xMenuMin && Mous.x < xMenuMax && Mous.y > yMenuMin && Mous.y < yMenuMax)
-                {
-                    return true;
-                }
-                return false;
-            }
             public bool TryMakePortrait()
             {
                 var tank = unit.GetComponent<Tank>();
@@ -1323,7 +1310,7 @@ namespace TAC_AI.World
                         GUI.DrawTexture(new Rect(posOnUIX, posOnUIY + hF, size.x, borderSize), OutlineWhite);
                     }
                 }
-                if (MouseIsOver(bax))
+                if (ManWorldRTS.MouseIsOverGUIMenu(bax))
                 {
                     ManWorldRTS.inst.SetPlayerHovered(unit);
                     setHovered = true;

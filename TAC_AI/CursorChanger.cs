@@ -33,6 +33,19 @@ namespace TAC_AI
         */
         public static CursorChangeHelper.CursorChangeCache Cache;
         public static bool AddedNewCursors = false;
+        /// <summary>
+        /// ZERO INDEXED
+        /// <list type="number">
+        /// <item>AIOrderAttack</item>
+        /// <item>AIOrderEmpty</item>
+        /// <item>AIOrderMove</item>
+        /// <item>AIOrderSelect</item>
+        /// <item>AIOrderBlock</item>
+        /// <item>AIOrderMine</item>
+        /// <item>AIOrderAegis</item>
+        /// <item>AIOrderScout</item>
+        /// </list>
+        /// </summary>
         public static CursorChangeHelper.CursorChangeCache CursorIndexCache => Cache.CursorIndexCache;
 
         public static void AddNewCursors()
@@ -47,7 +60,6 @@ namespace TAC_AI
                     new KeyValuePair<string, bool>("AIOrderMove", false),
                     new KeyValuePair<string, bool>("AIOrderSelect", false),
                     new KeyValuePair<string, bool>("AIOrderBlock", false),
-                    new KeyValuePair<string, bool>("AIOrderSelect", false),
                     new KeyValuePair<string, bool>("AIOrderMine", false),
                     new KeyValuePair<string, bool>("AIOrderAegis", false),
                     new KeyValuePair<string, bool>("AIOrderScout", false)

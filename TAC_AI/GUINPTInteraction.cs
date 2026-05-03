@@ -43,8 +43,6 @@ namespace TAC_AI.AI
         // Mode - Setting
         private static GameObject GUIWindow;
         private static Rect HotWindow = new Rect(0, 0, 200, 160);   // the "window"
-        private static float xMenu = 0;
-        private static float yMenu = 0;
 
         // Tech Tracker
         private static string teamName = "Unknown";
@@ -94,9 +92,7 @@ namespace TAC_AI.AI
                 GUIWindow = new GameObject();
                 GUIWindow.AddComponent<GUIDisplay>();
                 GUIWindow.SetActive(false);
-                Vector3 Mous = Input.mousePosition;
-                xMenu = 0;
-                yMenu = 0;
+                Vector3 Mous = Input.mousePosition * ManModGUI.GUIScaleInv;
             }
         }
         internal static void DeInit()
@@ -128,9 +124,7 @@ namespace TAC_AI.AI
             lastTank = tank; 
             try
             {
-                Vector3 Mous = Input.mousePosition;
-                xMenu = Mous.x - (HotWindow.width / 2);
-                yMenu = Display.main.renderingHeight - Mous.y - 10;
+                UIHelpersExt.ClampGUIToScreen(ref HotWindow, true);
             }
             catch (Exception)
             {
@@ -246,7 +240,7 @@ namespace TAC_AI.AI
                 CloseSubMenuClickable();
             }
             if (!GUI.tooltip.NullOrEmpty())
-                GUILayout.Label(GUI.tooltip);
+                GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
 
 
@@ -279,7 +273,7 @@ namespace TAC_AI.AI
                 TrySendNPTBribe(ManNetwork.inst.MyPlayer, lastTank, moneyGive);
             }
             if (!GUI.tooltip.NullOrEmpty())
-                GUILayout.Label(GUI.tooltip);
+                GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
 
 
@@ -316,7 +310,7 @@ namespace TAC_AI.AI
             DispBaseBribe(lastTeam, teamFunds);
             DispBaseAnnoy(lastTeam, teamFunds);
             if (!GUI.tooltip.NullOrEmpty())
-                GUILayout.Label(GUI.tooltip);
+                GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
         private static void DispBaseBribe(int lastTeam, int teamFunds)
         {
@@ -385,7 +379,7 @@ namespace TAC_AI.AI
                                 {
                                     if (ManBaseTeams.IsFriendlyBaseTeam(lastTeam))
                                     {
-                                        UIHelpersExt.BigF5broningBanner(playerTeam,
+                                        UIHelpersExt.BigF5broningBannerMP(playerTeam,
                                             ETD.teamName + " is now allied!");
                                     }
                                     ManEnemyWorld.TeamBribeEvent.Send(lastTeam, lastTeam);
@@ -426,7 +420,7 @@ namespace TAC_AI.AI
                                 if (ManBaseTeams.IsEnemy(ETD.teamID, playerTeam))
                                 {
                                     ManEnemyWorld.TeamWarEvent.Send(lastTeam, lastTeam);
-                                    UIHelpersExt.BigF5broningBanner(TeamNamer.GetTeamName(lastTeam) + " is now hostile!");
+                                    UIHelpersExt.BigF5broningBannerMP(TeamNamer.GetTeamName(lastTeam) + " is now hostile!");
                                 }
                                 CloseSubMenuClickable();
                             }
@@ -434,7 +428,7 @@ namespace TAC_AI.AI
                                 ManSFX.inst.PlayUISFX(ManSFX.UISfxType.AnchorFailed);
                         }
                         else
-                            UIHelpersExt.BigF5broningBanner(TeamNamer.GetTeamName(lastTeam) + " is angry!");
+                            UIHelpersExt.BigF5broningBannerMP(TeamNamer.GetTeamName(lastTeam) + " is angry!");
                         if (mind)
                             RLoadedBases.RequestFocusFireNPTs(mind, Singleton.playerTank.visible, RequestSeverity.ThinkMcFly);
                     }
@@ -494,7 +488,7 @@ namespace TAC_AI.AI
                 DispTechAnnoy();
             }
             if (!GUI.tooltip.NullOrEmpty())
-                GUILayout.Label(GUI.tooltip);
+                GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
         private static void DispTechBribe()
         {
@@ -591,7 +585,7 @@ namespace TAC_AI.AI
             {
             }
             if (!GUI.tooltip.NullOrEmpty())
-                GUILayout.Label(GUI.tooltip);
+                GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
 
 
@@ -690,7 +684,7 @@ namespace TAC_AI.AI
                                 mind.AIControl.Provoked = AIGlobals.ProvokeTime;
                             }
                         }
-                        UIHelpersExt.BigF5broningBanner(mind.Tank.name + " is angry!");
+                        UIHelpersExt.BigF5broningBannerMP(mind.Tank.name + " is angry!");
                     }
                 }
             }
@@ -706,10 +700,7 @@ namespace TAC_AI.AI
             }
             DebugTAC_AI.Log(KickStart.ModID + ": Opened Eviction menu!");
             isCurrentlyOpen = true;
-            xMenu = Mathf.Clamp(xMenu, 0, Display.main.renderingWidth - HotWindow.width);
-            yMenu = Mathf.Clamp(yMenu, 0, Display.main.renderingHeight - HotWindow.height);
-            HotWindow.x = xMenu;
-            HotWindow.y = yMenu;
+            UIHelpersExt.ClampGUIToScreen(ref HotWindow, false);
             windowTimer = 1.25f;
             GUIWindow.SetActive(true);
         }
@@ -728,23 +719,9 @@ namespace TAC_AI.AI
         private static bool MouseIsOverSubMenu()
         {
             if (!KickStart.EnableBetterAI)
-            {
                 return false;
-            }
             if (isCurrentlyOpen)
-            {
-                Vector3 Mous = Input.mousePosition;
-                Mous.y = Display.main.renderingHeight - Mous.y;
-                float xMenuMin = HotWindow.x;
-                float xMenuMax = HotWindow.x + HotWindow.width;
-                float yMenuMin = HotWindow.y;
-                float yMenuMax = HotWindow.y + HotWindow.height;
-                //DebugTAC_AI.Log(Mous + " | " + xMenuMin + " | " + xMenuMax + " | " + yMenuMin + " | " + yMenuMax);
-                if (Mous.x > xMenuMin && Mous.x < xMenuMax && Mous.y > yMenuMin && Mous.y < yMenuMax)
-                {
-                    return true;
-                }
-            }
+                return UIHelpersExt.MouseIsOverGUIMenu(HotWindow);
             return false;
         }
 

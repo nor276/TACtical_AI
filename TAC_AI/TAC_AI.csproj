@@ -343,6 +343,7 @@
     <Compile Include="GUINPTInteraction.cs" />
     <Compile Include="GUILister.cs" />
     <Compile Include="KickStartExtras.cs" />
+    <Compile Include="KickStartTAC_AI.cs" />
     <Compile Include="ModuleWorldRadar.cs" />
     <Compile Include="PatchBatch\GlobalPatches.cs" />
     <Compile Include="PatchBatch\ManagerPatches.cs" />

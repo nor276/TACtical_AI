@@ -161,14 +161,16 @@ namespace TAC_AI
         public class AIEnemyStagedSiege : MessageBase
         {
             public AIEnemyStagedSiege() { }
-            public AIEnemyStagedSiege(int team, long totalHP, bool start)
+            public AIEnemyStagedSiege(int team, int teamTarget, long totalHP, bool start)
             {
                 Team = team;
+                TeamTargeted = teamTarget;
                 MaxHP = totalHP;
                 Starting = start;
             }
 
             public int Team;
+            public int TeamTargeted;
             public long MaxHP;
             public bool Starting;
         }
@@ -434,12 +436,13 @@ namespace TAC_AI
         }
 
         // AIEnemySiege
-        public static void TryBroadcastNewEnemySiege(int Team, long HP, bool starting)
+        public static void TryBroadcastNewEnemySiege(int Team, int TeamTargeted, long HP, bool starting)
         {
             if (HostExists && ManNetwork.IsHost) try
                 {
                     DebugTAC_AI.LogNet("Sent new TryBroadcastNewEnemySiege update to all but host");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIRetreatRequest, new AIEnemyStagedSiege(Team, HP, starting));
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIRetreatRequest, 
+                        new AIEnemyStagedSiege(Team, TeamTargeted, HP, starting));
                 }
                 catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastNewEnemySiege update, shouldn't be too bad in the long run"); }
         }
@@ -450,7 +453,7 @@ namespace TAC_AI
             try
             {
                 if (reader.Starting)
-                    ManEnemySiege.InitSiegeWarning(reader.Team, reader.MaxHP);
+                    ManEnemySiege.InitSiegeWarning(reader.Team, reader.TeamTargeted, reader.MaxHP);
                 else
                     ManEnemySiege.EndSiege();
                 DebugTAC_AI.LogNet(KickStart.ModID + ": OnClientEnemySiegeUpdate received.  Attacker is " + reader.Team + " | HP: " + reader.MaxHP + " | is starting: " + reader.Starting);

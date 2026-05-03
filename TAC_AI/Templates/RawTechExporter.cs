@@ -299,7 +299,7 @@ namespace TAC_AI.Templates
         {
             //bool snapsAvail = SnapsAvailable();
             bool snapsAvail = true;
-            GUI.tooltip = "Make your own techs spawn as enemies!";
+            GUI.tooltip = "Make your own techs spawn as enemies! Local only.";
             //"The techs are saved to your Raw Techs directory";
             /*
             if (GUILayout.Button(new GUIContent("Save Current", "Export your current Tech to the lightweight RawTech format."), AltUI.ButtonBlue))

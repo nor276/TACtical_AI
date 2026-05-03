@@ -254,7 +254,10 @@ namespace TAC_AI.World
             {new List<TrackedVisible>()},
             {new List<TrackedVisible>()}
         };
-        
+
+        internal static void RecalcUIScale() =>
+            RTSUIMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * RTSUIScale);
+
         public static void Initiate()
         {
             if (inst)
@@ -267,7 +270,11 @@ namespace TAC_AI.World
             TankAIManager.TechRemovedEvent.Subscribe(ReleaseControl);
             if (!KickStart.AllowPlayerRTSHUD)
                 return;
+            UIHelpersExt.Init();
             PlayerRTSUI.Initiate();
+            defaultMatrix = GUI.matrix;
+            newBoxMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * newMatrixScale);
+            RecalcUIScale();
         }
         public static void DeInit()
         {
@@ -603,7 +610,7 @@ namespace TAC_AI.World
         private void HandleBoxSelectUnits()
         {
             //DebugTAC_AI.Log(KickStart.ModID + ": GROUP Select ACTIVATED");
-            Vector3 ScreenBoxEnd = Input.mousePosition;
+            Vector3 ScreenBoxEnd = Input.mousePosition * newMatrixScaleInv;
             float HighX = ScreenBoxStart.x >= ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
             float LowX = ScreenBoxStart.x < ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
             float HighY = ScreenBoxStart.y >= ScreenBoxEnd.y ? ScreenBoxStart.y : ScreenBoxEnd.y;
@@ -636,7 +643,7 @@ namespace TAC_AI.World
                     {
                         if (!PlayerIsInRTS && !KickStart.AutopilotPlayer && Tech == Singleton.playerTank)
                             continue;
-                        Vector3 camPos = Singleton.camera.WorldToScreenPoint(Tech.boundsCentreWorldNoCheck);
+                        Vector3 camPos = Singleton.camera.WorldToScreenPoint(Tech.boundsCentreWorldNoCheck) * newMatrixScaleInv;
                         if (LowX <= camPos.x && camPos.x <= HighX && LowY <= camPos.y && camPos.y <= HighY && camPos.z > 0)
                         {
                             Selects++;
@@ -1439,7 +1446,8 @@ namespace TAC_AI.World
                                     lastClickTime = Time.realtimeSinceStartup;
                                 }
                             }
-                            isDragging = (Input.mousePosition - ScreenBoxStart).sqrMagnitude > UIHelpersExt.ROROpenAllowedMouseDeltaSqr;//1024;
+                            isDragging = (((Input.mousePosition * newMatrixScaleInv) - ScreenBoxStart).sqrMagnitude 
+                                * newMatrixScale) > UIHelpersExt.ROROpenAllowedMouseDeltaSqr;//1024;
                             if (Input.GetMouseButtonUp(1))
                             {
                                 //DebugTAC_AI.Log("RMB Liftoff IsMouseOverModGUI: " + ManModGUI.IsMouseOverModGUI.ToString() +
@@ -1456,7 +1464,7 @@ namespace TAC_AI.World
 
                             if (!notOverMenus || (!Input.GetMouseButton(0) && !Input.GetMouseButton(1)) || ManPointer.inst.DraggingItem)
                             {
-                                ScreenBoxStart = Input.mousePosition;
+                                ScreenBoxStart = Input.mousePosition * newMatrixScaleInv;
                             }
                             isBoxSelecting = isDragging && Input.GetMouseButton(0);
 
@@ -2203,71 +2211,102 @@ namespace TAC_AI.World
         }
 
         private static GameObject SelectWindow;
-        private static Rect HotWindow = new Rect(0, 0, 200, 240);   // the "window"
+        private static Rect BaxWindow = new Rect(0, 0, 200, 240);   // the "window"
         private static GUIStyle modifStyle;
         private static GUIStyleState modifStyleState;
         private const int AIBoxSelectID = 8006;
         private static Texture2D matRect;
+
+        private const float newMatrixScale = 0.25f;
+        private const float newMatrixScaleInv = 1f / newMatrixScale;
+        private static Matrix4x4 defaultMatrix = default;
+        private static Matrix4x4 newBoxMatrix = default;
+        internal static Matrix4x4 RTSUIMatrix = default;
+
+        public static float RTSUIScale = 1f;
+        public static float RTSUIScaleInv => 1f / RTSUIScale;
+        public static float RTSScaledWidth => Display.main.renderingWidth * RTSUIScaleInv;
+        public static float RTSScaledHeight => Display.main.renderingHeight * RTSUIScaleInv;
+        public static bool MouseIsOverGUIMenu(Rect pos)
+        {
+            Vector3 vector = Input.mousePosition * RTSUIScaleInv;
+            vector.y = RTSScaledHeight - vector.y;
+            float x = pos.x;
+            float num = pos.x + pos.width;
+            float y = pos.y;
+            float num2 = pos.y + pos.height;
+            return vector.x > x && vector.x < num && vector.y > y && vector.y < num2;
+        }
+
+
+
         internal class GUIRectSelect : MonoBehaviour
         {
             internal void OnGUI()
             {
                 if (KickStart.IsIngame)
                 {
-                    if (isBoxSelecting)
+                    if (isBoxSelecting && !ManModGUI.IsWorldInteractionBlocked)
                     {
-                        GUISkin cache = GUI.skin;
-                        GUI.skin = AltUI.MenuGUI;
                         if (modifStyle == null)
-                            HotWindow = GUI.Window(AIBoxSelectID, HotWindow, GUIHandler, "");//"<b>BoxSelect</b>"
-                        else
-                            HotWindow = GUI.Window(AIBoxSelectID, HotWindow, GUIHandler, "", modifStyle);
+                        {
+                            try
+                            {
+                                //string DirectoryTarget = RawTechExporter.DLLDirectory + RawTechExporter.up + "AI_Icons" + RawTechExporter.up
+                                //    + "AIOrderBox.png";
+                                matRect = RawTechExporter.FetchTexture("AIOrderBox.png");
+                            }
+                            catch
+                            {
+                                DebugTAC_AI.Assert(true, "ManPlayerRTS: AddBoxSelect - failed to fetch selector texture");
+                                Texture2D[] mats = Resources.FindObjectsOfTypeAll<Texture2D>();
+                                mats = mats.Where(cases => cases.name == "UI_CHECKBOX_OFF").ToArray();//GUI_DottedSquare
+                                foreach (Texture2D matcase in mats)
+                                {
+                                    DebugTAC_AI.Log(KickStart.ModID + ": Getting " + matcase.name + "...");
+                                }
+                                matRect = mats.ElementAt(0);
+                            }
+                            modifStyle = new GUIStyle(GUI.skin.window);
+                            modifStyleState = new GUIStyleState() { background = matRect, textColor = new Color(0, 0, 0, 1), };
+                            modifStyle.border = new RectOffset(matRect.width / 3, matRect.width / 3, matRect.height / 3, matRect.height / 3);
+                            modifStyle.normal = modifStyleState;
+                            modifStyle.hover = modifStyleState;
+                            modifStyle.active = modifStyleState;
+                            modifStyle.focused = modifStyleState;
+                            modifStyle.onNormal = modifStyleState;
+                            modifStyle.onHover = modifStyleState;
+                            modifStyle.onActive = modifStyleState;
+                            modifStyle.onFocused = modifStyleState;
+                        }
+                        try
+                        {
+                            GUI.matrix = newBoxMatrix;
+                            GUISkin cache = GUI.skin;
+                            GUI.skin = AltUI.MenuGUI;
+
+                            Vector3 ScreenBoxEnd = Input.mousePosition * newMatrixScaleInv;
+                            float HighX = ScreenBoxStart.x >= ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
+                            float LowX = ScreenBoxStart.x < ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
+                            float HighY = ScreenBoxStart.y >= ScreenBoxEnd.y ? ScreenBoxStart.y : ScreenBoxEnd.y;
+                            float LowY = ScreenBoxStart.y < ScreenBoxEnd.y ? ScreenBoxStart.y : ScreenBoxEnd.y;
+                            float highYCorrect = (Display.main.renderingHeight * newMatrixScaleInv) - HighY;
+                            BaxWindow = new Rect(LowX - 1, highYCorrect - 1, HighX - LowX + 2, HighY - LowY + 2);
+
+                            if (modifStyle == null)
+                                GUI.Box(BaxWindow, string.Empty);
+                            else
+                                GUI.Box(BaxWindow, string.Empty, modifStyle);
+                        }
+                        finally
+                        {
+                            GUI.matrix = defaultMatrix;
+                        }
                     }
                 }
                 else
                     isBoxSelecting = false;
             }
-        }
-        private static void GUIHandler(int ID)
-        {
-            if (modifStyle == null)
-            {
-                try
-                {
-                    //string DirectoryTarget = RawTechExporter.DLLDirectory + RawTechExporter.up + "AI_Icons" + RawTechExporter.up
-                    //    + "AIOrderBox.png";
-                    matRect = RawTechExporter.FetchTexture("AIOrderBox.png");
-                }
-                catch
-                {
-                    DebugTAC_AI.Assert(true, "ManPlayerRTS: AddBoxSelect - failed to fetch selector texture");
-                    Texture2D[] mats = Resources.FindObjectsOfTypeAll<Texture2D>();
-                    mats = mats.Where(cases => cases.name == "UI_CHECKBOX_OFF").ToArray();//GUI_DottedSquare
-                    foreach (Texture2D matcase in mats)
-                    {
-                        DebugTAC_AI.Log(KickStart.ModID + ": Getting " + matcase.name + "...");
-                    }
-                    matRect = mats.ElementAt(0);
-                }
-                modifStyle = new GUIStyle(GUI.skin.window);
-                modifStyleState = new GUIStyleState() { background = matRect, textColor = new Color(0, 0, 0, 1), };
-                modifStyle.border = new RectOffset(matRect.width / 3, matRect.width / 3, matRect.height / 3, matRect.height / 3);
-                modifStyle.normal = modifStyleState;
-                modifStyle.hover = modifStyleState;
-                modifStyle.active = modifStyleState;
-                modifStyle.focused = modifStyleState;
-                modifStyle.onNormal = modifStyleState;
-                modifStyle.onHover = modifStyleState;
-                modifStyle.onActive = modifStyleState;
-                modifStyle.onFocused = modifStyleState;
-            }
-            Vector3 ScreenBoxEnd = Input.mousePosition;
-            float HighX = ScreenBoxStart.x >= ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
-            float LowX = ScreenBoxStart.x < ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
-            float HighY = ScreenBoxStart.y >= ScreenBoxEnd.y ? ScreenBoxStart.y : ScreenBoxEnd.y;
-            float LowY = ScreenBoxStart.y < ScreenBoxEnd.y ? ScreenBoxStart.y : ScreenBoxEnd.y;
-            float highYCorrect = Display.main.renderingHeight - HighY;
-            HotWindow = new Rect(LowX - 1, highYCorrect - 1, HighX - LowX + 2, HighY - LowY + 2);
         }
 
 
@@ -2276,20 +2315,6 @@ namespace TAC_AI.World
         private const int PlayerAutopilotID = 8009;
         internal class GUIRectAuto : MonoBehaviour
         {
-            public static bool MouseIsOverSubMenu()
-            {
-                if (!KickStart.EnableBetterAI)
-                {
-                    return false;
-                }
-                if (PlayerIsInRTS && !ManPauseGame.inst.IsPaused && Singleton.playerTank)
-                {
-                    Vector3 Mous = Input.mousePosition;
-                    Mous.y = Display.main.renderingHeight - Mous.y;
-                    return autopilotMenu.Contains(Mous);
-                }
-                return false;
-            }
             internal void OnGUI()
             {
                 if (PlayerIsInRTS && !ManPauseGame.inst.IsPaused && !AIGlobals.HideHud && 

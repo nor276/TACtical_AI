@@ -12,9 +12,30 @@ namespace TAC_AI.World
     public class ManEnemySiege : MonoBehaviour
     {
         private static ManEnemySiege inst;
+        private static Tank targetTank;
         private UIMultiplayerHUD warningBanner;
 
-        private static readonly string displayName = "Enemy Siege Health: ";
+        public static LocExtStringMod LOC_WarningText = new LocExtStringMod(
+            new Dictionary<LocalisationEnums.Languages, string>()
+            {
+                { LocalisationEnums.Languages.US_English, "WARNING: Siege Inbound"},
+                { LocalisationEnums.Languages.Japanese, "! 攻撃接近中 !"},
+            });
+        public static LocExtStringMod LOC_EnRoute = new LocExtStringMod(
+            new Dictionary<LocalisationEnums.Languages, string>()
+            {
+                { LocalisationEnums.Languages.US_English, " <b>EN-ROUTE</b>"},
+                { LocalisationEnums.Languages.Japanese, " 彼らが来る"},
+            });
+        public static LocExtStringMod LOC_Health = new LocExtStringMod(
+            new Dictionary<LocalisationEnums.Languages, string>()
+            {
+                { LocalisationEnums.Languages.US_English, "Enemy Siege Health: "},
+                { LocalisationEnums.Languages.Japanese, "攻撃者の体力: "},
+            });
+
+
+        private static string displayName = "UN-INIT";
         private static int TotalHP = 100;
         private static int CurrentHP = 0;
         private static float RaidCooldown = 0;
@@ -52,7 +73,7 @@ namespace TAC_AI.World
             else
                 RaidCooldown = AIGlobals.RaidCooldownTimeSecs;
         }
-        public static bool CheckShouldLaunchSiege(NP_Presence enemyTeamInvolved)
+        public static bool CheckShouldLaunchSiege(NP_Presence enemyTeamInvolved, Tank offender)
         {
             if (ManNetwork.IsNetworked && !ManNetwork.IsHost)
                 return false;
@@ -65,6 +86,7 @@ namespace TAC_AI.World
                 if (enemyTeamInvolved.GlobalMobileTechCount() > KickStart.EnemyTeamTechLimit)//(enemyTeamInvolved.GlobalMobileTechCount() + 3 > KickStart.EnemyTeamTechLimit)
                 {   // the siege only begins IF the AI's team is at a certain threshold
                     inst.EP = enemyTeamInvolved;
+                    targetTank = offender;
                     WarnPlayers();
                     inProgress = true;
                     return true;
@@ -201,9 +223,9 @@ namespace TAC_AI.World
         {
             var mainBase = UnloadedBases.RefreshTeamMainBaseIfAnyPossible(EP);
             bool defeatedAllUnits = !ManBaseTeams.IsEnemy(Team, ManPlayer.inst.PlayerTeam) || (techsInvolved.Count == 0 && !EP.HasMobileETUs());
-            if (mainBase == null || !UnloadedBases.IsPlayerWithinProvokeDist(mainBase.tilePos) || defeatedAllUnits)
+            if (mainBase == null || !UnloadedBases.IsPlayerWithinProvokeDist(mainBase.tilePos, out Tank offender) || defeatedAllUnits)
             {
-                NetworkHandler.TryBroadcastNewEnemySiege(Team, TotalHP, false);
+                NetworkHandler.TryBroadcastNewEnemySiege(Team, 0, TotalHP, false);
                 EndSiege(shouldCooldown: defeatedAllUnits);
             }
         }
@@ -217,6 +239,7 @@ namespace TAC_AI.World
             Singleton.Manager<ManHUD>.inst.HideHudElement(ManHUD.HUDElementType.BlockLimit);
             inst.EP.ResetModeToIdle();
             inst.EP = null;
+            targetTank = null;
             ready = false;
             if (immedeate)
             {
@@ -258,10 +281,10 @@ namespace TAC_AI.World
         {
             DebugTAC_AI.Log(KickStart.ModID + ": ManEnemySiege - ThrowWarnPlayers");
             Team = EP.Team;
-            NetworkHandler.TryBroadcastNewEnemySiege(Team, tempHP, true);
-            InitSiegeWarning(Team, tempHP);
+            NetworkHandler.TryBroadcastNewEnemySiege(Team, targetTank.Team, tempHP, true);
+            InitSiegeWarning(Team, targetTank.Team, tempHP);
         }
-        internal static void InitSiegeWarning(int team, long tempHPIn)
+        internal static void InitSiegeWarning(int team, int teamTargeted, long tempHPIn)
         {
             if (!inst)
                 DebugTAC_AI.Log(KickStart.ModID + ": ManEnemySiege - InitSiegeWarning inst IS NULL");
@@ -283,7 +306,7 @@ namespace TAC_AI.World
             TotalHP = totalHealth;
             ready = true;
             attackBar.SetValue(ManBlockLimiter.inst, totalHealth);
-            BigF5broningWarning("WARNING: Siege Inbound", true);
+            UIHelpersExt.BigF5broningBannerMP(teamTargeted, LOC_WarningText.ToString(), true);
             AIWiki.hintNPTSiege.Show();
 
             ManBlockLimiter.CostChangeInfo CCI = new ManBlockLimiter.CostChangeInfo
@@ -300,7 +323,8 @@ namespace TAC_AI.World
                 return;
             //raidingTeam
             Text tex = (Text)attackName.GetValue(UIBL);
-            tex.text = displayName +" <b>EN-ROUTE</b>";
+            displayName = LOC_Health.ToString();
+            tex.text = displayName + LOC_EnRoute.ToString();
             attackName.SetValue(UIBL, tex);
             DebugTAC_AI.Log(KickStart.ModID + ": ManEnemySiege - Repurposed ManBlockLimiter and UIBlockLimit for Raid UI");
 
@@ -311,7 +335,6 @@ namespace TAC_AI.World
             warningBanner.Message1.UpdateText("");
         }
 
-        public static Action<string, bool> BigF5broningWarning => UIHelpersExt.BigF5broningBanner;
          /*
         public static void BigF5broningWarning(string Text)
         {

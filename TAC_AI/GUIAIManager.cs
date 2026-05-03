@@ -49,7 +49,7 @@ namespace TAC_AI
                 GUIWindow = new GameObject();
                 GUIWindow.AddComponent<GUIDisplay>();
                 GUIWindow.SetActive(false);
-                Vector3 Mous = Input.mousePosition;
+                Vector3 Mous = Input.mousePosition * ManModGUI.GUIScaleInv;
                 xMenu = 0;
                 yMenu = 0;
             }
@@ -73,9 +73,9 @@ namespace TAC_AI
         {
             ResetInfo();
             lastTank = tank.GetHelperInsured();
-            Vector3 Mous = Input.mousePosition;
+            Vector3 Mous = Input.mousePosition * ManModGUI.GUIScaleInv;
             xMenu = Mous.x - 225;
-            yMenu = Display.main.renderingHeight - Mous.y + 25;
+            yMenu = ManModGUI.GameWindowScaledHeight - Mous.y + 25;
             if (lastTank)
                 GetInfo(lastTank);
         }
@@ -162,7 +162,7 @@ namespace TAC_AI
                 if (AdvancedToggles)
                 {
                     GUIOptionsDisplay(stuckAnchored, CantPerformActions);
-                    if (GUI.Button(new Rect(20, HotWindow.height - 85, 160, 30), new GUIContent(LOC_Back, LOC_Back_desc), AltUI.ButtonBlue))
+                    if (GUI.Button(new Rect(6, HotWindow.height - 85, 188, 30), new GUIContent(LOC_Back, LOC_Back_desc), AltUI.ButtonBlue))
                     {
                         AdvancedToggles = false;
                     }
@@ -170,14 +170,15 @@ namespace TAC_AI
                 else
                 {
                     GUIMainDisplay(stuckAnchored, CantPerformActions);
-                    if (GUI.Button(new Rect(20, HotWindow.height - 85, 160, 30), new GUIContent(LOC_ToAdv, LOC_ToAdv_desc), AltUI.ButtonBlue))
+                    if (GUI.Button(new Rect(6, HotWindow.height - 85, 188, 30), new GUIContent(LOC_ToAdv, LOC_ToAdv_desc), AltUI.ButtonBlue))
                     {
                         AdvancedToggles = true;
                     }
                 }
                 
 
-                GUI.Label(new Rect(20, HotWindow.height - 55, 160, 50), AltUI.UIAlphaText + GUI.tooltip + "</color>");
+                GUI.Label(new Rect(6, HotWindow.height - 60, 188, 50), 
+                    AltUI.UIAlphaText + GUI.tooltip + "</color>", AltUI.LabelBlackWrap);
             }
             else
             {
@@ -190,7 +191,7 @@ namespace TAC_AI
 
         private static void GUIMainDisplay(bool stuckAnchored, bool CantPerformActions)
         {
-            //GUI.Label(new Rect(20, 90, 160, 25), AltUI.UIAlphaText + (!lastTank.name.NullOrEmpty() ? lastTank.name == "recycled tech" ? "None Selected" : lastTank.name : "NO NAME") + "</color>");
+            //GUI.Label(new Rect(6, 90, 188, 25), AltUI.UIAlphaText + (!lastTank.name.NullOrEmpty() ? lastTank.name == "recycled tech" ? "None Selected" : lastTank.name : "NO NAME") + "</color>");
 
             if (stuckAnchored)
             {
@@ -1180,7 +1181,7 @@ namespace TAC_AI
             else if (selectedOnceTime > 0 && selectedOncePos.x.Approximately(Input.mousePosition.x, 9f) && 
                 selectedOncePos.y.Approximately(Input.mousePosition.y, 9f))
             {
-                GUI.Label(new Rect(20, heightPos, 160, 30), new GUIContent(labelSet, LabelDesc), AltUI.ButtonBlue);
+                GUI.Label(new Rect(6, heightPos, 188, 30), new GUIContent(labelSet, LabelDesc), AltUI.ButtonBlue);
 
                 setValInt = Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(25, heightPos, 150, 30), defaultState,
                     defaultState, limit, AltUI.ScrollHorizontalTransparent, AltUI.ScrollThumbTransparent));
@@ -1193,7 +1194,7 @@ namespace TAC_AI
 
                     SelectedFieldControlName = Label;
                     GUI.SetNextControlName(SelectedFieldControlName);
-                    SelectedFieldControlValue = GUI.TextField(new Rect(20, heightPos, 160, 30), lastSetting.ToString(), 12, AltUI.ButtonBlue);
+                    SelectedFieldControlValue = GUI.TextField(new Rect(6, heightPos, 188, 30), lastSetting.ToString(), 12, AltUI.ButtonBlue);
                     ManSFX.inst.PlayUISFX(ManSFX.UISfxType.Open);
                     handoffControl = true;
                     GUI.FocusControl(SelectedFieldControlName);
@@ -1202,7 +1203,7 @@ namespace TAC_AI
             }
             else
             {
-                GUI.Label(new Rect(20, heightPos, 160, 30), new GUIContent(labelSet, LabelDesc), AltUI.ButtonBlue);
+                GUI.Label(new Rect(6, heightPos, 188, 30), new GUIContent(labelSet, LabelDesc), AltUI.ButtonBlue);
                 GUI.SetNextControlName(Label);
                 setValInt = Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(25, heightPos, 150, 30), defaultState,
                     defaultState, limit, AltUI.ScrollHorizontalTransparent, AltUI.ScrollThumbTransparent));
@@ -1210,7 +1211,7 @@ namespace TAC_AI
                 if (setValInt != defaultState)
                 {
                     selectedOnceTime = Globals.inst.doubleTapDelay;
-                    selectedOncePos = Input.mousePosition;
+                    selectedOncePos = Input.mousePosition * ManModGUI.GUIScaleInv;
                     //ManSFX.inst.PlayUISFX(ManSFX.UISfxType.Select);
                     //DebugTAC_AI.Log("SL - FocusedControlName: " + GUI.GetNameOfFocusedControl());
                     windowTimer = InteractTimeSet;
@@ -1884,27 +1885,27 @@ namespace TAC_AI
                     {
                         if (ManWorldRTS.inst.LocalPlayerTechsControlled.Count > 0)
                         {
-                            Vector3 Mous = Input.mousePosition;
+                            Vector3 Mous = Input.mousePosition * ManModGUI.GUIScaleInv;
                             xMenu = Mous.x - (10 + HotWindow.width);
-                            yMenu = Display.main.renderingHeight - Mous.y + 10;
+                            yMenu = ManModGUI.GameWindowScaledHeight - Mous.y + 10;
                             lastTank = ManWorldRTS.inst.Leading;
                         }
                         else
                         {
-                            DebugTAC_AI.Log(KickStart.ModID + ": No techs selected!");
+                            DebugTAC_AI.Info(KickStart.ModID + ".GUIAIManager: No techs selected!");
                             Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AnchorFailed);
                             return;
                         }
                     }
                     else
                     {
-                        DebugTAC_AI.Log(KickStart.ModID + ": No techs selected!");
+                        DebugTAC_AI.Info(KickStart.ModID + ".GUIAIManager: No techs selected!");
                         return;
                     }
                 }
                 catch
                 {
-                    DebugTAC_AI.Log(KickStart.ModID + ": TANK IS NULL!");
+                    DebugTAC_AI.Log(KickStart.ModID + ".GUIAIManager: TANK IS NULL!");
                     return;
                 }
             }
@@ -1913,7 +1914,7 @@ namespace TAC_AI
 
             lastTank.RefreshAI();
             GetInfo(lastTank);
-            DebugTAC_AI.Log(KickStart.ModID + ": Opened AI menu!");
+            DebugTAC_AI.Info(KickStart.ModID + ".GUIAIManager: Opened AI menu!");
             AIDriver = lastTank.DriverType;
             fetchAI = lastTank.DediAI;
             MoveMenuToCursor(true);
@@ -1963,16 +1964,7 @@ namespace TAC_AI
 
         internal static void MoveMenuToCursor(bool centerOnMouse)
         {
-            if (centerOnMouse)
-            {
-                Vector3 Mous = Input.mousePosition;
-                xMenu = Mous.x - (HotWindow.width / 2);
-                yMenu = Display.main.renderingHeight - Mous.y - 90;
-            }
-            xMenu = Mathf.Clamp(xMenu, 0, Display.main.renderingWidth - HotWindow.width);
-            yMenu = Mathf.Clamp(yMenu, 0, Display.main.renderingHeight - HotWindow.height);
-            HotWindow.x = xMenu;
-            HotWindow.y = yMenu;
+            UIHelpersExt.ClampGUIToScreen(ref HotWindow, centerOnMouse);
         }
        
 

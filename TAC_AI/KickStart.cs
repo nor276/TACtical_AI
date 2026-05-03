@@ -132,7 +132,7 @@ namespace TAC_AI
         {
             if (state)
             {
-                UIHelpersExt.BigF5broningBanner("Self-Driving Enabled");
+                UIHelpersExt.BigF5broningBannerSP("Self-Driving Enabled");
                 Tank playerTank = Singleton.playerTank;
                 if (playerTank)
                 {
@@ -150,7 +150,7 @@ namespace TAC_AI
             }
             else
             {
-                UIHelpersExt.BigF5broningBanner("Self-Driving Disabled");
+                UIHelpersExt.BigF5broningBannerSP("Self-Driving Disabled");
             }
         }
 
@@ -408,8 +408,8 @@ namespace TAC_AI
                 return false;
             }
 
-            isConfigHelperPresent = LookForMod("ConfigHelper");
-            isNativeOptionsPresent = LookForMod("0Nuterra.NativeOptions");
+            isConfigHelperPresent = ModStatusChecker.IsConfigHelperPresent;
+            isNativeOptionsPresent = ModStatusChecker.IsNativeOptionsPresent;
             if (isConfigHelperPresent && !isNativeOptionsPresent)
             {
                 DebugTAC_AI.Warning("ConfigHelper is active but NativeOptions is missing! You need both to use ingame settings.");

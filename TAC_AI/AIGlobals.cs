@@ -772,6 +772,22 @@ namespace TAC_AI
             return ManSpawn.LobbyTeamIDFromTechTeamID(team) != int.MaxValue;
         }
 
+        private static List<Tank> TEMP = new List<Tank>();
+        /// <summary>
+        /// WILL RESET ON NEXT CALL
+        /// </summary>
+        /// <param name="team"></param>
+        /// <returns></returns>
+        public static List<Tank> GetAllPlayerControlledTechs()
+        {
+            TEMP.Clear();
+            foreach (var item in ManTechs.inst.IterateTechs())
+            {
+                if (item?.visible != null && item.TechIsActivePlayer())
+                    TEMP.Add(item);
+            }
+            return TEMP;
+        }
 
         internal static NP_Types GetNPTTeamTypeForDebug(int team)
         {

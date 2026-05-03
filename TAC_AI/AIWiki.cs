@@ -145,7 +145,7 @@ namespace TAC_AI
             GUILayout.Label(AltUI.ObjectiveString(
                 "Non-Player Prospectors") + " now think more intelligently, and can build and " +
                 AltUI.EnemyString("destroy") + " others, and maybe even you as well!" +
-                "\n\n  Early-game they may be weak, but later on expect fierce competition!", AltUI.LabelWhite);
+                "\n\n  Early-game they may be weak, but later on expect fierce competition!", AltUI.LabelWhiteWrap);
 
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
@@ -160,18 +160,18 @@ namespace TAC_AI
             float airborneSpawnChance = SpecialAISpawner.AirborneAISpawnOdds / SpecialAISpawner.AirborneSpawnChance;
             GUILayout.Label("Chances:", AltUI.LabelRedTitle);
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Appear: ", AltUI.LabelWhite);
+            GUILayout.Label("Appear: ", AltUI.LabelWhiteWrap);
             GUILayout.Label(airborneSpawnChance.ToString("P"), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Aircraft: ", AltUI.LabelWhite);
+            GUILayout.Label("Aircraft: ", AltUI.LabelWhiteWrap);
             GUILayout.Label((Mathf.Clamp01(1 - SpecialAISpawner.SpaceSpawnChance)).ToString("P"), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Spaceship: ", AltUI.LabelWhite);
+            GUILayout.Label("Spaceship: ", AltUI.LabelWhiteWrap);
             GUILayout.Label(SpecialAISpawner.SpaceSpawnChance.ToString("P"), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
@@ -189,7 +189,7 @@ namespace TAC_AI
             GUILayout.Label(AltUI.ObjectiveString(
                 "Intrepid Prospectors") + " are very mobile prospectors that can " +
                 AltUI.EnemyString("attack") + " you by surpise." +
-                "\n\n  Early-game they have no interest, but late-game they may begin to strike!", AltUI.LabelWhite);
+                "\n\n  Early-game they have no interest, but late-game they may begin to strike!", AltUI.LabelWhiteWrap);
 
             GUILayout.Label("Aggression Grades:", AltUI.LabelRedTitle);
             GUILayout.BeginVertical(AltUI.TextfieldBordered);
@@ -231,7 +231,7 @@ namespace TAC_AI
                 "pressing your Command Hotkey " + AltUI.HighlightString("[" + KickStart.CommandHotkey + "]") + ", " +
                 AltUI.ObjectiveString("[Left-Mouse]") + " on the " + AltUI.BlueStringMsg("Tech") +
                 " you want to command, then by pressing " + AltUI.ObjectiveString("[Right-Mouse]") +
-                " on the object you want the A.I. to interact with.", AltUI.LabelWhite);
+                " on the object you want the A.I. to interact with.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -250,6 +250,7 @@ namespace TAC_AI
             Hyperlink(pageName);
             AltUI.Tooltip.GUITooltip(descBrief);
         }
+
         private static void PageRTS()
         {
             GUILayout.Label("RTS Controls", AltUI.LabelBlackTitle);
@@ -257,95 +258,95 @@ namespace TAC_AI
 
             GUILayout.BeginVertical(AltUI.TextfieldBlackHuge);
             GUILayout.Label(AltUI.ObjectiveString("Photo Mode") + " has been converted to work as " + 
-                AltUI.BlueStringMsg("RTS Mode") + ".", AltUI.LabelWhite);
+                AltUI.BlueStringMsg("RTS Mode") + ".", AltUI.LabelWhiteWrap);
             GUILayout.Label("You can also toggle " + AltUI.ObjectiveString("Photo Mode") + " by pressing the " +
-                AltUI.HighlightString("[" + KeyCode.F3.ToString() + "]") + " key while in-game.", AltUI.LabelWhite);
+                AltUI.HighlightString("[" + KeyCode.F3.ToString() + "]") + " key while in-game.", AltUI.LabelWhiteWrap);
             GUILayout.Space(6);
             GUILayout.Label("You can also activate the " + AltUI.BlueStringMsg("RTS HUD") +
                 " while in normal gameplay by pressing your Command Hotkey " + AltUI.HighlightString("[" + KickStart.CommandHotkey + "]") +
-                ", allowing you to drive normally and use multiple Techs at the same time.", AltUI.LabelWhite);
+                ", allowing you to drive normally and use multiple Techs at the same time.", AltUI.LabelWhiteWrap);
             GUILayout.Space(6);
             if (KickStart.UseClassicRTSControls)
             {
                 GUILayout.Label(AltUI.ObjectiveString("[Left-Mouse]") + " on the " + AltUI.BlueStringMsg("Tech") +
                     " you want to command, then by pressing " + AltUI.ObjectiveString("[Right-Mouse]") +
-                    " on the object you want the A.I. to interact with.", AltUI.LabelWhite);
+                    " on the object you want the A.I. to interact with.", AltUI.LabelWhiteWrap);
                 GUILayout.Space(6);
 
                 GUILayout.Label(AltUI.ObjectiveString("[Left-Mouse Drag]") + " to box-select multiple " + AltUI.BlueStringMsg("Techs") +
-                    " to command", AltUI.LabelWhite);
+                    " to command", AltUI.LabelWhiteWrap);
                 GUILayout.Space(6);
 
                 GUILayout.Label(AltUI.ObjectiveString("[Left-Mouse]") + " while holding " + AltUI.ObjectiveString("[" + KickStart.MultiSelect.ToString() + "]") +
-                    " to toggle-select " + AltUI.BlueStringMsg("Techs") +" to command", AltUI.LabelWhite);
+                    " to toggle-select " + AltUI.BlueStringMsg("Techs") +" to command", AltUI.LabelWhiteWrap);
                 GUILayout.Space(8);
 
                 GUILayout.Label("Press " + AltUI.ObjectiveString("[0 - 9]") + " keys to load the saved Unit Group of " +
-                    AltUI.BlueStringMsg("Techs") + " to command", AltUI.LabelWhite);
+                    AltUI.BlueStringMsg("Techs") + " to command", AltUI.LabelWhiteWrap);
                 GUILayout.Space(6);
                 GUILayout.Label("Press " + AltUI.ObjectiveString("[0 - 9]") + " keys while holding " +
                     AltUI.ObjectiveString("[" + KickStart.MultiSelect.ToString() + "]") +
-                    " to save a Unit Group of " + AltUI.BlueStringMsg("Techs") + " to command", AltUI.LabelWhite);
+                    " to save a Unit Group of " + AltUI.BlueStringMsg("Techs") + " to command", AltUI.LabelWhiteWrap);
                 GUILayout.Space(6);
             }
             else
             {
-                GUILayout.Label("Non-Classic RTS Controls have no desc yet!", AltUI.LabelWhite);
+                GUILayout.Label("Non-Classic RTS Controls have no desc yet!", AltUI.LabelWhiteWrap);
             }
             GUILayout.Label(AltUI.ObjectiveString("[Right-Mouse]") +
                 " is used to command selected " + AltUI.BlueStringMsg("Techs") + 
-                ", and the action depends on the target.  The cursor icon shows what it shall do.", AltUI.LabelWhite);
+                ", and the action depends on the target.  The cursor icon shows what it shall do.", AltUI.LabelWhiteWrap);
 
             GUILayout.Label(AltUI.ObjectiveString("[Right-Mouse]") + " while holding " + AltUI.ObjectiveString("[" + KickStart.MultiSelect.ToString() + "]") +
-                " to queue", AltUI.LabelWhite);
+                " to queue", AltUI.LabelWhiteWrap);
 
             GUILayout.Space(6);
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(AltUI.BlueStringMsg("Your own Tech") +
-                " - Will activate ", AltUI.LabelWhite);
+                " - Will activate ", AltUI.LabelWhiteWrap);
             Hyperlink("Guard Player");
-            GUILayout.Label(" mode and follow the your Tech.", AltUI.LabelWhite);
+            GUILayout.Label(" mode and follow the your Tech.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(AltUI.BlueStringMsg("Mobile Ally Techs") +
-                " - Will activate ", AltUI.LabelWhite);
+                " - Will activate ", AltUI.LabelWhiteWrap);
             Hyperlink("Protect");
-            GUILayout.Label(" mode and protect mobile allies.", AltUI.LabelWhite);
+            GUILayout.Label(" mode and protect mobile allies.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(AltUI.BlueStringMsg("Anchored Ally Techs") +
-                " - Will activate ", AltUI.LabelWhite);
+                " - Will activate ", AltUI.LabelWhiteWrap);
             Hyperlink("Scout");
-            GUILayout.Label(" mode and search for enemies.", AltUI.LabelWhite);
+            GUILayout.Label(" mode and search for enemies.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(AltUI.EnemyString("Enemies") +
-                " - Will activate ", AltUI.LabelWhite);
+                " - Will activate ", AltUI.LabelWhiteWrap);
             Hyperlink("Go Here");
-            GUILayout.Label(" mode and chase the enemy.", AltUI.LabelWhite);
+            GUILayout.Label(" mode and chase the enemy.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(AltUI.ObjectiveString("Resources") +
-                " - Will activate ", AltUI.LabelWhite);
+                " - Will activate ", AltUI.LabelWhiteWrap);
             Hyperlink("Harvest");
-            GUILayout.Label(" mode and mine close scenery.", AltUI.LabelWhite);
+            GUILayout.Label(" mode and mine close scenery.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(AltUI.ObjectiveString("Loose Blocks") +
-                " - Will activate ", AltUI.LabelWhite);
+                " - Will activate ", AltUI.LabelWhiteWrap);
             Hyperlink("Fetch");
-            GUILayout.Label(" mode and collect blocks for SCUs.", AltUI.LabelWhite);
+            GUILayout.Label(" mode and collect blocks for SCUs.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
@@ -366,24 +367,24 @@ namespace TAC_AI
 
             GUILayout.Label("Chances:", AltUI.LabelRedTitle);
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Appear:", AltUI.LabelWhite);
+            GUILayout.Label("Appear:", AltUI.LabelWhiteWrap);
             GUILayout.Label((AIGlobals.EnemyBaseMakerChance / 100).ToString("P"), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
             float friendlyBaseChance = AIGlobals.NonHostileBaseChance * AIGlobals.FriendlyBaseChance;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Enemy:", AltUI.LabelWhite);
+            GUILayout.Label("Enemy:", AltUI.LabelWhiteWrap);
             GUILayout.Label((Mathf.Clamp01(1 - friendlyBaseChance - AIGlobals.NonHostileBaseChance)).ToString("P"), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Neutral:", AltUI.LabelWhite);
+            GUILayout.Label("Neutral:", AltUI.LabelWhiteWrap);
             GUILayout.Label(AIGlobals.NonHostileBaseChance.ToString("P"), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Friendly:", AltUI.LabelWhite);
+            GUILayout.Label("Friendly:", AltUI.LabelWhiteWrap);
             GUILayout.Label(friendlyBaseChance.ToString("P"), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
@@ -400,7 +401,7 @@ namespace TAC_AI
                 " to stake YOUR claim as their own.  Beware, even if you run away, they can still launch attacks from afar.\n\n" +
                 "The best course of action is to take them out as soon as possible, if you can that is.  Keep them" +
                 " under control with some well-prepared A.I.s set to " + AltUI.ObjectiveString(
-                "Scout"), AltUI.LabelWhite);
+                "Scout"), AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -413,7 +414,7 @@ namespace TAC_AI
 
             GUILayout.Label("Chances:", AltUI.LabelRedTitle);
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Approximate Range:", AltUI.LabelWhite);
+            GUILayout.Label("Approximate Range:", AltUI.LabelWhiteWrap);
             GUILayout.Label((ManEnemyWorld.BaseSightRadius * ManWorld.inst.TileSize).ToString(), AltUI.LabelBlue);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
@@ -429,7 +430,7 @@ namespace TAC_AI
                 " to stake YOUR claim as their own.  Beware, even if you run away, they can still launch attacks from afar.\n\n" +
                 "The best course of action is to take them out as soon as possible, if you can that is.  Keep them" +
                 " under control with some well-prepared A.I.s set to " + AltUI.ObjectiveString(
-                "Scout") + ".", AltUI.LabelWhite);
+                "Scout") + ".", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -500,7 +501,7 @@ namespace TAC_AI
             GUILayout.Label(AltUI.ObjectiveString(
                 "Cars & Tanks")+ " are the bread and butter of any prospecting operation.  \n\nThe standard land " + AltUI.BlueStringMsg(
                 "Tech") + " serves as the cheapest way to get many things done.\n\n" +
-                "However they can't do much as they can't float over trees, or drive into water.", AltUI.LabelWhite);
+                "However they can't do much as they can't float over trees, or drive into water.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -534,7 +535,7 @@ namespace TAC_AI
                 "Techs") + " that are usually unchallenged by ground dangers. \n\nAirborne " + AltUI.BlueStringMsg(
                 "Techs") + " also have no problems going over Trees and Rocks, permitting" +
                 " a means of escape when dealing with enemies.  \n\n" +
-                "However they tend to be frail and attacking with them head-on isn't safe.", AltUI.LabelWhite);
+                "However they tend to be frail and attacking with them head-on isn't safe.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -563,7 +564,7 @@ namespace TAC_AI
                 "Techs") + " can float freely in all directions and can stop and remain mostly and neatly stationary in the sky, " +
                 "raining down heck-fire on anything below.  They are usually quite bulky and very difficult to take down.\n\n" +
                 "However they cost a lot to make, and tend to be sluggish against the more agile " + AltUI.ObjectiveString(
-                "Aircraft") + ".", AltUI.LabelWhite);
+                "Aircraft") + ".", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -593,7 +594,7 @@ namespace TAC_AI
                 "Ships") + " float in the water, where all other types of Tech seem to struggle in.  " +
                 "\n\nFloating " + AltUI.BlueStringMsg(
                 "Techs")+ " can go anywhere in the sea, effortlessly picking off whomever dares to enter the sea.\n\n" +
-                "However, it can only go where the sea can reach.", AltUI.LabelWhite);
+                "However, it can only go where the sea can reach.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -631,7 +632,7 @@ namespace TAC_AI
                 "Escorts") + " defend you.  " +
                 "\n\nMost useful for coordinated attacks against a large enemy.  Make sure to use your Retreat Hotkey " +
                 AltUI.HighlightString("[" + KickStart.RetreatHotkey + "]") +
-                " to keep them by your side while pressing on the attack if you don't want them wandering off!", AltUI.LabelWhite);
+                " to keep them by your side while pressing on the attack if you don't want them wandering off!", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -659,9 +660,9 @@ namespace TAC_AI
             GUILayout.BeginVertical(AltUI.TextfieldBlackHuge);
             GUILayout.Label(AltUI.ObjectiveString("Harvesters") +
                 " mine out everything in sight to gather " + AltUI.BuyString(
-                "Resources") + " as well as make it easier to drive around on land.", AltUI.LabelWhite);
+                "Resources") + " as well as make it easier to drive around on land.", AltUI.LabelWhiteWrap);
             if (GUILayout.Button(AltUI.ObjectiveString("Aircraft A.I.") +
-                " can also harvest, although their usefulness is quite limited.", AltUI.LabelWhite))
+                " can also harvest, although their usefulness is quite limited.", AltUI.LabelWhiteWrap))
                 Airborne.GoHere();
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
@@ -688,7 +689,7 @@ namespace TAC_AI
                 AltUI.ObjectiveString("Harvesters") + ", " +
                 AltUI.ObjectiveString("Fetchers") + ", and " +
                 AltUI.ObjectiveString("Chargers") +
-                ".", AltUI.LabelWhite);
+                ".", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -709,7 +710,7 @@ namespace TAC_AI
             GUILayout.Label(AltUI.ObjectiveString("Scouts") +
                 " automatically ward off " + AltUI.EnemyString("Enemies") + 
                 " to prevent them from building " + AltUI.ObjectiveString(
-                "Bases") + " on your turf.", AltUI.LabelWhite);
+                "Bases") + " on your turf.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
@@ -730,9 +731,9 @@ namespace TAC_AI
             GUILayout.Label(AltUI.ObjectiveString("Fetchers") +
                 " collect any stray " + AltUI.BlueStringMsg(
                 "Blocks") + " from the floor and return them to your " + AltUI.BlueStringMsg(
-                "Scrappers & SCUs") + ", keeping your turf neat and tidy.", AltUI.LabelWhite);
+                "Scrappers & SCUs") + ", keeping your turf neat and tidy.", AltUI.LabelWhiteWrap);
             if (GUILayout.Button(AltUI.ObjectiveString("Aircraft A.I.") +
-                " can also fetch, although their usefulness is quite limited.", AltUI.LabelWhite))
+                " can also fetch, although their usefulness is quite limited.", AltUI.LabelWhiteWrap))
                 Airborne.GoHere();
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
@@ -754,9 +755,9 @@ namespace TAC_AI
             GUILayout.Label(AltUI.ObjectiveString("Chargers") +
                 " keep your " + AltUI.BlueStringMsg(
                 "Techs") + " topped off with " + AltUI.BlueStringMsg(
-                "Energy") + " and keep them ready for action.", AltUI.LabelWhite);
+                "Energy") + " and keep them ready for action.", AltUI.LabelWhiteWrap);
             if (GUILayout.Button(AltUI.ObjectiveString("Aircraft A.I.") +
-                " cannot charge Techs effectively and should never be used as chargers", AltUI.LabelWhite))
+                " cannot charge Techs effectively and should never be used as chargers", AltUI.LabelWhiteWrap))
                 Airborne.GoHere();
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
@@ -773,7 +774,7 @@ namespace TAC_AI
                 "wheels, boosters, " + AltUI.ObjectiveString("Circuits & Systems") + 
                 " and much, much more.  The possibilities really become endless with two Techs working together!\n" +
                  AltUI.ObjectiveString("Multi-Techs") + " are the future of bigger Techs. ", 
-                 AltUI.LabelWhite);
+                 AltUI.LabelWhiteWrap);
             var wikiLink = new ManIngameWiki.WikiLink(ManIngameWiki.GetPage("Part"));
             if (wikiLink.OnGUI(AltUI.LabelBlue))
                 wikiLink.linked.GoHere();
