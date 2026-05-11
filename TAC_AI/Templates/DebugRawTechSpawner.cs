@@ -220,6 +220,9 @@ namespace TAC_AI.Templates
                     SB.AppendLine(data.techName.NullOrEmpty() ? "<NULL>" : data.techName);
                     SB.AppendLine("Block Count: <b>" + data.savedTech.Count + "</b>");
                     SB.AppendLine("Main Corp: " + (data.FactionActual.NullOrEmpty() ? "<NULL>" : data.FactionActual));
+                    /*
+                    SB.AppendLine("Main Corp(2): " + data.faction.ToString());
+                    SB.AppendLine("Main Corp(3): " + (data.factionName.NullOrEmpty() ? "<NULL>" : data.factionName));//*/
                     SB.AppendLine("Grade - Tech:" + data.IntendedGrade + " | Yours:" + playerGrade);
                     SB.AppendLine("Level - Tech: " + data.factionLim + " | Yours: " + playerLevel);
                     switch (AIGlobals.SpawnDebugOverride)
@@ -933,7 +936,8 @@ namespace TAC_AI.Templates
             foreach (KeyValuePair<SpawnBaseTypes, RawTech> temp in ModTechsDatabase.InternalPopTechs)
             {
                 StepMenuPlacerPartial();
-                FactionSubTypes FST = RawTechUtil.CorpExtToCorp(temp.Value.curSessionFaction);
+                var curFact = temp.Value.curSessionFaction;
+                FactionSubTypes FST = RawTechUtil.CorpExtToCorp(curFact);
                 if (currentFaction != FST)
                 {
                     currentFaction = FST;
@@ -947,12 +951,12 @@ namespace TAC_AI.Templates
                     }
                     if (FST == FactionSubTypes.EXP)
                         disp = "RR";
-                    else if (RawTechUtil.IsFactionExtension(temp.Value.curSessionFaction))
-                        disp = temp.Value.curSessionFaction.ToString();
+                    else if (RawTechUtil.IsFactionExtension(curFact))
+                        disp = curFact.ToString();
                     else if (ManMods.inst.IsModdedCorp(FST))
                         disp = ManMods.inst.FindCorpShortName(FST);
                     else
-                        disp = temp.Value.curSessionFaction.ToString();
+                        disp = curFact.ToString();
                     if (GUILayout.Button("<b>" + disp + "</b>"))
                     {
                         if (openedFactions.Contains(currentFaction))
@@ -1027,7 +1031,6 @@ namespace TAC_AI.Templates
         }
 
         static DirectoryInfo pather = new DirectoryInfo(RawTechExporter.RawTechsDirectory);
-        static string selectedFolder = null;
         static List<KeyValuePair<string, int>> folders = new List<KeyValuePair<string, int>>();
         private static void UpdateFolders()
         {
@@ -1594,6 +1597,7 @@ namespace TAC_AI.Templates
         {
             AIGlobals.LogAllTrackedEnemyBaseVisibles(DoCullInvalidVisibles);
             return;
+            /*
             if (DoCullInvalidVisibles)
             {
                 var cullList = new List<TrackedVisible>(ManVisible.inst.AllTrackedVisibles);
@@ -1676,7 +1680,7 @@ namespace TAC_AI.Templates
                             DebugTAC_AI.Info("  Unloaded Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
                     }
                 }
-            }
+            }//*/
         }
 
         internal static void SaveLocalPoolBackToDisk()

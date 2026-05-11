@@ -61,7 +61,15 @@ namespace TAC_AI.Templates
         /// The dominant faction that composes the Tech, and what faction it should spawn under
         /// Built at runtime, so it should be accurate
         /// </summary>
-        public FactionSubTypes Faction;
+        public FactionSubTypes Faction {
+            get => _Faction;
+            set
+            {
+                FactionHash = RawTechUtil.GetFactionShortName(value).GetHashCode();
+                _Faction = value;
+            } }
+        private FactionSubTypes _Faction = FactionSubTypes.NULL;
+        public int FactionHash { get; private set; }
         /// <summary>
         /// How far the player is in terms of progression.  This is weighed in against the highest FactionLevel block on the Tech.
         /// To prevent Techs with high-level blocks from spawning in too early.

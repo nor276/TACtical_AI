@@ -315,7 +315,7 @@ namespace TAC_AI.AI.Movement
                 {
                     throw new TileNotLoadedException("GetAlt - Hit non-loaded World-Tile");
                     //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
-                    return maxAltByte;
+                    //return maxAltByte;
                 }
                 RegisterTile(wTile);
                 if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))
@@ -386,7 +386,7 @@ namespace TAC_AI.AI.Movement
                         {
                             throw new TileNotLoadedException("GetHighestAltInRadius - Hit non-loaded World-Tile");
                             //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
-                            return maxAltByte;
+                            //return maxAltByte;
                         }
                         RegisterTile(wTile);
                         if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))
@@ -549,7 +549,7 @@ namespace TAC_AI.AI.Movement
                         {
                             throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
                             //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
-                            return maxAltByte;
+                            //return maxAltByte;
                         }
                         RegisterTile(wTile);
                         if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))
@@ -595,7 +595,7 @@ namespace TAC_AI.AI.Movement
                         {
                             throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
                             //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
-                            return maxAltByte;
+                            //return maxAltByte;
                         }
                         RegisterTile(wTile);
                         if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))

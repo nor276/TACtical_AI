@@ -87,7 +87,6 @@ namespace TAC_AI.Templates
         public static Dictionary<AIDriverType, Sprite> aiBackplates;
         public static Dictionary<AIType, Sprite> aiIcons;
         public static Dictionary<EnemySmarts, Sprite> aiIconsEnemy;
-        public static TankAIHelper lastTech;
 
         private static bool firstInit = false;
 
@@ -554,12 +553,12 @@ namespace TAC_AI.Templates
                         FactionSubTypes MainCorp;
                         if (ext.Faction == FactionSubTypes.NULL)
                         {
-                            MainCorp = KickStart.GetCorpExtended(RawTechTemplate.JSONToFirstBlock(ext.Blueprint));
+                            MainCorp = KickStart.GetCorpExtended(RawTechBase.JSONToFirstBlock(ext.Blueprint));
                         }
                         else
                             MainCorp = ext.Faction;
                         errorLevel++; // 3
-                        temp.purposes = RawTechTemplate.GetHandler(ext.Blueprint, (FactionTypesExt)MainCorp, ext.IsAnchored, out BaseTerrain terra, out int minCorpGrade);
+                        temp.purposes = RawTechBase.GetHandler(ext.Blueprint, (FactionTypesExt)MainCorp, ext.IsAnchored, out BaseTerrain terra, out int minCorpGrade);
                         temp.IntendedGrade = minCorpGrade;
                         temp.factionName = ManMods.inst.FindCorpShortName(MainCorp);
                         temp.terrain = terra;
@@ -1223,7 +1222,7 @@ namespace TAC_AI.Templates
                 }
                 else
                     output = Sprite.Create(texRef, new Rect(0, 0, texRef.width, texRef.height), Vector2.zero, refS.pixelsPerUnit, 0, SpriteMeshType.FullRect, refS.border);
-                DebugTAC_AI.Log(KickStart.ModID + ": Loaded Icon " + pngName + " successfully.");
+                DebugTAC_AI.Info(KickStart.ModID + ": Loaded Icon " + pngName + " successfully.");
                 return output;
             }
             catch
@@ -1238,7 +1237,7 @@ namespace TAC_AI.Templates
             {
                 Material mat = new Material(prefab);
                 mat.mainTexture = FetchTexture(pngName);
-                DebugTAC_AI.Log(KickStart.ModID + ": Loaded Icon " + pngName + " successfully.");
+                DebugTAC_AI.Info(KickStart.ModID + ": Loaded Icon " + pngName + " successfully.");
                 return mat;
             }
             catch

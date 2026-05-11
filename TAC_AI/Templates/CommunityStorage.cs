@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using TerraTechETCUtil;
+using UnityEngine;
 
 namespace TAC_AI.Templates
 {
@@ -24,23 +26,47 @@ namespace TAC_AI.Templates
          * 
          */
         internal static List<KeyValuePair<SpawnBaseTypes, RawTech>> CommunityStored;
-        private static List<KeyValuePair<SpawnBaseTypes, RawTech>> CommunityClustered = new List<KeyValuePair<SpawnBaseTypes, RawTech>>();
-        public static List<KeyValuePair<SpawnBaseTypes, RawTech>> ReturnAllCommunityClustered()
+        internal static List<KeyValuePair<SpawnBaseTypes, RawTech>> CommunityClustered = new List<KeyValuePair<SpawnBaseTypes, RawTech>>();
+        public static IEnumerable GenerateCommunityClustered()
         {
+            ModTechsDatabase.Subject = "Loading Enemy Techs - ";
+            ModTechsDatabase.EstNumSteps = 0;
+            ModTechsDatabase.EstNumStepsIterator = 0;
+            ModTechsDatabase.EstPercentDone = 0;
+            yield return new WaitForEndOfFrame();
             CommunityClustered.Clear();
             CommunityCluster.LoadPublicFromFile();
+            ModTechsDatabase.EstNumSteps = CommunityCluster.ClusterF.Count;
+            ModTechsDatabase.EstPercentDone = 0;
+            yield return new WaitForEndOfFrame();
             List<SpawnBaseTypes> tempSearch = new List<SpawnBaseTypes>();
             CommunityStored.ForEach(delegate (KeyValuePair<SpawnBaseTypes, RawTech> cand) { tempSearch.Add(cand.Key); });
             // batch exporting is messy and will result in overlaps!
+            var skipUnmodded = ModTechsDatabase.SkipUnmodded;
+            var hasModBlocks = ModTechsDatabase.InternalHasModBlocks;
+            int iterateExtra = 0;
             foreach (KeyValuePair<SpawnBaseTypes, RawTechTemplate> pair in CommunityCluster.ClusterF)
             {
+                if (skipUnmodded && !hasModBlocks.Contains(pair.Key))
+                    continue;
+                ModTechsDatabase.InProgress = pair.Key.ToString();
+                iterateExtra++;
+                if (iterateExtra >= ModTechsDatabase.IterateExtraRate)
+                {
+                    iterateExtra = 0;
+                    ModTechsDatabase.EstPercentDone = ModTechsDatabase.EstNumStepsIterator / (float)ModTechsDatabase.EstNumSteps;
+                    yield return new WaitForEndOfFrame();
+                }
                 try
                 {
                     if (!tempSearch.Contains(pair.Key))
                     {
                         RawTech inst = pair.Value.ToActive();
-                        if (inst.ValidateBlocksInTech(true, true))
+                        var status = inst.ValidateBlocksInTech(true, true);
+                        if (status.CanLoadAnyBlocks())
                         {
+                            if (!skipUnmodded && status.HasModded())
+                                hasModBlocks.Add(pair.Key);
                             tempSearch.Add(pair.Key);
                             CommunityClustered.Add(new KeyValuePair<SpawnBaseTypes, RawTech>(pair.Key, inst));
                         }
@@ -56,11 +82,15 @@ namespace TAC_AI.Templates
                 {
                     DebugTAC_AI.LogLoad("Failed on loading " + pair.Value.techName + " - " + e);
                 }
+                ModTechsDatabase.EstNumStepsIterator++;
             }
+            ModTechsDatabase.EstNumStepsIterator = ModTechsDatabase.EstNumSteps;
+            ModTechsDatabase.EstPercentDone = 1f;
+            yield return new WaitForEndOfFrame();
             CommunityCluster.ClusterF.Clear();
-            return CommunityClustered;
         }
-        public static List<KeyValuePair<SpawnBaseTypes, RawTech>> ReturnAllCommunityStored()
+        internal static ModTechsDatabase.PreloadWrapper pending = null;
+        internal static IEnumerable GenerateCommunityStored()
         {
             if (CommunityStored == null)
             {
@@ -77,10 +107,10 @@ namespace TAC_AI.Templates
                 batch.AddRange(ComAirs);
                 batch.AddRange(ComSpaces);
                 CommunityStored = new List<KeyValuePair<SpawnBaseTypes, RawTech>>();
-                ModTechsDatabase.ValidateAndAdd(batch, CommunityStored);
+                pending = new ModTechsDatabase.PreloadWrapper(null, batch, CommunityStored);
+                while (pending.enumerator.MoveNext())
+                    yield return pending.enumerator.Current;
             }
-
-            return CommunityStored;
         }
 
         public static void UnloadRemainingUnused()

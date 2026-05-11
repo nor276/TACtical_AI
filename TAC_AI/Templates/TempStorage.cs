@@ -2,6 +2,7 @@
 using System.Text;
 using System.Collections.Generic;
 using TerraTechETCUtil;
+using System.Collections;
 
 namespace TAC_AI.Templates
 {
@@ -18,37 +19,62 @@ namespace TAC_AI.Templates
             get
             {
                 if (_techBasesPrefab == null)
-                    _techBasesPrefab = GetAllTemp();
+                {
+                    if (pendingOp == null)
+                        pendingOp = GetAllTemp();
+                    // RUSH LOADING WE NEED IT NOW
+                    foreach (var item in pendingOp) { }
+                }
                 return _techBasesPrefab;
             }
         }
 
         private static Dictionary<SpawnBaseTypes, RawTech> _techBasesPrefab;
+        private static IEnumerable pendingOp = null;
 
-        public static Dictionary<SpawnBaseTypes, RawTech> GetAllTemp()
+        public static IEnumerable GetAllTemp()
         {
-            Dictionary<SpawnBaseTypes, RawTech> compiled = new Dictionary<SpawnBaseTypes, RawTech>();
-            ModTechsDatabase.ValidateAndAdd(techBasesFallback, compiled);
+            _techBasesPrefab = new Dictionary<SpawnBaseTypes, RawTech>();
+            var iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesFallback, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesFallback = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesHarvesting, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesHarvesting, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesHarvesting = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesProduction, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesProduction, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesProduction = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesHeadquarters, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesHeadquarters, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesHeadquarters = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesDefense, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesDefense, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesDefense = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesMobileAttract, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesMobileAttract, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesMobileAttract = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesMobileAir, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesMobileAir, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesMobileAir = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesMobileChopper, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesMobileChopper, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesMobileChopper = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesMobileNaval, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesMobileNaval, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesMobileNaval = null;
-            ModTechsDatabase.ValidateAndAdd(techBasesMobileSpace, compiled);
+            iterator = new ModTechsDatabase.PreloadWrapper(null, techBasesMobileSpace, _techBasesPrefab).enumerator;
+            while (iterator.MoveNext())
+                yield return iterator.Current;
             techBasesMobileSpace = null;
-            return compiled;
         }
 
         public static Dictionary<SpawnBaseTypes, RawTechTemplate> techBasesFallback = new Dictionary<SpawnBaseTypes, RawTechTemplate>

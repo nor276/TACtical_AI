@@ -82,7 +82,6 @@ namespace TAC_AI
                 {
                     if (tile.Value == null)
                         continue;
-                    bool IsJSON = false;
                     storedTile = tile.Value;
                     if (storedTile?.m_StoredVisibles != null)
                     {
@@ -134,10 +133,8 @@ namespace TAC_AI
                     if (tile.Value.NullOrEmpty())
                         continue;
                     storedTile = null;
-                    bool IsJSON = false;
                     if (!ManSaveGame.inst.CurrentState.m_StoredTiles.TryGetValue(tile.Key, out storedTile))
                     {
-                        IsJSON = true;
                         ManSaveGame.LoadObjectFromRawJson(ref storedTile, tile.Value, false, false);
                     }
                     if (storedTile?.m_StoredVisibles != null)
@@ -313,10 +310,8 @@ namespace TAC_AI
                             if (tile.Value.NullOrEmpty())
                                 continue;
                             storedTile = null;
-                            bool IsJSON = false;
                             if (!ManSaveGame.inst.CurrentState.m_StoredTiles.TryGetValue(tile.Key, out storedTile))
                             {
-                                IsJSON = true;
                                 ManSaveGame.LoadObjectFromRawJson(ref storedTile, tile.Value, false, false);
                             }
                             if (storedTile?.m_StoredVisibles != null)

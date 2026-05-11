@@ -798,8 +798,6 @@ namespace TAC_AI.World
         }
         private static void CommandsStatic()
         {
-            Sprite SPR;
-            Texture tex = null;
             GUILayoutOption GLOh = GUILayout.Height(ButtonHeight);
             GUILayout.BeginHorizontal(GLOh);
             EmptyButton();
@@ -821,8 +819,6 @@ namespace TAC_AI.World
         }
         private static void CommandsNone()
         {
-            Sprite SPR;
-            Texture tex = null;
             GUILayoutOption GLOh = GUILayout.Height(ButtonHeight);
             GUILayout.BeginHorizontal(GLOh);
             EmptyButton();

@@ -637,12 +637,11 @@ namespace TAC_AI
             }*/
             InitSpecialPatch();
 #endif
-            ResourcesHelper.ModsPostLoadEvent.Subscribe(AfterBlocksLoaded);
+            InvokeHelper.BlocksPostChangeEvent.Subscribe(AfterBlocksLoaded);
         }
         private static void AfterBlocksLoaded()
         {
-            if (!firedAfterBlockInjector)//KickStart.isBlockInjectorPresent && 
-                DelayedBaseLoader();
+            DelayedBaseLoader();
         }
         private static void OnModeSwitch()
         {
@@ -799,8 +798,8 @@ namespace TAC_AI
             }
 
             UpdateCullDist();
-            //ResourcesHelper.ModsPostLoadEvent.Subscribe(AIWiki.InsureAllValidAIs);
-            ResourcesHelper.BlocksPostChangeEvent.Subscribe(AIWiki.InsureAllValidAIs);
+            //InvokeHelper.ModsPostLoadEvent.Subscribe(AIWiki.InsureAllValidAIs);
+            InvokeHelper.BlocksPostChangeEvent.Subscribe(AIWiki.InsureAllValidAIs);
         }
 
         public static void DeInitCheck()

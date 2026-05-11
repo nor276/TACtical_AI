@@ -1701,8 +1701,14 @@ namespace TAC_AI.Templates
                 List<SpawnBaseTypes> SBT = GetEnemyBaseTypes(filter, ShufflerSingleUse, fallbackHandling);
                 foreach (var item in SBT)
                     rTechs.Add(ModTechsDatabase.InternalPopTechs[item]);
-                for (int i = 0; i < selectedExt.Count; i++)
-                    rTechs.Add(ModTechsDatabase.ExtPopTechsAllLookup(i));
+                if (selectedExt.Count == 1 && selectedExt.Contains(-1))
+                {   // We failed. Ignore.
+                }
+                else
+                {
+                    for (int i = 0; i < selectedExt.Count; i++)
+                        rTechs.Add(ModTechsDatabase.ExtPopTechsAllLookup(i));
+                }
                 rTechs.Shuffle();
             }
             finally { 
@@ -1730,7 +1736,7 @@ namespace TAC_AI.Templates
                 int extTechs = selectedExt.Count;
                 int PrefabTechs = SBT.Count;
                 int CombinedVal = extTechs + PrefabTechs;
-                if (extTechs == 0)
+                if (extTechs == 0 || (selectedExt.Count == 1 && selectedExt[0] == -1))
                 {
                     if (PrefabTechs == 0)
                     {
@@ -2882,6 +2888,14 @@ namespace TAC_AI.Templates
             return true;
         }
 
+
+        /// <summary>
+        /// <i><b>TROUBLE MAGNET</b></i>
+        /// </summary>
+        /// <param name="tech"></param>
+        /// <param name="filter"></param>
+        /// <returns></returns>
+        /// <exception cref="NotImplementedException"></exception>
         private static bool FilterSelectAll(RawTech tech, RawTechPopParams filter)
         {
             if (!ComparePurposes(filter, tech.purposes))
@@ -2924,7 +2938,7 @@ namespace TAC_AI.Templates
                     }
                     else
                     {   // Try get corp for all official modded corps 
-                        if (tech.FactionActual.GetHashCode() == ManMods.inst.FindCorpShortName(filter.Faction).GetHashCode())
+                        if (tech.FactionActual.GetHashCode() == filter.FactionHash)
                         { // Tests all official mods for matches
                             FL = ManLicenses.inst.GetLicense(filter.Faction);
                             if (FL != null && !FL.HasReachedMaxLevel && tech.IntendedGrade > FL.CurrentLevel)
@@ -2961,6 +2975,8 @@ namespace TAC_AI.Templates
                 return false;
             return true;
         }
+
+
 
 
         private static List<SpawnBaseTypes> Shuffler = new List<SpawnBaseTypes>();

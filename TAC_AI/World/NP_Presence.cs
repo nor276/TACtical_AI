@@ -42,9 +42,9 @@ namespace TAC_AI.World
     public class NP_Presence
     {
 #if DEBUG
-        protected const bool DoDebugLog = true;
+        protected static bool DoDebugLog = true;
 #else
-        protected const bool DoDebugLog = false;
+        protected static bool DoDebugLog = false;
 #endif
 
         public virtual bool RequiresExistingTechs => true;
