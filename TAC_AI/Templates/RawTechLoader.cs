@@ -1157,8 +1157,16 @@ namespace TAC_AI.Templates
             float height = ManWorld.inst.ProjectToGround(pos, true).y;
             if (pos.y < height)
                 pos.y = height;
-            Tank theTech = toSpawn.SpawnRawTech(pos, Team, forwards, filter.SnapTerrain, 
-                filter.SpawnCharged, filter.RandSkins, filter.ForceCompleted);
+            Tank theTech = null;
+            try
+            {
+               toSpawn.SpawnRawTech(pos, Team, forwards, filter.SnapTerrain,
+                    filter.SpawnCharged, filter.RandSkins, filter.ForceCompleted);
+            }
+            catch (Exception e)
+            {
+                DebugTAC_AI.Assert("TAC_AI: SpawnMobileTechPrefab() failed to spawn! " + e);
+            }
             /*
             string baseBlueprint = toSpawn.savedTech;
             Tank theTech = InstantTech(pos, forwards, Team, toSpawn.techName, baseBlueprint, snapTerrain, population: pop);
@@ -1200,7 +1208,7 @@ namespace TAC_AI.Templates
             if (theTech && filter.IsPopulation)
                 AddToManPopIfLoner(theTech, false);
 
-            theTech.FixupAnchors(true);
+            theTech?.FixupAnchors(true);
 
             return theTech;
         }
@@ -1509,7 +1517,7 @@ namespace TAC_AI.Templates
             {
                 try
                 {
-                    return GetExternalIndexes(filter, SearchSingleUse, true).GetRandomEntry();
+                    return GetExternalIndexes(filter, SearchSingleUse, true).GetRandomEntryWithError();
                 }
                 finally
                 {
@@ -1571,7 +1579,7 @@ namespace TAC_AI.Templates
             {
                 if (ShouldUseCustomTechs(ref SearchSingleUse, filter))
                 {
-                    found = SearchSingleUse.GetRandomEntry();
+                    found = SearchSingleUse.GetRandomEntryWithError();
                     return true;
                 }
                 found = -1;
@@ -1716,7 +1724,20 @@ namespace TAC_AI.Templates
                 ShufflerSingleUse.Clear();
             }
         }
-
+        private static RawTech DoSpawnFallback(int variant, FactionSubTypes faction)
+        {
+            ShufflerSingleUse.Clear();
+            try
+            {
+                return ModTechsDatabase.InternalPopTechs[InternalFallbackHandler(faction, ShufflerSingleUse).GetRandomEntry()];
+            }
+            catch (Exception e)
+            {
+                DebugTAC_AI.LogError(KickStart.ModID + ": FilteredSelectFromAll(" + variant + 
+                    ") - failed to find ANY tech even with handleFallback enabled! - " + e);
+            }
+            return null;
+        }
         internal static RawTech FilteredSelectFromAll(RawTechPopParams filter, bool handleFallback, bool nullIfErrorTech)
         {
             if (SearchSingleUse.Any())
@@ -1744,10 +1765,7 @@ namespace TAC_AI.Templates
                             DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Forced Player-Made Techs spawn possible: false");
                         DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - No Techs found");
                         if (handleFallback)
-                        {
-                            ShufflerSingleUse.Clear();
-                            return ModTechsDatabase.InternalPopTechs[InternalFallbackHandler(filter.Faction, ShufflerSingleUse).GetRandomEntry()];
-                        }
+                            DoSpawnFallback(1, filter.Faction);
                         if (nullIfErrorTech)
                             return null;
                         return GetBaseTemplate(SpawnBaseTypes.NotAvail);
@@ -1779,7 +1797,7 @@ namespace TAC_AI.Templates
                     {
                         if (!DebugTAC_AI.NoLogSpawning)
                         {
-                            DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Forced Local Techs spawn possible: true");
+                            DebugTAC_AI.Log(KickStart.ModID + ": FilteredSelectFromAll - Forced Local Techs spawn possible: true");
                             DebugTAC_AI.Log(KickStart.ModID + ": FilteredSelectFromAll - Indexes Available: ");
                             StringBuilder SB = new StringBuilder();
                             foreach (int val in selectedExt)
@@ -1788,16 +1806,13 @@ namespace TAC_AI.Templates
                             }
                             DebugTAC_AI.Log(SB.ToString());
                         }
-                        outcomeExt = selectedExt.GetRandomEntry();
+                        outcomeExt = selectedExt.GetRandomEntryWithError();
                         if (outcomeExt == -1)
                         {
                             if (!DebugTAC_AI.NoLogSpawning)
                                 DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Could not find any techs!");
                             if (handleFallback)
-                            {
-                                ShufflerSingleUse.Clear();
-                                return ModTechsDatabase.InternalPopTechs[InternalFallbackHandler(filter.Faction, ShufflerSingleUse).GetRandomEntry()];
-                            }
+                                DoSpawnFallback(2, filter.Faction);
                             if (nullIfErrorTech)
                                 return null;
                             return GetBaseTemplate(SpawnBaseTypes.NotAvail);
@@ -1817,7 +1832,7 @@ namespace TAC_AI.Templates
                             }
                             DebugTAC_AI.Log(SB.ToString());
                         }
-                        return ModTechsDatabase.ExtPopTechsAllLookup(selectedExt.GetRandomEntry());
+                        return ModTechsDatabase.ExtPopTechsAllLookup(selectedExt.GetRandomEntryWithError());
                     }
                     float RAND = UnityEngine.Random.Range(0, CombinedVal);
                     DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Chance to pick local tech " + extTechs + "/" +
@@ -1832,17 +1847,13 @@ namespace TAC_AI.Templates
                     }
                     else
                     {   // Spawn local Tech
-                        outcomeExt = selectedExt.GetRandomEntry();
+                        outcomeExt = selectedExt.GetRandomEntryWithError();
                         DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Spawn local tech");
                         if (outcomeExt == -1)
                         {
-                            if (!DebugTAC_AI.NoLogSpawning)
-                                DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Could not find any techs!");
+                            DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Could not find any techs!");
                             if (handleFallback)
-                            {
-                                ShufflerSingleUse.Clear();
-                                return ModTechsDatabase.InternalPopTechs[InternalFallbackHandler(filter.Faction, ShufflerSingleUse).GetRandomEntry()];
-                            }
+                                DoSpawnFallback(3, filter.Faction);
                             if (nullIfErrorTech)
                                 return null;
                             return GetBaseTemplate(SpawnBaseTypes.NotAvail);

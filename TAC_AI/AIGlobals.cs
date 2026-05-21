@@ -27,6 +27,17 @@ namespace TAC_AI
             catch { }
             return false;
         }
+        public static int GetRandomEntryWithError(this List<int> list)
+        {
+            int num = -1;
+            if (list.Count > 0)
+                num = UnityEngine.Random.Range(0, list.Count);
+
+            if (num < 0)
+                return -1;
+
+            return list[num];
+        }
     }
     /// <summary>
     /// Stores all global information for this mod. Edit at your own risk.
@@ -486,6 +497,8 @@ namespace TAC_AI
 #else
         internal static bool ShowDebugFeedBack = false;
 #endif
+
+
 
         public static float AngleUnsignedToSigned(float angle)
         {

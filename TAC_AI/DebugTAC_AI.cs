@@ -14,7 +14,7 @@ namespace TAC_AI
         internal static bool DoLogInfos = false;
         internal static bool DoLogAISetup = false;
         internal static bool DoLogPathing = false;
-        internal static bool DoLogSpawning = false;
+        internal static bool DoLogSpawning = true;
         internal static bool DoLogLoading = false;
         internal static bool DoLogTeams = true;
         private static bool DoLogNet = false;
@@ -235,5 +235,7 @@ namespace TAC_AI
                 throw new InvalidOperationException("Endless loop!");
             }
         }
+        internal static void PopupDebugInfo(string text, WorldPosition pos) => AltUI.PopupDebugInfo(text, pos);
+        internal static void PopupDebugInfo(string text, Vector3 scenePos) => AltUI.PopupDebugInfo(text, scenePos);
     }
 }
