@@ -17,16 +17,12 @@ namespace TAC_AI.AI
     {
         internal static FieldInfo boostGet = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        //Manuvering (Post-Pathfinding)
-        public override Vector3 PathPoint => PathPointMain.ScenePosition;// Where land and spaceships coordinate movement
-        private WorldPosition PathPointMain = WorldPosition.FromScenePosition(Vector3.zero);// Where land and spaceships coordinate movement
+        public override Vector3 PathPoint => PathPointMain.ScenePosition;
+        private WorldPosition PathPointMain = WorldPosition.FromScenePosition(Vector3.zero);
         public Vector3 PathPointSet
         {
             set
             {
-                // P08 B-NEW9-2: Y-axis infinity check was missing. Air-target altitude math is the
-                // most likely source of an infinite Y; without this guard it propagates into the
-                // stored WorldPosition and downstream `PathPoint` consumers.
                 if (value.IsNaN() || float.IsInfinity(value.x) || float.IsInfinity(value.y) || float.IsInfinity(value.z))
                 {
                     DebugTAC_AI.Assert("AIControllerDefault.PathPointSet - lastDestination was NaN or infinity.  Defaulting to own position");
@@ -35,10 +31,9 @@ namespace TAC_AI.AI
                 }
                 PathPointMain = WorldPosition.FromScenePosition(value);
             }
-        }// Where land and spaceships coordinate movement
+        }
 
-        public Vector3 BoostBias = Vector3.zero;// Center of thrust of all boosters, center of boost
-        //public float BoosterThrustBias = 0.5f;
+        public Vector3 BoostBias = Vector3.zero;
 
         public bool AutoPathfind { get; set; } = false;
         public bool Do3DPathing => Helper.Attempt3DNavi;
@@ -89,7 +84,6 @@ namespace TAC_AI.AI
                 {
                     PathPlanned.Enqueue(item);
                     SB.Append(" > " + item.ScenePosition.ToString());
-                    //AIGlobals.PopupNeutralInfo(num + " | " + item.GameWorldPosition.ToString(), item);
                     num++;
                 }
                 DebugTAC_AI.Log(Tank.name + ": OnPartialPathfinding - Path -" + SB.ToString());
@@ -102,7 +96,7 @@ namespace TAC_AI.AI
             if (pos == null)
             {
                 PathPlanned.Clear();
-                return; // Clearing
+                return;
             }
             PathPlanned.Clear();
             if (DebugTAC_AI.NoLogPathing)
@@ -120,7 +114,6 @@ namespace TAC_AI.AI
                 {
                     DebugTAC_AI.Log(Tank.name + ": OnFinishedPathfinding - Finished AutoPathing with " + PathPlanned.Count + " waypoints to follow.");
                     DebugTAC_AI.Log(Tank.name + ": OnFinishedPathfinding - Path - NONE");
-                    //throw new Exception("OnFinishedPathfinding expects at least one pathing WorldPosition in pos, but received none!");
                     return;
                 }
 #if DEBUG
@@ -130,7 +123,6 @@ namespace TAC_AI.AI
                 {
                     PathPlanned.Enqueue(item);
                     SB.Append(" > " + item.ScenePosition.ToString());
-                    //AIGlobals.PopupNeutralInfo(num + " | " + item.GameWorldPosition.ToString(), item);
                     num++;
                 }
                 DebugTAC_AI.Log(Tank.name + ": OnFinishedPathfinding - Finished AutoPathing with " + PathPlanned.Count + " waypoints to follow.");
@@ -149,7 +141,7 @@ namespace TAC_AI.AI
                 return;
             }
 
-            if (this.Helper.AIAlign == AIAlignment.Player)// Allied
+            if (this.Helper.AIAlign == AIAlignment.Player)
             {
                 if (this.AICore == null)
                 {
@@ -159,7 +151,7 @@ namespace TAC_AI.AI
                 }
                 this.AICore.DriveDirector(ref core);
             }
-            else//ENEMY
+            else
             {
                 this.AICore.DriveDirectorEnemy(this.EnemyMind, ref core);
             }
@@ -173,7 +165,7 @@ namespace TAC_AI.AI
                 return;
             }
 
-            if (this.Helper.AIAlign == AIAlignment.Player)// Allied
+            if (this.Helper.AIAlign == AIAlignment.Player)
             {
                 if (this.AICore == null)
                 {
@@ -183,10 +175,8 @@ namespace TAC_AI.AI
                 }
                 this.AICore.DriveDirectorRTS(ref core);
             }
-            else//ENEMY
+            else
             {
-                // Deferred-10 fix: was calling the non-RTS enemy director, leaving the
-                // RTS-specific enemy director dead. Now uses the RTS variant when RTS is active.
                 this.AICore.DriveDirectorEnemyRTS(this.EnemyMind, ref core);
             }
         }
@@ -198,10 +188,6 @@ namespace TAC_AI.AI
 
         protected override IMovementAICore SelectCore(EnemyMind mind)
         {
-            // I: the (DriverType | EvilCommander) -> CoreKind mapping is owned by MovementDispatch
-            // (single source of truth, shared with the container choice in RecalMoveAIController*).
-            // Unmapped values fall back to Land + warn-once rather than throwing - SelectCore runs on
-            // the per-tick recalibrate path, where a throw would poison every other tech that frame.
             MovementCoreKind kind = mind.IsNull()
                 ? MovementDispatch.CoreForPlayer(Helper.DriverType)
                 : MovementDispatch.CoreForEnemy(mind.EvilCommander);
@@ -223,10 +209,6 @@ namespace TAC_AI.AI
 
         protected override void OnPostInitiate()
         {
-            // Composition-change reaction is owned by TankAIHelper.OnBlockAttached/OnBlockDetaching
-            // (sets dirtyAI -> CheckRebuildAlignment -> recalibrate). Ground/sea/space controllers hold
-            // no per-controller state to refresh on a block change, so they subscribe to nothing
-            // (cf. AIControllerStatic; AIControllerAir keeps its handlers only to maintain Grounded).
             CheckBoosters();
             DebugTAC_AI.LogAISetup(KickStart.ModID + ": Added ground AI for " + Tank.name);
         }
@@ -253,8 +235,6 @@ namespace TAC_AI.AI
                         if (spin < lowestDelta)
                             lowestDelta = spin;
                     }
-                    //Vector3 fanDirection = (Vector3) fanDir.GetValue(jet);
-                    //if (fanDirection.x < -0.5)
                     if (Tank.rootBlockTrans.InverseTransformDirection(jet.EffectorForward).z < -0.5)
                     {
                         fanThrust += thrust;
@@ -269,25 +249,21 @@ namespace TAC_AI.AI
                     }
 
                     float force = (float)boostGet.GetValue(boost);
-                    //Vector3 jetDirection = (Vector3) boostDir.GetValue(boost);
-                    //if (jetDirection.x < -0.5)
                     if (Tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)).z < -0.5)
                     {
                         boosterThrust += force;
                     }
 
-                    //We have to get the total thrust in here accounted for as well because the only way we CAN boost is ALL boosters firing!
                     boostBiasDirection -= Tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)) * force;
                 }
             }
 
-            //float totalThrust = (fanThrust + boosterThrust * this.BoosterThrustBias);
             BoostBias = boostBiasDirection.normalized;
         }
         public void TryBoost(bool forwardsOnly = true)
         {
             if (Helper.Obst)
-                return; // Prevent thrusting into trees
+                return;
             if (forwardsOnly)
             {
                 if (BoostBias.z > 0.75f)
@@ -301,7 +277,7 @@ namespace TAC_AI.AI
         public void TryBoost(Vector3 headingLocalCab)
         {
             if (Helper.Obst)
-                return; // Prevent thrusting into trees
+                return;
             if (Vector3.Dot(BoostBias, headingLocalCab) > 0.75f)
                 Helper.MaxBoost();
         }
@@ -318,7 +294,6 @@ namespace TAC_AI.AI
         protected override void OnRecycle()
         {
             this.SetAutoPathfinding(false);
-            //DebugTAC_AI.Log(KickStart.ModID + ": Removed ground AI from " + Tank.name);
         }
     }
 }

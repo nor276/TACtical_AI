@@ -13,13 +13,10 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     {
         public static void AttackWhish(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the Tank (Escort) what to do movement-wise
             BGeneral.ResetValues(helper, ref direct);
             helper.Attempt3DNavi = true;
             helper.AvoidStuff = true;
 
-            // P13 BUG-2: lastEnemyGet.tank guaranteed non-null here — the centralized null-target
-            // guard in EnemyOperationsController now rejects a null .tank too, not just the Visible.
             if (mind.CommanderMind == EnemyAttitude.Homing)
             {
                 if ((helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).magnitude > mind.MaxCombatRange)
@@ -29,7 +26,6 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         return;
                 }
             }
-            // B7: null-target case centralized in EnemyOperationsController.Execute.
             RGeneral.Engadge(helper, tank, mind);
 
             float enemyExt = helper.lastEnemyGet.GetCheapBounds();
@@ -38,10 +34,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             float spacer = helper.lastTechExtents + enemyExt;
 
             if (mind.MainFaction == FactionSubTypes.GC && mind.CommanderAttack != EAttackMode.Safety)
-                spacer = AIGlobals.GCRamSpacer; // ram no matter what, or get close for snipers
+                spacer = AIGlobals.GCRamSpacer;
 
             direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
-            // B9: parallel-write ObjectiveRange for every arm (matches RWheeled/RChopper/RStarship per-bucket writebacks)
             helper.AISetSettings.ObjectiveRange = spacer + range;
             if (mind.CommanderAttack == EAttackMode.Safety)
             {
@@ -98,7 +93,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                 if (dist < spacer + (range / 2))
                 {
-                    RGeneral.MarkRetreating(helper);   // B10
+                    RGeneral.MarkRetreating(helper);
                     if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                         helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                     else
@@ -109,12 +104,12 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 else if (dist < spacer + range)
                 {
-                    RGeneral.MarkAdvancing(helper);    // B10
+                    RGeneral.MarkAdvancing(helper);
                     helper.ThrottleState = AIThrottleState.PivotOnly;
                 }
                 else if (dist < helper.lastTechExtents + enemyExt + (range * 2))
                 {
-                    RGeneral.MarkAdvancing(helper);    // B10
+                    RGeneral.MarkAdvancing(helper);
                     if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                         helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                     else
@@ -125,7 +120,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 else
                 {
-                    RGeneral.MarkAdvancing(helper);    // B10
+                    RGeneral.MarkAdvancing(helper);
                     if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                         helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                     else
@@ -136,7 +131,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                 }
             }
-            else    // T2: Chase/Strong/Random/AutoSet share kinematics — target-selection differentiation lives in TankAIHelper.FindEnemy
+            else
             {
                 helper.AISetSettings.SideToThreat = false;
                 helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
@@ -177,10 +172,6 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                 }
             }
-            // B6: publish per-tick combat range to mind. RNaval's `range` (line 35) bakes
-            // `helper.lastTechExtents` in; subtract it on writeback so the stored value
-            // matches the RWheeled/RStarship unit-contract that downstream consumers
-            // (AICore driveDyna, GUI slider, P12 weapon range) expect.
             mind.MinCombatRange = range - helper.lastTechExtents;
         }
     }

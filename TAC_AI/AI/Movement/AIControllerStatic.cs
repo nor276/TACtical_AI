@@ -16,9 +16,6 @@ namespace TAC_AI.AI
 
         public override Vector3 PathPoint => SceneStayPos.ScenePosition.SetY(HoldHeight);
         public Vector2 IdleFacingDirect = Vector2.up;
-        // World-space direction the tech was anchored facing. Used as the rest aim when there is
-        // no live enemy so an idle turret returns to its mounted facing instead of yawing toward a
-        // stale movement waypoint (lastDestinationCore). A direction, so world-origin shifts don't affect it.
         public Vector3 RestFacing = Vector3.forward;
 
         protected override IMovementAICore SelectCore(EnemyMind mind) => new StaticAICore();
@@ -47,7 +44,7 @@ namespace TAC_AI.AI
             }
             Helper.TryInsureAutoAnchor();
 
-            if (Helper.AIAlign == AIAlignment.Player)// Allied
+            if (Helper.AIAlign == AIAlignment.Player)
             {
                 if (AICore == null)
                 {
@@ -57,14 +54,14 @@ namespace TAC_AI.AI
                 }
                 AICore.DriveDirector(ref core);
             }
-            else//ENEMY
+            else
             {
                 AICore.DriveDirectorEnemy(EnemyMind, ref core);
             }
         }
 
         public override void DriveDirectorRTS(ref EControlCoreSet core)
-        {   // Ignore player movement commands but follow attack commands
+        {
             if (Helper == null)
             {
                 string tankName = Tank.IsNotNull() ? Tank.name : "UNKNOWN_TANK";
@@ -73,7 +70,7 @@ namespace TAC_AI.AI
             }
             Helper.TryInsureAutoAnchor();
 
-            if (Helper.AIAlign == AIAlignment.Player)// Allied
+            if (Helper.AIAlign == AIAlignment.Player)
             {
                 if (AICore == null)
                 {
@@ -83,9 +80,8 @@ namespace TAC_AI.AI
                 }
                 AICore.DriveDirectorRTS(ref core);
             }
-            else//ENEMY
+            else
             {
-                // Deferred-10 fix: was calling the non-RTS enemy director (see AIControllerDefault).
                 AICore.DriveDirectorEnemyRTS(EnemyMind, ref core);
             }
         }
@@ -97,8 +93,6 @@ namespace TAC_AI.AI
 
         public override void OnMoveWorldOrigin(IntVector3 move)
         {
-            // AimTarget is an absolute world point; rebase it on floating-origin shifts so an idle
-            // turret doesn't briefly slew toward stale coordinates between director ticks.
             AimTarget += move;
         }
         public override Vector3 GetDestination()

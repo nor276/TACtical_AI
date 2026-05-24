@@ -129,10 +129,10 @@ namespace TAC_AI
         private bool useInventory;
 
         public static AISettingsSet DefaultSettable => new AISettingsSet(
-            50, 
+            50,
             5000,
-            AIGlobals.DefaultMaxTargetingRange, 
-            AIGlobals.DefaultMaxObjectiveRange, 
+            AIGlobals.DefaultMaxTargetingRange,
+            AIGlobals.DefaultMaxObjectiveRange,
             true);
 
         public AISettingsSet(float combatR, float searchR, float chaseR, float jobR, bool toggleDefault)
@@ -221,7 +221,7 @@ namespace TAC_AI
         private static LocExtStringMod LOC_FullMelee_desc = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English,
-              "Ram into the target at all costs" },//Smart Melee with target
+              "Ram into the target at all costs" },
             { LocalisationEnums.Languages.Japanese,
                 "いかなる犠牲を払ってでも標的に突撃する"},
         });
@@ -263,17 +263,17 @@ namespace TAC_AI
         internal void GUIDisplay(AISettings lim, ref bool delta)
         {
             GUIAIManager.StatusLabelButtonToggle(new Rect(20, 145, 80, 30), "RAM+", lim.FullMelee, ref fullMelee,
-                LOC_FullMelee_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need GeoCorp A.I."
+                LOC_FullMelee_desc, GUIAIManager.LOC_FindTheAI, ref delta);
             GUIAIManager.StatusLabelButtonToggle(new Rect(100, 145, 80, 30), "Side", lim.SideToThreat, ref sideToThreat,
-                LOC_SideToThreat_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need Venture A.I."
+                LOC_SideToThreat_desc, GUIAIManager.LOC_FindTheAI, ref delta);
             GUIAIManager.StatusLabelButtonToggle(new Rect(20, 175, 80, 30), "CPU+", lim.AdvancedAI, ref advancedAI,
-                LOC_AdvancedAI_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need Hawkeye or Venture A.I."
+                LOC_AdvancedAI_desc, GUIAIManager.LOC_FindTheAI, ref delta);
             GUIAIManager.StatusLabelButtonToggle(new Rect(100, 175, 80, 30), "Multi+", lim.AllMT, ref allMT,
-                LOC_AllMT_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need GeoCorp A.I."
+                LOC_AllMT_desc, GUIAIManager.LOC_FindTheAI, ref delta);
             GUIAIManager.StatusLabelButtonToggle(new Rect(20, 205, 80, 30), "Repair", lim.AutoRepair, ref autoRepair,
-                LOC_AutoRepair_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need GeoCorp or Better Future A.I."
+                LOC_AutoRepair_desc, GUIAIManager.LOC_FindTheAI, ref delta);
             GUIAIManager.StatusLabelButtonToggle(new Rect(100, 205, 80, 30), "SCU", lim.UseInventory, ref useInventory,
-                LOC_UseInventory_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need Better Future A.I."
+                LOC_UseInventory_desc, GUIAIManager.LOC_FindTheAI, ref delta);
         }
 
         [Flags]

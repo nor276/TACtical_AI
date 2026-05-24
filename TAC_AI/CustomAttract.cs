@@ -114,8 +114,6 @@ namespace TAC_AI
                 Vector3 offset = Vector3.zero;
                 offset.x = -50.0f;
                 offset.z = 100.0f;
-                //offset.x = -240.0f;
-                //offset.z = 442.0f;
                 BiomeMap edited = __instance.spawns[0].biomeMap;
                 Singleton.Manager<ManWorld>.inst.SeedString = "68unRTyXMrX93DH";
                 Singleton.Manager<ManGameMode>.inst.RegenerateWorld(edited, __instance.spawns[1].cameraSpawn.forward, AIGlobals.LookRot(__instance.spawns[1].cameraSpawn.forward, Vector3.up));
@@ -159,13 +157,12 @@ namespace TAC_AI
                     Vector3 posSea = KickStart.SpecialAttractPos + offset;
 
                     Vector3 forward = (KickStart.SpecialAttractPos - posSea).normalized;
-                    Vector3 position = posSea;// - (forward * 10);
+                    Vector3 position = posSea;
                     position = AI.Movement.AIEPathing.SnapOffsetToSea(position);
 
                     if (!RawTechLoader.SpawnAttractTech(position, forward, AIGlobals.GetRandomEnemyBaseTeam(), BaseTerrain.Sea))
                         RawTechLoader.SpawnAttractTech(position, forward, AIGlobals.GetRandomEnemyBaseTeam(), BaseTerrain.Space);
                 }
-                //DebugTAC_AI.Log(KickStart.ModID + ": cam is at " + Singleton.Manager<CameraManager>.inst.ca);
                 Singleton.Manager<CameraManager>.inst.ResetCamera(KickStart.SpecialAttractPos, AIGlobals.LookRot(Vector3.forward));
                 Singleton.cameraTrans.position = KickStart.SpecialAttractPos;
                 Singleton.cameraTrans.rotation = AIGlobals.LookRot(Vector3.forward);
@@ -228,7 +225,7 @@ namespace TAC_AI
             {
                 Vector3 position = tanksToConsider[step] + (Vector3.up * 10);
 
-                if (RawTechLoader.SpawnAttractTech(position, (spawn - tanksToConsider[step]).normalized, 
+                if (RawTechLoader.SpawnAttractTech(position, (spawn - tanksToConsider[step]).normalized,
                     AIGlobals.GetRandomEnemyBaseTeam(), BaseTerrain.AnyNonSea))
                     DebugTAC_AI.Log(KickStart.ModID + ": ThrowCoolAIInAttract(Misc) - error ~ could not find Tech");
             }

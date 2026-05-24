@@ -65,13 +65,12 @@ namespace TAC_AI.World
         }
 
         internal override void MovementSceneDelta(float timeDelta)
-        { 
+        {
         }
 
         internal NP_BaseUnit(ManSaveGame.StoredTech techIn, NP_Presence_Automatic team) :
             base(techIn, team, techIn.m_TechData.GetMainCorporations().FirstOrDefault())
         {
-            //tilePos = tilePosition;
 
             ManEnemyWorld.GetStatsAsync(this);
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -10,7 +10,7 @@ using TerraTechETCUtil;
 namespace TAC_AI
 {
     internal class ReverseCache : MonoBehaviour
-	{   // For blocks edited externally - we need to destroy them from affecting the pool of related blocks
+	{
 
 		private static readonly FieldInfo minerOp = typeof(ModuleItemProducer).GetField("m_OperationMode", BindingFlags.NonPublic | BindingFlags.Instance),
 		    mineOut = typeof(ModuleItemProducer).GetField("m_CompatibleChunkTypes", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -19,7 +19,7 @@ namespace TAC_AI
 		private ChunkTypes[] chunks;
 		private ModuleItemProducer.OperateConditionFlags flags;
 		public void SaveComponents()
-		{   // can't have this cycling again can we?
+		{
 			if (!cached)
 			{
 				ModuleItemProducer produce = GetComponent<ModuleItemProducer>();
@@ -30,7 +30,6 @@ namespace TAC_AI
 
 				cached = true;
 
-				//DebugTAC_AI.Log(KickStart.ModID + ": Saved " + name);
                 try
                 {
                     Tank tank = transform.root.GetComponent<Tank>();
@@ -56,10 +55,9 @@ namespace TAC_AI
 			}
 		}
 		public void LoadNow()
-		{   
+		{
 			mineOut.SetValue(GetComponent<ModuleItemProducer>(), chunks);
 			minerOp.SetValue(GetComponent<ModuleItemProducer>(), flags);
-			//DebugTAC_AI.Log(KickStart.ModID + ": Loaded " + name);
 			cached = false;
             GetComponent<TankBlock>().UnSubToBlockAttachConnected(LoadNow, null);
             DestroyImmediate(this);

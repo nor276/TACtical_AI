@@ -86,10 +86,6 @@ namespace TAC_AI
             }
         }
 
-        /// <summary>
-        /// Ensures every tech registered with <c>ManTechs.RegisterTank</c> has a
-        /// <see cref="TankAIHelper"/> attached before any other system queries it.
-        /// </summary>
         internal static class ManTechsPatches
         {
             internal static Type target = typeof(ManTechs);
@@ -100,9 +96,6 @@ namespace TAC_AI
             }
         }
 
-        // Suppresses vanilla camera-distance sleep for mod-managed hostile techs within EnemyKeepAwakeRange,
-        // so distant enemies keep ticking and moving instead of going kinematic and freezing in place.
-        // Vanilla still handles wake-up (TestWakeSleepingTechs) and MP-skip and friendly-skip naturally.
         internal static class ManTechsSleepPatches
         {
             internal static Type target = typeof(ManTechs);
@@ -111,13 +104,13 @@ namespace TAC_AI
             {
                 if (!KickStart.EnableBetterAI) return true;
                 if (tech == null || tech.IsSleeping) return true;
-                if (!ManBaseTeams.IsEnemyBaseTeam(tech.Team)) return true;  // hostile mod teams only
+                if (!ManBaseTeams.IsEnemyBaseTeam(tech.Team)) return true;
 
                 float d2 = (tech.boundsCentreWorld - Singleton.cameraTrans.position).sqrMagnitude;
                 if (d2 > AIGlobals.EnemyKeepAwakeRange * AIGlobals.EnemyKeepAwakeRange)
-                    return true;  // beyond cap -> let vanilla put it to sleep (NP_* sim takes over)
+                    return true;
 
-                return false;  // suppress vanilla sleep this frame
+                return false;
             }
         }
 
@@ -153,10 +146,8 @@ namespace TAC_AI
         internal static class ManNetworkPatches
         {
             internal static Type target = typeof(ManNetwork);
-            // Multi-Player
             private static void AddPlayer_Postfix(ManNetwork __instance)
             {
-                // Setup aircraft if Population Injector is N/A
                 try
                 {
                     if (ManNetwork.IsHost && KickStart.EnableBetterAI)

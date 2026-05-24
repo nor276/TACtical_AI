@@ -48,7 +48,7 @@ namespace TerraTechETCUtil
             }
             return true;
         }
-        public static bool StringToBIBlockType(string mem, out BlockTypes BT) // BLOCK INJECTOR
+        public static bool StringToBIBlockType(string mem, out BlockTypes BT)
         {
             BT = BlockTypes.GSOAIController_111;
 
@@ -129,17 +129,13 @@ namespace TerraTechETCUtil
                 {
                     TankBlock prefab = Singleton.Manager<ManSpawn>.inst.GetBlockPrefab(type);
                     string name = prefab.name;
-                    if (prefab.GetComponent<Damageable>() && type.ToString() != name) //&& !Singleton.Manager<ManMods>.inst.IsModdedBlock(type))
+                    if (prefab.GetComponent<Damageable>() && type.ToString() != name)
                     {
                         int hash = name.GetHashCode();
                         if (!errorNames.Keys.Contains(hash))
                         {
                             errorNames.Add(hash, type);
 #if DEBUG
-                            /*
-                        if ((int)type > 5000)
-                            Debug.Log("TACtical_AI: ConstructErrorBlocksList - Added Modded Block " + name + " | " + type.ToString());
-                            */
 #endif
                         }
                     }
@@ -178,10 +174,9 @@ namespace TerraTechETCUtil
                     {
                         int num = 0;
                         string name = "";
-                        if (FindInt(SCAN, "\"ID\":", ref num)) //&& FindText(SCAN, "\"Name\" :", ref name))
+                        if (FindInt(SCAN, "\"ID\":", ref num))
                         {
                             UnOf_Offi.Add(("_C_BLOCK:" + num.ToString()).GetHashCode(), (BlockTypes)ManMods.inst.GetBlockID(MBD.name));
-                            //Debug.Log("TACtical_AI: ConstructModdedIDList - " + "_C_BLOCK:" + num.ToString() + " | " + MBD.name + " | " + (BlockTypes)ManMods.inst.GetBlockID(MBD.name));
                         }
                     }
                 }
@@ -236,10 +231,10 @@ namespace TerraTechETCUtil
                     return false;
                 }
                 else
-                    final.Remove(final.Length - 5, 5);// remove ".JSON"
+                    final.Remove(final.Length - 5, 5);
             }
             else
-                final.Remove(final.Length - 8, 8);// remove ".RAWTECH"
+                final.Remove(final.Length - 8, 8);
 
             output = final.ToString();
             return true;
@@ -279,7 +274,6 @@ namespace TerraTechETCUtil
                         intCase = (int)float.Parse(output);
                         return true;
                     }
-                    //Debug.Log(searchEnd + " | " + searchLength + " | " + output + " | ");
                 }
                 catch (Exception e) { Debug.LogError(searchEnd + " | " + searchLength + " | " + output + " | " + e); }
             }

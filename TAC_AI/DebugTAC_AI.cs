@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using TerraTechETCUtil;
@@ -17,9 +17,6 @@ namespace TAC_AI
         internal static bool DoLogSpawning = false;
         internal static bool DoLogLoading = false;
         internal static bool DoLogTeams = true;
-        // T5: target-acquisition lifecycle events (target released / lost / out of range,
-        // weapon lock-on overrides). Separate from DoLogOwnership which only tracks
-        // lastEnemy *setter* transitions. Use LogTargeting / LogTargeting(tech, ...).
         internal static bool DoLogTargeting = false;
         private static bool DoLogNet = false;
 #if DEBUG
@@ -41,7 +38,7 @@ namespace TAC_AI
             if (CalcTarget != target)
                 return;
             AILoadTimer.Stop();
-            Log("Calculations for AI " + target.name + " finished in " + 
+            Log("Calculations for AI " + target.name + " finished in " +
                 AILoadTimer.ElapsedMilliseconds.ToString() + " miliseconds");
             CalcTarget = null;
         }
@@ -103,11 +100,6 @@ namespace TAC_AI
             UnityEngine.Debug.Log(KickStart.ModID + ": "  + message + e);
         }
         private static readonly HashSet<string> warnedKeys = new HashSet<string>();
-        /// <summary>
-        /// Like LogWarnPlayerOnce, but dedups per-key so repeated failures across distinct
-        /// keys (e.g. tank names) each surface their first occurrence instead of being
-        /// hidden by the session-wide NotErrored gate.
-        /// </summary>
         internal static void LogWarnPlayerOncePerKey(string key, string message, Exception e)
         {
             if (!ShouldLog)
@@ -119,13 +111,6 @@ namespace TAC_AI
             UnityEngine.Debug.Log(KickStart.ModID + ": " + message + e);
         }
         private static readonly HashSet<string> fileWarnedKeys = new HashSet<string>();
-        /// <summary>
-        /// Like <see cref="LogWarnPlayerOncePerKey"/> but writes ONLY to the log file (Player.log) and
-        /// NEVER raises the ManModGUI popup. For routine, expected-under-load diagnostics (stale
-        /// ControlOperator, transient null MovementController, slow / failed tile loads) that should
-        /// not interrupt the player but are worth recording. Tagged [AIWARN] so they are easy to grep
-        /// out of the log. De-duped per key (once per session) so a struggling tech can't spam either.
-        /// </summary>
         internal static void LogWarnFileOnly(string key, string message, Exception e = null)
         {
             if (!ShouldLog)
@@ -161,10 +146,6 @@ namespace TAC_AI
                 return;
             UnityEngine.Debug.Log(message);
         }
-        // T5: target-acquisition lifecycle. Player-tank-filtered variant mirrors
-        // LogSpecific so a fleet engagement doesn't spam — only the player's own tech
-        // emits when the flag is on. Use bare LogTargeting(string) for non-tech-scoped
-        // events (e.g. weapon lock overrides without an obvious "this tank" context).
         internal static bool NoLogTargeting => !ShouldLog || !DoLogTargeting;
         internal static void LogTargeting(string message)
         {
@@ -334,8 +315,8 @@ namespace TAC_AI
                         return "'" + n + "' #" + id;
                 }
             }
-            catch { /* swallow — caller may be deep in a tick; we never want logging
-                       to throw. Fall through to the id-only fallback. */ }
+            catch {
+ }
             return "#" + id;
         }
 
@@ -357,13 +338,12 @@ namespace TAC_AI
             string callerHint = "?";
             try
             {
-                // skip(1) = our caller (the property setter); skip(2) = the actual writing subsystem.
                 var sf = new System.Diagnostics.StackFrame(2, false);
                 var m = sf.GetMethod();
                 if (m != null)
                     callerHint = (m.DeclaringType != null ? m.DeclaringType.Name : "?") + "." + m.Name;
             }
-            catch { /* never let the diagnostic crash the setter */ }
+            catch {  }
             UnityEngine.Debug.Log(Prefix("Ownership") + " " + field + ": "
                 + (oldVal ?? "<null>") + " → " + (newVal ?? "<null>") + " by " + callerHint);
         }
@@ -381,7 +361,7 @@ namespace TAC_AI
                 UnityEngine.Debug.Log(Prefix("History") + " " + VisibleName(helper.tank)
                     + " (reason=" + reason + "):\n  " + helper.GetStateHistorySnapshot());
             }
-            catch { /* swallow — dumper must never crash the caller */ }
+            catch {  }
         }
 
         private static readonly HashSet<string> firstFireKeys = new HashSet<string>();

@@ -58,9 +58,6 @@ namespace TAC_AI.Templates
             IEnumerator IModPreloadable.GetEnumerator() => enumerator;
         }
 
-        // --------------------  RawTech Lookups  --------------------
-        // ~4s worth of items at 60fps. Was Mathf.RoundToInt(4 / Time.deltaTime): at static-init
-        // Time.deltaTime is 0 -> +Infinity -> clamped to 1000 (4x too coarse, stalls progress UI).
         internal static int IterateExtraRate = 240;
 
         internal static string Subject = null;
@@ -119,7 +116,6 @@ namespace TAC_AI.Templates
             }
         }
 
-        // --------------------  MAIN RawTech Validation  --------------------
         private static List<RawTech> ExtPopTechsAll = new List<RawTech>();
         public static void ValidateAllStringTechs()
         {
@@ -146,7 +142,6 @@ namespace TAC_AI.Templates
             }
         }
 
-        // --------------------  Internal RawTech Validation  --------------------
         public static Dictionary<SpawnBaseTypes, RawTech> InternalPopTechs;
         public static HashSet<SpawnBaseTypes> InternalHasModBlocks = new HashSet<SpawnBaseTypes>();
         public static bool SkipUnmodded = false;
@@ -206,13 +201,13 @@ namespace TAC_AI.Templates
             }
             catch (InsufficientMemoryException)
             {
-                GC.Collect(); // Do it NOW IT'S AN EMERGENCY
+                GC.Collect();
                 DebugTAC_AI.FatalError("Advanced AI ran COMPLETELY OUT of memory when loading enemy spawns." +
                     " Some enemies might be corrupted!");
             }
             catch (OutOfMemoryException)
             {
-                GC.Collect(); // Do it NOW IT'S AN EMERGENCY
+                GC.Collect();
                 DebugTAC_AI.FatalError("Advanced AI ran out of memory when loading enemy spawns." +
                     " Some enemies might be corrupted!");
             }
@@ -224,12 +219,6 @@ namespace TAC_AI.Templates
 
         public static void DelayedValidateAndAddBaseGameTechs()
         {
-            /*
-            if (ManPresetFilter.inst.IsSettingUp || ManPop.inst.IsSettingUp)
-                InvokeHelper.Invoke(DelayedValidateAndAddBaseGameTechs, 0.25f);
-            else
-                ValidateAndAddTechs(SpecialAISpawner.ReturnAllBaseGameSpawns());
-            */
         }
         private static void AddInternalTechs(IEnumerable<KeyValuePair<SpawnBaseTypes, RawTech>> compile)
         {
@@ -284,7 +273,7 @@ namespace TAC_AI.Templates
             InProgress = "Cleaning up...";
             EstPercentDone = 1f;
             yield return new WaitForEndOfFrame();
-            preCompile.Clear(); // GC, do your duty
+            preCompile.Clear();
             yield return new WaitForEndOfFrame();
             EstPercentDone = 1f;
             EstNumSteps = 0;
@@ -343,7 +332,7 @@ namespace TAC_AI.Templates
             InProgress = "Cleaning up...";
             EstPercentDone = 1f;
             yield return new WaitForEndOfFrame();
-            preCompile.Clear(); // GC, do your duty
+            preCompile.Clear();
             yield return new WaitForEndOfFrame();
             EstPercentDone = 1f;
             EstNumSteps = 0;
@@ -388,14 +377,13 @@ namespace TAC_AI.Templates
             InProgress = "Cleaning up...";
             EstPercentDone = 1f;
             yield return new WaitForEndOfFrame();
-            preCompile.Clear(); // GC, do your duty
+            preCompile.Clear();
             yield return new WaitForEndOfFrame();
             EstPercentDone = 1f;
             EstNumSteps = 0;
             EstNumStepsIterator = 0;
         }
 
-        // --------------------  External RawTech Validation  --------------------
         internal static List<RawTech> ExtPopTechsLocal = new List<RawTech>();
         internal static List<RawTech> ExtPopTechsMods = new List<RawTech>();
 
@@ -562,7 +550,7 @@ namespace TAC_AI.Templates
             EstNumStepsIterator = 0;
             EstPercentDone = 1f;
             yield return new WaitForEndOfFrame();
-            GC.Collect(); // GC, do your duty
+            GC.Collect();
             yield return new WaitForEndOfFrame();
             EstPercentDone = 1f;
             yield return new WaitForEndOfFrame();
@@ -581,7 +569,6 @@ namespace TAC_AI.Templates
             }
         }
 
-        // --------------------  RawTech Utilities  --------------------
         public static bool ValidateBlocksInTechAndPurgeIfNeeded(List<RawBlockMem> toScreen)
         {
             try
@@ -609,7 +596,7 @@ namespace TAC_AI.Templates
             catch (Exception e)
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": ValidateBlocksInTech - Tech was corrupted via unexpected mod changes! - " + e);
-                return false; 
+                return false;
             }
         }
 

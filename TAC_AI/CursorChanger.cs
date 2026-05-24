@@ -9,27 +9,7 @@ namespace TAC_AI
 {
     public class CursorChanger : MonoBehaviour
     {
-        // static FieldInfo existingCursors = typeof(MousePointer).GetField("m_CursorDataSets", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        /*
-            Default,
-            OverGrabbable,
-            HoldingGrabbable,
-            Painting,
-            SkinPainting,
-            SkinPaintingOverPaintable,
-            SkinTechPainting,
-            SkinTechPaintingOverPaintable,
-            Disabled
-            AIOrderAttack   0
-            AIOrderEmpty    1
-            AIOrderMove     2
-            AIOrderSelect   3
-            AIOrderFetch    4
-            AIOrderMine     5
-            AIOrderProtect  6
-            AIOrderScout    7
-        */
         public static CursorChangeHelper.CursorChangeCache Cache;
         public static bool AddedNewCursors = false;
         public static CursorChangeHelper.CursorChangeCache CursorIndexCache => Cache.CursorIndexCache;

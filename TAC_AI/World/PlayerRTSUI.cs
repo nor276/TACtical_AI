@@ -35,8 +35,8 @@ namespace TAC_AI.World
 
         private static float widthW = MaxWindowWidth + Offset;
         private static float heightW = MaxWindowHeight + Offset;
-        private static Rect CommandBar = new Rect(0, 0, widthW, heightW + 20);   // the "window"
-        private static Rect CommandBarSmall = new Rect(0, 0, (ButtonWidth * 3) + Offset, 50 + Offset);   // the "window"
+        private static Rect CommandBar = new Rect(0, 0, widthW, heightW + 20);
+        private static Rect CommandBarSmall = new Rect(0, 0, (ButtonWidth * 3) + Offset, 50 + Offset);
         private static Vector2 scrolll = new Vector2(0, 0);
         private static float scrolllSize = 50;
         private static int Offset = 20;
@@ -122,18 +122,6 @@ namespace TAC_AI.World
         }
         private static void ShowTechPlacementUI_LEGACY(TankAIHelper helper)
         {
-            /*
-            ManHUD.inst.ShowHudElement(ManHUD.HUDElementType.TechLoader, null);
-            UITechLoaderHUD UITL = (UITechLoaderHUD)ManHUD.inst.GetHudElement(ManHUD.HUDElementType.TechLoader);
-            if (UITL)
-            {
-                var UITS = UITL.GetComponentInChildren<UITechSelector>(true);
-                if (UITS)
-                {
-                    UITS.
-                }
-            }
-            */
             if (Input.GetKey(KickStart.MultiSelect) && helper?.lastBuiltTech != null)
             {
                 if (DoTechBuild(helper, helper.lastBuiltTech))
@@ -259,47 +247,6 @@ namespace TAC_AI.World
                             ButtonSmallText = new GUIStyle(AltUI.ButtonBlue);
                             ButtonSmallText.font = AltUI.ExoFontExtraBold;
                             ButtonSmallText.fontSize = 9;
-                            /*
-                            ButtonSmallText.normal = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.normal.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };
-                            ButtonSmallText.hover = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.hover.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };
-                            ButtonSmallText.active = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.active.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };
-                            ButtonSmallText.focused = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.focused.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };
-                            ButtonSmallText.onNormal = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.onNormal.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };
-                            ButtonSmallText.onHover = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.onHover.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };
-                            ButtonSmallText.onActive = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.onActive.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };
-                            ButtonSmallText.onFocused = new GUIStyleState()
-                            {
-                                background = ButtonSmallText.onFocused.background,
-                                textColor = AltUI.ColorDefaultWhite,
-                            };*/
 
                             hudBack = ManHUD.inst.GetComponent<Canvas>();
                             hudBackOrigin = hudBack.pixelRect.position;
@@ -450,7 +397,7 @@ namespace TAC_AI.World
                     return;
                 data.WidthHealthBar = 80;
                 float height = 38;
-                
+
                 Vector3 AboveTechUI = Singleton.cameraTrans.up * vis.GetCheapBounds();
                 Vector3 OnScreenPos = Singleton.camera.WorldToScreenPoint(vis.centrePosition + AboveTechUI) * ManWorldRTS.RTSUIScaleInv;
                 if (OnScreenPos.z <= 0)
@@ -491,13 +438,11 @@ namespace TAC_AI.World
             private void GUIHandlerHealthbar(int ID)
             {
                 float WidthHealthBarExt = WidthHealthBar + BorderSize + BorderSize;
-                //GUI.DrawTexture(new Rect(0, 0, WidthHealthBar, 14), OutlineWhite, ScaleMode.ScaleAndCrop);
                 if (AlwaysShowName || Input.GetKey(KickStart.MultiSelect))
                 {
                     GUI.DrawTexture(new Rect(0, 0, WidthHealthBarExt, 14), OutlineBlack, ScaleMode.ScaleAndCrop);
                     GUI.Label(new Rect(0, 7, WidthHealthBarExt, 14), name, SmallTextTitle);
                 }
-                //GUI.DrawTexture(new Rect(0, 10, WidthHealthBar, 16), OutlineBlack, ScaleMode.ScaleAndCrop);
                 if (EnergyMax > 0)
                 {
                     GUI.DrawTexture(new Rect(0, 14 - BorderSize, WidthHealthBarExt, 20 + BorderSize + BorderSize), OutlineBlack, ScaleMode.ScaleAndCrop);
@@ -625,7 +570,7 @@ namespace TAC_AI.World
                     }
                     catch (ExitGUIException e)
                     { throw e; }
-                    catch { }// error on handling something
+                    catch { }
                 }
             }
 
@@ -638,8 +583,6 @@ namespace TAC_AI.World
                 ManWorldRTS.inst.ClearList();
                 ManWorldRTS.inst.StartControlling(temp.unit, ManWorldRTS.inst.LocalPlayerTechsControlled);
                 ManWorldRTS.SetSelectHalo(temp.unit, true);
-                //TechUnit.SetRTSState(true);
-                //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                 ManWorldRTS.inst.SelectUnitSFX();
             }
             if (ManWorldRTS.MouseIsOverGUIMenu(CommandBar))
@@ -664,7 +607,6 @@ namespace TAC_AI.World
                     ManWorldRTS.inst.SetPlayerHovered(null);
             }
 
-            //GUI.DragWindow();
         }
         private static TankAIHelper lastTank => ManWorldRTS.inst.Leading;
         private static List<TankAIHelper> lastTanks => ManWorldRTS.inst.LocalPlayerTechsControlled.ToList();
@@ -691,15 +633,15 @@ namespace TAC_AI.World
         private static Texture2D LoadTechIcon = ResourcesHelper.GetTexture2DFromBaseGameAllDeep("ICON_TECHLOADER");
         private static Texture2D StopIcon = ResourcesHelper.GetTexture2DFromBaseGameAllDeep("ICON_PAUSE");
         private static Texture2D AnchorTex = ResourcesHelper.GetTexture2DFromBaseGameAllDeep("HUD_Anchor_Toggle");
-        private static Sprite AnchorIcon = Sprite.Create(AnchorTex, new Rect(0f, 0f, AnchorTex.height, AnchorTex.height), 
+        private static Sprite AnchorIcon = Sprite.Create(AnchorTex, new Rect(0f, 0f, AnchorTex.height, AnchorTex.height),
             Vector2.zero, 1f, 0u, SpriteMeshType.FullRect);
-        private static Sprite UnanchorIcon = Sprite.Create(AnchorTex, new Rect(AnchorTex.height, 0f, AnchorTex.height, AnchorTex.height), 
+        private static Sprite UnanchorIcon = Sprite.Create(AnchorTex, new Rect(AnchorTex.height, 0f, AnchorTex.height, AnchorTex.height),
             Vector2.zero, 1f, 0u, SpriteMeshType.FullRect);
         private static void CommandsSelfDestruct()
         {
             if (ManNetwork.IsNetworked)
             {
-                CommandButton(GUIAIManager.LOC_Dismantle_disabled, BlowUpIcon, ManSFX.UISfxType.AnchorFailed, 
+                CommandButton(GUIAIManager.LOC_Dismantle_disabled, BlowUpIcon, ManSFX.UISfxType.AnchorFailed,
                     GUIAIManager.LOC_Dismantle_disabled, false,
                 GUIAIManager.LOC_Dismantle_disabled_desc, "ERROR", true, false, null);
             }
@@ -737,11 +679,6 @@ namespace TAC_AI.World
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            /*
-            if (RawTechExporter.aiIcons.TryGetValue(AIType.MTMimic, out SPR))
-                tex = SPR.texture;
-            CommandButton("Patrol", tex, "Patrol Between", true,
-                "Unanchor Tech", "ERROR", false, false, CommandMove);*/
             EmptyButton();
             EmptyButton();
             EmptyButton();
@@ -770,10 +707,10 @@ namespace TAC_AI.World
             EmptyButton();
             if (RawTechExporter.aiIcons.TryGetValue(AIType.Assault, out SPR))
                 tex = SPR.texture;
-            CommandButton(GUIAIManager.LOC_Attack, tex, ManSFX.UISfxType.LockOn, GUIAIManager.LOC_Attack, true, GUIAIManager.LOC_UnAnchor, 
+            CommandButton(GUIAIManager.LOC_Attack, tex, ManSFX.UISfxType.LockOn, GUIAIManager.LOC_Attack, true, GUIAIManager.LOC_UnAnchor,
                 "ERROR", false, lastTank.lastEnemy, CommandMove);
 
-            CommandButton(GUIAIManager.LOC_Stop, StopIcon, ManSFX.UISfxType.LockOn, GUIAIManager.LOC_Stop, true, string.Empty, "ERROR", 
+            CommandButton(GUIAIManager.LOC_Stop, StopIcon, ManSFX.UISfxType.LockOn, GUIAIManager.LOC_Stop, true, string.Empty, "ERROR",
                 false, !lastTank.lastEnemy, CommandStop);
 
             GUILayout.EndHorizontal();
@@ -899,7 +836,6 @@ namespace TAC_AI.World
                     var item = lastTanks[step];
                     GUIAIManager.SetDriver(item, AIDriverType.AutoSet, false);
                 }
-                //GUIAIManager.SetDriver(lastTank, AIDriverType.AutoSet, false);
             }
             else
             {
@@ -919,8 +855,6 @@ namespace TAC_AI.World
                     GUIAIManager.SetDriver(item, AIDriverType.Stationary, false);
                     GUIAIManager.SetAIType(item, AIType.Escort, false);
                 }
-                //GUIAIManager.SetDriver(lastTank, AIDriverType.Stationary, false);
-                //GUIAIManager.SetAIType(lastTank, AIType.Escort, false);
             }
         }
 
@@ -930,8 +864,8 @@ namespace TAC_AI.World
         }
         private static void EmptyButton()
         {
-            GUILayout.Button(string.Empty, 
-                AltUI.ButtonGrey, 
+            GUILayout.Button(string.Empty,
+                AltUI.ButtonGrey,
                 GUILayout.Width(ButtonWidth), GUILayout.Height(ButtonHeight));
         }
         private static void CommandButton(string title, ManSFX.UISfxType SFX, string desc, bool isAvail, string availReq, string runReq, bool CantPerformActions, bool selected, Action act)
@@ -987,7 +921,7 @@ namespace TAC_AI.World
                         ManSFX.inst.PlayUISFX(SFX);
                     }
                     AltUI.Tooltip.GUITooltip(availReq);
-                } 
+                }
             }
             else
             {
@@ -1062,7 +996,7 @@ namespace TAC_AI.World
         }
 
         private static bool hideState = false;
-        private static HashSet<ManHUD.HUDElementType> PrevOpen = new HashSet<ManHUD.HUDElementType>(); 
+        private static HashSet<ManHUD.HUDElementType> PrevOpen = new HashSet<ManHUD.HUDElementType>();
         private static void HideHotbar(bool hide)
         {
             if (hideState != hide)
@@ -1114,7 +1048,7 @@ namespace TAC_AI.World
         }
 
         private const int AIRTSDisplayToolID = 8016;
-        private static Rect toolWindow = new Rect(0, 0, 200, 80);   // the "window"
+        private static Rect toolWindow = new Rect(0, 0, 200, 80);
         private static TankAIHelper hovered => ManWorldRTS.inst.PlayerHovered ? ManWorldRTS.inst.PlayerHovered : ManWorldRTS.inst.OtherHovered;
         private static void GUIHandlerInfo(int ID)
         {
@@ -1129,9 +1063,9 @@ namespace TAC_AI.World
         }
 
         private static Texture2D NoHPBar;
-        private static Texture2D HPBarGreen; //= Texture2D.whiteTexture;
-        private static Texture2D HPBarRed;// = Texture2D.blackTexture;
-        private static Texture2D HPBarBlue;// = Texture2D.blackTexture;
+        private static Texture2D HPBarGreen;
+        private static Texture2D HPBarRed;
+        private static Texture2D HPBarBlue;
         private static Texture2D OutlineMain;
         private static Texture2D OutlineFollower;
         private static Texture2D OutlinePlayer;
@@ -1154,13 +1088,11 @@ namespace TAC_AI.World
             HPBarGreen.SetPixels(0, 0, 2, 2, new Color[4] { colorC, colorC, colorC, colorC, });
             HPBarGreen.Apply();
 
-            //colorC = new Color(1, 0.3f, 0.4f, 1f);
             colorC = new Color(1, 0.675f, 0.8f, 1f);
             HPBarRed = new Texture2D(2, 2, TextureFormat.RGBA32, false, false);
             HPBarRed.SetPixels(0, 0, 2, 2, new Color[4]{ colorC, colorC, colorC, colorC, });
             HPBarRed.Apply();
 
-            //colorC = new Color(0.225f, 0.75f, 1, 1f);
             colorC = new Color(0.675f, 0.8f, 1f, 1f);
             HPBarBlue = new Texture2D(2, 2, TextureFormat.RGBA32, false, false);
             HPBarBlue.SetPixels(0, 0, 2, 2, new Color[4] { colorC, colorC, colorC, colorC, });
@@ -1304,8 +1236,6 @@ namespace TAC_AI.World
                     ManWorldRTS.inst.SetPlayerHovered(unit);
                     setHovered = true;
                 }
-                //if (useHealth)
-                //    GUI.Label(new Rect(posOnUIX, posOnUIY, size.x, size.y), "<color=#000000ff><b>" + Mathf.FloorToInt(lastHealth).ToString() + "</b></color>");
                 return select;
             }
         }

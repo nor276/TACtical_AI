@@ -245,7 +245,6 @@ namespace TAC_AI
                 NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
                 find.tech.GetHelperInsured().DirectRTSDest(reader.Position);
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerAcceptRTSCommand update, ordering tech " + find.name + " to " + reader.Position);
-                // Echo to all clients except the original sender so they sync.
                 Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRTSPosCommand, reader, Host);
             }
             catch
@@ -297,7 +296,6 @@ namespace TAC_AI
                 NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
                 find.tech.GetHelperInsured().isRTSControlled = reader.RTSControl;
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerAcceptRTSControl update, Tech " + find.name + "'s RTS control is " + reader.RTSControl);
-                // Echo to all clients except the original sender so they sync.
                 Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRTSPosControl, reader, Host);
             }
             catch
@@ -354,7 +352,6 @@ namespace TAC_AI
                 var helper = find.tech.GetHelperInsured();
                 helper.lastEnemy = targeting.tech.visible;
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerAcceptRTSAttack update,  tech " + find.name + "'s RTS target is " + targeting.tech.name);
-                // Echo to all clients except the original sender so they sync.
                 Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRTSAttack, reader, Host);
             }
             catch
@@ -410,7 +407,6 @@ namespace TAC_AI
                 helper.TrySetAITypeRemote(netMsg.GetSender(), reader.AIType, reader.AIDriving);
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerSetNewAIState update, tech " + find.name + " changing to " + helper.DediAI.ToString()
                     + " | Driver: " + helper.DriverType.ToString());
-                // Echo to all clients except the original sender so they sync.
                 Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIADVTypeChange, reader, Host);
             }
             catch
@@ -460,7 +456,6 @@ namespace TAC_AI
             {
                 AIECore.TeamRetreat(reader.Team, reader.Retreat);
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerSetRetreatState update, changing retreat states of (" + reader.Team +") to retreat " + reader.Retreat);
-                // Echo to all clients except the original sender so they sync.
                 Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRetreatRequest, reader, Host);
             }
             catch

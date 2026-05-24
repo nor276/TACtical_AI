@@ -13,12 +13,11 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     {
         public static void MineYerOwnBusiness(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the Tank (Prospector) what to do movement-wise
             int errorCode = 0;
             try
             {
                 Vector3 veloFlat = Vector3.zero;
-                if ((bool)tank.rbody)   // So that drifting is minimized
+                if ((bool)tank.rbody)
                 {
                     veloFlat = helper.SafeVelocity;
                     veloFlat.y = 0;
@@ -42,7 +41,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         if (!hold.IsEmpty && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                         {
                             helper.CollectedTarget = true;
-                            break;//Checking if tech is empty when unloading at base
+                            break;
                         }
                     }
                     if (!helper.CollectedTarget)
@@ -58,7 +57,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         if (!hold.IsFull && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                         {
                             helper.CollectedTarget = false;
-                            break;//Checking if tech is full after destroying a node
+                            break;
                         }
                     }
                     if (helper.CollectedTarget)
@@ -73,12 +72,12 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                         direct.Reverse(helper);
-                        { /* actionPause self-counts via its AITimer now */ }
+                        {  }
                         return;
                     }
                     errorCode = 6;
                     if (!BGeneral.GetBase(helper, tank, true, ref dist, ref hasMessaged, ref direct))
-                    {   // No base!!!
+                    {
                         return;
                     }
 
@@ -86,22 +85,21 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     if (helper.MovementController is AIControllerAir)
                     {
                         if (helper.MovementController.AICore is Movement.AICores.HelicopterAICore)
-                        {   // Float over target and unload
+                        {
                             float distFlat = (tank.boundsCentreWorldNoCheck - helper.theBase.boundsCentreWorldNoCheck).ToVector2XZ().magnitude;
                             if (distFlat < helper.lastBaseExtremes)
-                            {   // Final approach - turn off avoidence
+                            {
                                 helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                                 helper.AvoidStuff = false;
                                 if (helper.recentSpeed == 1)
                                 {
                                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Trying to unjam...");
                                     helper.DriveVar = -1;
-                                    //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                                 }
                                 else
                                 {
                                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                    { /* actionPause self-counts via its AITimer now */ }
+                                    {  }
                                     helper.ThrottleState = AIThrottleState.Yield;
                                     helper.SettleDown();
                                     helper.DropAllItemsInCollectors();
@@ -114,21 +112,20 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             }
                         }
                         else
-                        {   // Fly aircraft
+                        {
                             if (dist < helper.lastBaseExtremes + helper.lastTechExtents + AIGlobals.AircraftHailMaryRange)
-                            {   // Final approach - turn off avoidence
+                            {
                                 helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                                 helper.AvoidStuff = false;
                                 if (helper.recentSpeed == 1)
                                 {
                                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Trying to unjam...");
                                     helper.DriveVar = -1;
-                                    //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                                 }
                                 else
                                 {
                                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                    { /* actionPause self-counts via its AITimer now */ }
+                                    {  }
                                     helper.ThrottleState = AIThrottleState.Yield;
                                     helper.SettleDown();
                                     helper.DropAllItemsInCollectors();
@@ -155,7 +152,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and unloading!");
                                 helper.AvoidStuff = false;
-                                { /* actionPause self-counts via its AITimer now */ }
+                                {  }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                             }
@@ -178,7 +175,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Yielding base approach...");
                                 helper.AvoidStuff = false;
-                                { /* actionPause self-counts via its AITimer now */ }
+                                {  }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                             }
@@ -193,8 +190,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             else
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                                { /* actionPause self-counts via its AITimer now */ }
-                                //helper.ThrottleState = AIThrottleState.Yield;
+                                {  }
                                 helper.SettleDown();
                                 if (needsToSlowDown)
                                     helper.ThrottleState = AIThrottleState.Yield;
@@ -221,16 +217,16 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         errorCode = 102;
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                         direct.Reverse(helper);
-                        { /* actionPause self-counts via its AITimer now */ }
+                        {  }
                         return;
                     }
                     errorCode = 103;
                     if (!helper.foundGoal)
                     {
                         errorCode = 104;
-                        helper.EstTopSped = 1;//slow down the clock to reduce lagg
+                        helper.EstTopSped = 1;
                         BGeneral.StopByBase(helper, tank, true, ref dist, ref hasMessaged, ref direct);
-                        return; // There's no resources left!
+                        return;
                     }
                     else if (helper.theResource != null)
                     {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace TAC_AI.Templates
@@ -25,19 +25,15 @@ namespace TAC_AI.Templates
 "Drone 83721",
 "Drone F7",
 "ESS_SABER",
-//"Falchoin Drone M Custom",
 "Flugscheibe Mk X",
 "Flying Beyblade",
 "Generic Vehicle #6",
-//"GK bomb",
-//"GK MOUSE",
 "Grace Dinger",
 "Grundigger",
 "Guardian 78792",
 "Guardian BFV",
 "H1",
 "H375",
-//"Hornet",
 "Hover Buddy 7729",
 "Hover Buddy 8237",
 "Hover Buddy 873291",
@@ -60,7 +56,6 @@ namespace TAC_AI.Templates
 "Mega Racer",
 "MenuBrawl Floater v1",
 "Moonbeam Hovercycle 892",
-//"Moonbeam Hovercycle",
 "Nephele 100i",
 "Nimble shots",
 "No1",
@@ -71,7 +66,6 @@ namespace TAC_AI.Templates
 "Scorpion Dark",
 "Sentinel X45",
 "sharkS2",
-//"Sky Fish",
 "Spear 813",
 "SPear",
 "Squidlet",
@@ -80,15 +74,7 @@ namespace TAC_AI.Templates
 "Twiddle Skipper",
 "Velocity 813",
 "Vespr Sting",
-//"vulture droid",
 "Wind Whisper",
-            /*
-"ZG BF Clover Flip",
-"ZG BF Twin Ring Wing",
-"ZG HoverBike1d",
-"ZG Space Invader LME",
-"ZG Training Bot",
-            */
         };
     }
 }

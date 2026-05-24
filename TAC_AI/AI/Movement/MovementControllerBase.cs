@@ -4,16 +4,6 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI
 {
-    // Shared plumbing for the three IMovementAIController implementations (AIControllerDefault /
-    // AIControllerAir / AIControllerStatic). Owns the common Tank / Helper / AICore / EnemyMind state,
-    // the Initiate template, Recycle, UpdateEnemyMind and GetDrive. Concrete controllers supply:
-    //   - SelectCore(mind): which inner IMovementAICore to build (Default: by DriverType/EvilCommander,
-    //     Air: by thrust geometry, Static: always StaticAICore),
-    //   - OnPreInitiate/OnPostInitiate/OnRecycle hooks for their controller-specific setup/teardown,
-    //   - the per-tick Drive* members, PathPoint, OnMoveWorldOrigin and GetDestination.
-    // Initiate order is fixed: OnPreInitiate -> SelectCore -> AICore.Initiate -> OnPostInitiate, so a
-    // controller whose SelectCore depends on prep work (e.g. Air's CheckAllFlightBlocks) does it in
-    // OnPreInitiate.
     internal abstract class MovementControllerBase : MonoBehaviour, IMovementAIController
     {
         private Tank _tank;

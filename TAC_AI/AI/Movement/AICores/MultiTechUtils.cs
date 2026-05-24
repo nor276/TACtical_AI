@@ -29,18 +29,14 @@ namespace TAC_AI.AI.Movement.AICores
                 if (help.theResource != null && help.theResource.tank)
                 {
                     targPos = AIEPathing.GetDriveApproxAirDirector(help.theResource.tank, help, out bool IsMoving);
-                    if (IsMoving)//!(help.lastDestination - this.controller.Tank.boundsCentreWorld).Approximately(Vector3.zero, 0.75f)
+                    if (IsMoving)
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ": MTMimic - AI " + this.controller.Tank.name + ": In range of " + help.lastCloseAlly.name + " and idle.");
-                        help.AutoSpacing = 0;//0.1f;
+                        help.AutoSpacing = 0;
                         core.TurningStrictness = ESteeringStrength.MaxSteering;
                         if (Vector3.Dot(tank.rootBlockTrans.forward, (targPos - tank.boundsCentreWorldNoCheck).normalized) >= 0)
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ":AI " + this.controller.Tank.name + ": Forwards");
                             core.DriveToFacingTowards();
                             help.ThrottleState = AIThrottleState.FullSpeed;
-                            //help.ThrottleState = AIThrottleState.ForceSpeed;
-                            //help.DriveVar = 1;
                             if (AIGlobals.ShowDebugFeedBack)
                                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 5, targPos - tank.boundsCentreWorldNoCheck, new Color(1, 1, 0, 1));
                         }
@@ -48,28 +44,20 @@ namespace TAC_AI.AI.Movement.AICores
                         {
                             core.DriveToFacingBackwards();
                             help.ThrottleState = AIThrottleState.FullSpeed;
-                            //help.ThrottleState = AIThrottleState.ForceSpeed;
-                            //help.DriveVar = -1;
                             if (AIGlobals.ShowDebugFeedBack)
                                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 5, targPos - tank.boundsCentreWorldNoCheck, new Color(1, 0, 1, 1));
                         }
                     }
                     else
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ": MTMimic - AI " + this.controller.Tank.name + ": In range of " + help.lastCloseAlly.name + " and idle.");
                         help.AutoSpacing = 0f;
                         targPos = tank.boundsCentreWorldNoCheck;
-                        /*
-                        help.ThrottleState = AIThrottleState.ForceSpeed;
-                        help.DriveVar = 0;
-                        // */
                         core.Stop();
                         help.ThrottleState = AIThrottleState.PivotOnly;
                     }
                 }
                 else
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": MTMimic - AI " + this.controller.Tank.name + ": Out of range of any possible target");
                     help.AutoSpacing = 0f;
                     targPos = tank.boundsCentreWorldNoCheck;
                     core.Stop();
@@ -77,7 +65,7 @@ namespace TAC_AI.AI.Movement.AICores
                 }
             }
             else
-            {   // act like a trailer
+            {
                 core.DriveDir = EDriveFacing.Neutral;
                 targPos = tank.boundsCentreWorldNoCheck;
                 help.AutoSpacing = 0;

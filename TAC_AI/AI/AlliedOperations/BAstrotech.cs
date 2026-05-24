@@ -4,13 +4,10 @@ using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI.AlliedOperations
 {
-    internal static class BAstrotech 
+    internal static class BAstrotech
     {
-        //Same a escort code, because the BEscort code supports 3D!
-        // we just need to re-define how far above ground we should be
         public static void MotivateSpace(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the ship (Escort) what to do movement-wise
             helper.lastPlayer = helper.GetPlayerTech();
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = true;
@@ -21,10 +18,8 @@ namespace TAC_AI.AI.AlliedOperations
             if (helper.lastPlayer == null)
                 return;
             bool hasMessaged = false;
-            //direct.SetLastDest(helper.lastPlayer.tank.boundsCentreWorldNoCheck); 
-            // Disabling the above causes the AI to move as expected, but not float high enough!
             if (helper.lastPlayer == tank.visible)
-            {   // WE ARE FOLLOWING OURSELVES, just hold position!
+            {
                 OnIdle(helper, tank, ref direct, ref hasMessaged);
                 direct.STOP(helper);
                 return;
@@ -35,7 +30,7 @@ namespace TAC_AI.AI.AlliedOperations
             float playerExt = helper.lastPlayer.GetCheapBounds();
 
             if ((bool)helper.lastEnemyGet && !helper.Retreat)
-            {   // combat pilot will take care of the rest
+            {
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.PlayerAISpeedPanicDividend))
                 {
                     helper.TryHandleObstruction(hasMessaged, dist, true, true, ref direct);
@@ -51,7 +46,7 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
                 helper.DriveVar = 1;
                 if (helper.unanchorCountdown > 0)
-                    { /* unanchorCountdown self-counts via its AITimer now */ }
+                    {  }
                 if (helper.AutoAnchor && helper.PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)
                 {
                     if (tank.Anchors.NumIsAnchored > 0)
@@ -63,12 +58,11 @@ namespace TAC_AI.AI.AlliedOperations
             }
             else if (dist < range + playerExt && dist > (range / 2) + playerExt)
             {
-                // Time to go!
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Departing!");
                 direct.DriveDest = EDriveDest.ToLastDestination;
                 helper.DelayedAnchorClock = 0;
                 if (helper.unanchorCountdown > 0)
-                    { /* unanchorCountdown self-counts via its AITimer now */ }
+                    {  }
                 if (helper.AutoAnchor && helper.PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)
                 {
                     if (tank.Anchors.NumIsAnchored > 0)
@@ -92,13 +86,11 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.Urgency += KickStart.AIClockPeriod / 2f;
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
                     helper.DriveVar = 1f;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI drive " + tank.control.DriveControl);
                     if (helper.UrgencyOverload > 0)
                         helper.UrgencyOverload--;
                 }
                 if (helper.UrgencyOverload > 50)
                 {
-                    //Are we just randomly angry for too long? let's fix that
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Overloaded urgency!  ReCalcing top speed!");
                     helper.EstTopSped = 1;
                     helper.AvoidStuff = true;
@@ -106,10 +98,9 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 if (helper.Urgency > 30)
                 {
-                    //FARRR behind! BOOSTERS NOW!
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": I AM SUPER FAR BEHIND!");
                     helper.AvoidStuff = false;
-                    helper.FullBoost = true; // WE ARE SOO FAR BEHIND
+                    helper.FullBoost = true;
                     helper.UrgencyOverload += KickStart.AIClockPeriod / 5f;
                 }
                 else if (helper.Urgency > 15)
@@ -190,7 +181,6 @@ namespace TAC_AI.AI.AlliedOperations
 
         public static void SpaceDriver(TankAIHelper helper, Tank tank, Visible followThis, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the ship (Escort) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = true;
 
@@ -206,7 +196,7 @@ namespace TAC_AI.AI.AlliedOperations
             float playerExt = followThis.GetCheapBounds();
 
             if ((bool)helper.lastEnemyGet && !helper.Retreat)
-            {   // combat pilot will take care of the rest
+            {
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.PlayerAISpeedPanicDividend))
                 {
                     helper.TryHandleObstruction(hasMessaged, dist, true, true, ref direct);
@@ -222,7 +212,7 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
                 helper.DriveVar = 1;
                 if (helper.unanchorCountdown > 0)
-                    { /* unanchorCountdown self-counts via its AITimer now */ }
+                    {  }
                 if (helper.AutoAnchor && helper.PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)
                 {
                     if (tank.Anchors.NumIsAnchored > 0)
@@ -234,12 +224,11 @@ namespace TAC_AI.AI.AlliedOperations
             }
             else if (dist < range + playerExt && dist > (range * 0.75f) + playerExt)
             {
-                // Time to go!
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Departing!");
                 direct.DriveDest = EDriveDest.ToLastDestination;
                 helper.DelayedAnchorClock = 0;
                 if (helper.unanchorCountdown > 0)
-                    { /* unanchorCountdown self-counts via its AITimer now */ }
+                    {  }
                 if (helper.AutoAnchor && helper.PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)
                 {
                     if (tank.Anchors.NumIsAnchored > 0)
@@ -263,13 +252,11 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.Urgency += KickStart.AIClockPeriod / 2f;
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
                     helper.DriveVar = 1f;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI drive " + tank.control.DriveControl);
                     if (helper.UrgencyOverload > 0)
                         helper.UrgencyOverload--;
                 }
                 if (helper.UrgencyOverload > 50)
                 {
-                    //Are we just randomly angry for too long? let's fix that
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Overloaded urgency!  ReCalcing top speed!");
                     helper.EstTopSped = 1;
                     helper.AvoidStuff = true;
@@ -277,10 +264,9 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 if (helper.Urgency > 30)
                 {
-                    //FARRR behind! BOOSTERS NOW!
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": I AM SUPER FAR BEHIND!");
                     helper.AvoidStuff = false;
-                    helper.FullBoost = true; // WE ARE SOO FAR BEHIND
+                    helper.FullBoost = true;
                     helper.UrgencyOverload += KickStart.AIClockPeriod / 5f;
                 }
                 else if (helper.Urgency > 15)

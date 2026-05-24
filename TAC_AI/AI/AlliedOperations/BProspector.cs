@@ -12,8 +12,6 @@ namespace TAC_AI.AI.AlliedOperations
             helper.Attempt3DNavi = (helper.DriverType == AIDriverType.Pilot || helper.DriverType == AIDriverType.Astronaut);
 
             Vector3 veloFlat = helper.SafeVelocity;
-            //The Handler that tells the Tank (Prospector) what to do movement-wise
-            //float prevDist = helper.lastOperatorRange;
             float dist = helper.GetDistanceFromTask(helper.lastDestinationCore);
             bool needsToSlowDown = helper.IsOrbiting();
             bool hasMessaged = false;
@@ -22,9 +20,7 @@ namespace TAC_AI.AI.AlliedOperations
             BGeneral.ResetValues(helper, ref direct);
 
             if (helper.AdvancedAI && helper.lastEnemyGet != null)
-            {   // BRANCH - RUN!!!!!!!!
-                // Deferred-6 fix: was calling GetBase twice with identical args (discarded the first
-                // result, then re-scanned). Extract to a local so the spatial scan only runs once.
+            {
                 bool foundBase = BGeneral.GetBase(helper, tank, false, ref dist, ref hasMessaged, ref direct);
                 if (!foundBase)
                 {
@@ -43,7 +39,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived in safety of the base.");
                     helper.AvoidStuff = false;
-                    { /* actionPause self-counts via its AITimer now */ }
+                    {  }
                 }
                 else if (helper.recentSpeed < 3)
                 {
@@ -64,7 +60,7 @@ namespace TAC_AI.AI.AlliedOperations
                     if (!hold.IsEmpty && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                     {
                         helper.CollectedTarget = true;
-                        break;//Checking if tech is empty when unloading at base
+                        break;
                     }
                 }
                 if (!helper.CollectedTarget)
@@ -79,25 +75,24 @@ namespace TAC_AI.AI.AlliedOperations
                     if (!hold.IsFull && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                     {
                         helper.CollectedTarget = false;
-                        break;//Checking if tech is full after destroying a node
+                        break;
                     }
                 }
                 if (helper.CollectedTarget)
                     helper.actionPause = AIGlobals.ReverseDelay;
             }
 
-            // Our Chunk-Carrying tractor pads are filled to the brim with Chunks
             if (helper.CollectedTarget)
-            {   // BRANCH - Head back to base
+            {
                 if (helper.ActionPause > 0)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
-                    { /* actionPause self-counts via its AITimer now */ }
+                    {  }
                     return;
                 }
                 if (!BGeneral.GetBase(helper, tank, helper.AdvancedAI, ref dist, ref hasMessaged, ref direct))
-                {   // No base!!!
+                {
                     return;
                 }
 
@@ -111,22 +106,21 @@ namespace TAC_AI.AI.AlliedOperations
                 if (helper.DriverType == AIDriverType.Pilot)
                 {
                     if (helper.MovementController.AICore is HelicopterAICore)
-                    {   // Float over target and unload
+                    {
                         float distFlat = (tank.boundsCentreWorldNoCheck - helper.theBase.boundsCentreWorldNoCheck).ToVector2XZ().magnitude;
                         if (distFlat < helper.lastBaseExtremes)
-                        {   // Final approach - turn off avoidence
+                        {
                             helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                             helper.AvoidStuff = false;
                             if (helper.recentSpeed == 1)
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Trying to unjam...");
                                 helper.DriveVar = -1;
-                                //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                             }
                             else
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                { /* actionPause self-counts via its AITimer now */ }
+                                {  }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                                 helper.DropAllItemsInCollectors();
@@ -139,21 +133,20 @@ namespace TAC_AI.AI.AlliedOperations
                         }
                     }
                     else
-                    {   // Fly aircraft
+                    {
                         if (dist < helper.lastBaseExtremes + helper.lastTechExtents + AIGlobals.AircraftHailMaryRange)
-                        {   // Final approach - turn off avoidence
+                        {
                             helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                             helper.AvoidStuff = false;
                             if (helper.recentSpeed == 1)
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Trying to unjam...");
                                 helper.DriveVar = -1;
-                                //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                             }
                             else
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                { /* actionPause self-counts via its AITimer now */ }
+                                {  }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                                 helper.DropAllItemsInCollectors();
@@ -169,7 +162,7 @@ namespace TAC_AI.AI.AlliedOperations
                 else
                 {
                     if (dist < helper.lastBaseExtremes + helper.lastTechExtents)
-                    {   // Final approach - turn off avoidence
+                    {
                         helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                         helper.AvoidStuff = false;
                         if (helper.recentSpeed == 1)
@@ -177,19 +170,18 @@ namespace TAC_AI.AI.AlliedOperations
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Trying to unjam...");
                             direct.DriveAwayFacingTowards();
                             helper.DriveVar = -1;
-                            //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                         }
                         else
                         {
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and unloading!");
-                            { /* actionPause self-counts via its AITimer now */ }
+                            {  }
                             direct.DriveToFacingTowards();
                             helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
                         }
                     }
                     else if (dist < helper.lastBaseExtremes + helper.lastTechExtents + 4)
-                    {   // almost at the the base receiver - fine-tune and yield if nesseary for approach
+                    {
                         helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                         helper.AvoidStuff = false;
                         if (helper.recentSpeed < 3)
@@ -206,14 +198,14 @@ namespace TAC_AI.AI.AlliedOperations
                         else
                         {
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Yielding base approach...");
-                            { /* actionPause self-counts via its AITimer now */ }
+                            {  }
                             direct.DriveToFacingTowards();
                             helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
                         }
                     }
                     else if (dist < helper.lastBaseExtremes + helper.lastTechExtents + 8)
-                    {   // Near the base, but not quite at the receiver 
+                    {
                         helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                         if (helper.recentSpeed < 3)
                         {
@@ -223,9 +215,8 @@ namespace TAC_AI.AI.AlliedOperations
                         else
                         {
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                            { /* actionPause self-counts via its AITimer now */ }
+                            {  }
                             direct.DriveToFacingTowards();
-                            //helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
                             if (needsToSlowDown)
                                 helper.ThrottleState = AIThrottleState.Yield;
@@ -245,19 +236,19 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.foundGoal = false;
             }
             else
-            {   // BRANCH - Go look for resources
+            {
                 if (helper.ActionPause > 0)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
-                    { /* actionPause self-counts via its AITimer now */ }
+                    {  }
                     return;
                 }
                 if (!helper.foundGoal)
-                {   
-                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
+                {
+                    helper.EstTopSped = 1;
                     BGeneral.GetMineableScenery(helper, tank, helper.AdvancedAI, ref dist, ref hasMessaged, ref direct);
-                    return; // There's no resources left!
+                    return;
                 }
                 else if (helper.theResource != null)
                 {

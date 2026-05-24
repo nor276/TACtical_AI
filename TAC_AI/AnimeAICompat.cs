@@ -13,24 +13,23 @@ using AnimeAI;
 namespace TAC_AI
 {
     public enum AOffenseReact
-    {   //Attempt hook with the AnimeAI sub-mod 
-        Hurt,       // Taken damage
-        Damaged,    // Block chipped off
-        Destroyed   // Tech destroyed
+    {
+        Hurt,
+        Damaged,
+        Destroyed
     }
     public enum ALossReact
-    {   //Attempt hook with the AnimeAI sub-mod 
-        Land,     
+    {
+        Land,
         Sea,
         Air,
-        Space,   
-        Base,   
+        Space,
+        Base,
     }
     public static class AnimeAICompat
-    {   //Attempt hook with the AnimeAI sub-mod
+    {
         const bool UseErrorChecking = false;
 
-        //private List<Tank> techsWithCharacters = new List<Tank>();
 
         public static bool PollShouldRetreat(Tank tech, TankAIHelper help, out bool verdict)
         {
@@ -83,7 +82,6 @@ namespace TAC_AI
 
         private static void LatchEnemyToSpeechSystem(Tank tech)
         {
-            //ManCharacterFetcher.che
         }
         private static void LatchEnemyCEOToSpeechSystem(Tank tech)
         {

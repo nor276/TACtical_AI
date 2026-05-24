@@ -157,17 +157,7 @@ namespace TAC_AI.World
         public void OnSizeUpdate(TankBlock tb, Tank techCase)
         {
             try
-            {/*
-                if (techCase == tech.tank)
-                {
-                    if (techCase.blockman.blockCount == 0)
-                    {
-                        Remove();
-                        return;
-                    }
-                    var m = ps.main;
-                    m.startSize = tech.lastTechExtents * sizeMulti;
-                }*/
+            {
             }
             catch { }
         }

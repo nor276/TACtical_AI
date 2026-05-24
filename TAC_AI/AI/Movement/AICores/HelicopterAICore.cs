@@ -15,7 +15,6 @@ namespace TAC_AI.AI.Movement.AICores
         private float groundOffset => Helper.GroundOffsetHeight;
         private float groundOffsetEmerg => AIGlobals.GroundOffsetCrashWarnChopperDelta + Helper.GroundOffsetHeight;
         public float GetDrive => pilot.CurrentThrottle;
-        // IAirMovementAICore: a helicopter is a rotorcraft (vertical-lift), not fixed-wing.
         public bool IsRotorcraft => true;
         public bool IsFixedWing => false;
 
@@ -25,11 +24,10 @@ namespace TAC_AI.AI.Movement.AICores
             pilot = (AIControllerAir) pilotSet;
             pilot.FlyStyle = AIControllerAir.FlightType.Helicopter;
 
-            //pilot.FlyingChillFactor = Vector3.one * 30;
             pilot.FlyingChillFactor.x = AIGlobals.ChopperXZChillFactorMulti * pilot.PropLerpValue;
             pilot.FlyingChillFactor.z = AIGlobals.ChopperXZChillFactorMulti * pilot.PropLerpValue;
             if (pilot.LargeAircraft)
-                pilot.FlyingChillFactor.y = 2.5f;    // need accuraccy for large chopper bombing runs
+                pilot.FlyingChillFactor.y = 2.5f;
             else
                 pilot.FlyingChillFactor.y = AIGlobals.ChopperYChillFactorMulti * pilot.PropLerpValue;
 
@@ -46,21 +44,12 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
             if (pilot.Grounded)
-            {   //Become a ground vehicle for now
+            {
                 if (!AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents))
                 {
                     DriveMaintainerEmergLand(helper, tank, ref core);
                     return false;
                 }
-                // P08 G.7: Grounded is sticky-until-repair. The only live entry is OnAttach →
-                // TestForMayday; the old `SafeVelocity.y > 0.1f` exit was a false-positive
-                // generator (transient updrafts un-grounding damaged techs). Always attempt
-                // controlled descent: target ground height so ModerateUpwardsThrust modulates
-                // thrust DOWN for safe landing rather than maxing out climb at the old `500000`.
-                // P08 G.8: do NOT set `pilot.ForcePitchUp = true` here. ForcePitchUp triggers
-                // MaxProps() in UpdateThrottleCopter, pinning rotors at max RPM regardless of
-                // MainThrottle's modulated value — which defeats the controlled descent. Let
-                // MainThrottle modulation alone govern descent.
                 AIEPathMapper.GetAltitudeLoadedOnly(tank.boundsCentreWorldNoCheck, out float groundHeight);
                 pilot.MainThrottle = HelicopterUtils.ModerateUpwardsThrust(tank, helper, pilot, groundHeight, false);
                 HelicopterUtils.UpdateThrottleCopter(pilot);
@@ -69,7 +58,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
 
             if (tank.beam.IsActive)
-            {   // BEAMING
+            {
                 pilot.MainThrottle = 0;
                 pilot.AdvisedThrottle = 0;
                 pilot.CurrentThrottle = 0;
@@ -77,8 +66,7 @@ namespace TAC_AI.AI.Movement.AICores
                 HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core, true);
             }
             else if (tank.grounded || pilot.ForcePitchUp)
-            {   // Try and takeoff
-                //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " is taking off");
+            {
                 Vector3 pos = tank.boundsCentreWorldNoCheck;
                 AIEPathMapper.GetAltitudeLoadedOnly(pos, out float height);
                 float targetHeight;
@@ -90,12 +78,12 @@ namespace TAC_AI.AI.Movement.AICores
                 HelicopterUtils.UpdateThrottleCopter(pilot);
                 HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core, true);
                 if (AIGlobals.ShowDebugFeedBack)
-                {   // DEBUG FOR DRIVE ERRORS
+                {
                     DebugExtUtilities.DrawDirIndicator(pos.SetY(height), pos.SetY(targetHeight), new Color(1, 0, 1));
                 }
             }
             else
-            {   // Normal flight
+            {
                 Vector3 pos = tank.boundsCentreWorldNoCheck;
                 AIEPathMapper.GetAltitudeLoadedOnly(pos, out float height);
                 float targetHeight;
@@ -107,15 +95,9 @@ namespace TAC_AI.AI.Movement.AICores
                 HelicopterUtils.UpdateThrottleCopter(pilot);
                 HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core);
                 if (AIGlobals.ShowDebugFeedBack)
-                {   // DEBUG FOR DRIVE ERRORS
+                {
                     DebugExtUtilities.DrawDirIndicator(pos.SetY(height), pos.SetY(targetHeight), new Color(1, 0, 1));
                 }
-                /*
-                if (helper.lastIsNotNull())
-                {
-                    DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " is in combat at " + pilot.AirborneDest + " tank at " + helper.lastEnemy.tank.boundsCentreWorldNoCheck);
-                }
-                */
             }
 
             return true;
@@ -132,14 +114,6 @@ namespace TAC_AI.AI.Movement.AICores
                 pilot.ForcePitchUp = false;
                 pilot.ErrorsInTakeoff = 0;
             }
-            // P08 G.7 revive: progressive Grounded-after-N-failed-takeoffs. ErrorsInTakeoff
-            // accumulates while pitched-up-but-sinking; once past MaxTakeoffFailiures the tech
-            // is marked Grounded so the Maintainer Grounded branch takes over with controlled
-            // descent. Recovery still requires OnAttach repair (TestForMayday).
-            // P08 G.8: bleed the counter when actually climbing (Vy >= 0.1). Original code only
-            // reset to 0 in the upright-and-stable branch above, which left a 0.275..0.35 upVal
-            // dead-band where a banking-but-healthy chopper could silently accumulate to a false
-            // Grounded verdict. Soft bleed keeps healthy techs near zero.
             if (pilot.ForcePitchUp && Helper.SafeVelocity.y < 0.1f)
             {
                 pilot.ErrorsInTakeoff += KickStart.AIDodgeCheapness;
@@ -171,39 +145,35 @@ namespace TAC_AI.AI.Movement.AICores
             if (helper.DoSteerCore)
             {
                 if (helper.AdviseAwayCore)
-                {   //Move from target
-                    if (core.DriveDir == EDriveFacing.Backwards)//EDriveType.Backwards
-                    {   // Face back TOWARDS target
+                {
+                    if (core.DriveDir == EDriveFacing.Backwards)
+                    {
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
                         helper.DriveControl = 1f;
                     }
                     else if (core.DriveDir == EDriveFacing.Perpendicular)
-                    {   //Drive to target driving sideways, but obey distance
+                    {
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
-                        //DebugTAC_AI.Log("Orbiting away");
                         helper.DriveControl = 1f;
                     }
                     else
-                    {   // Face front TOWARDS target
+                    {
                         VehicleUtils.Turner(helper, destDirect, 0, ref core);
                         helper.DriveControl = -1f;
                     }
                 }
                 else if (core.DriveDir == EDriveFacing.Perpendicular)
-                {   //Drive to target driving sideways, but obey distance
-                    //int range = (int)(destDirect).magnitude;
+                {
                     float range = helper.lastOperatorRange;
                     if (range < helper.AutoSpacing + 2)
                     {
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
-                        //DebugTAC_AI.Log("Orbiting out " + helper.MinimumRad + " | " + destDirect);
                     }
                     else if (range > helper.AutoSpacing + 22)
                     {
                         VehicleUtils.Turner(helper, destDirect, 0, ref core);
-                        //DebugTAC_AI.Log("Orbiting in " + helper.MinimumRad);
                     }
-                    else  //ORBIT!
+                    else
                     {
                         Vector3 aimDirect;
                         if (Vector3.Dot(destDirect.normalized, tank.rootBlockTrans.right) < 0)
@@ -211,18 +181,14 @@ namespace TAC_AI.AI.Movement.AICores
                         else
                             aimDirect = Vector3.Cross(destDirect.normalized, Vector3.up);
                         VehicleUtils.Turner(helper, aimDirect, 0, ref core);
-                        //DebugTAC_AI.Log("Orbiting hold " + helper.MinimumRad);
                     }
                     helper.DriveControl = 1f;
                 }
                 else
                 {
-                    VehicleUtils.Turner(helper, destDirect, 0, ref core);//Face the music
-                                                                                        //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  driving to " + helper.lastDestination);
+                    VehicleUtils.Turner(helper, destDirect, 0, ref core);
                     if (helper.AutoSpacing > 0)
                     {
-                        //if (helper.DriveDir == EDriveType.Perpendicular)
-                        //    helper.DriveControl = 1f;
                         float range = helper.lastOperatorRange;
                         if (core.DriveDir <= EDriveFacing.Neutral)
                             helper.DriveControl = 0f;
@@ -257,7 +223,7 @@ namespace TAC_AI.AI.Movement.AICores
                 return true;
             }
             if (core.DriveDir == EDriveFacing.Neutral)
-            {   // become brakeless
+            {
                 helper.DriveControl = 0.001f;
                 return true;
             }
@@ -276,7 +242,7 @@ namespace TAC_AI.AI.Movement.AICores
                             helper.DriveControl = -1f;
                     }
                     else
-                    {   // works with forwards
+                    {
                         if (helper.recentSpeed > 10)
                             helper.DriveControl = -0.2f;
                         else
@@ -301,7 +267,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             bool Precise = false;
             if (Helper.IsMultiTech)
-            {   //Override and disable most driving abilities
+            {
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(pilot.Helper, tank, ref core);
                 return true;
             }
@@ -375,8 +341,6 @@ namespace TAC_AI.AI.Movement.AICores
                 Helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(pilot.Tank.Team),
                     pilot.Tank.boundsCentreWorldNoCheck, Helper.MaxCombatRange * Helper.MaxCombatRange, out _, pilot.Helper).visible;
                 Helper.theGuardedAlly = Helper.theResource;
-                // P08 G.6: canonical Aegis pattern (see AirplaneAICore for full explanation).
-                // P08 G.8: restore lastCombatRange invariant when the OR short-circuits (see Airplane).
                 bool aegisOutOfRange = Helper.lastOperatorRange > Helper.MaxCombatRange;
                 if (aegisOutOfRange || !TryAdjustForCombat(true, ref pilot.PathPointSet, ref core))
                 {
@@ -402,12 +366,11 @@ namespace TAC_AI.AI.Movement.AICores
                 if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core))
                 {
                     if (Helper.DriveDestDirected == EDriveDest.ToLastDestination)
-                    {   // Fly to target
+                    {
                         pilot.PathPointSet = Helper.lastDestinationOp;
                     }
                     else if (Helper.DriveDestDirected == EDriveDest.FromLastDestination)
-                    {   // Fly away from target
-                        //pilot.pilot.ProcessedDest = AIEPathing.OffsetFromGroundA(Helper.lastDestination, pilot.Helper, 44);
+                    {
                         pilot.PathPointSet = Helper.lastDestinationOp;
                     }
                     else
@@ -418,7 +381,7 @@ namespace TAC_AI.AI.Movement.AICores
                             pilot.PathPointSet.y = Helper.lastPlayer.tank.boundsCentreWorldNoCheck.y;
                         }
                         else
-                        {   //stay
+                        {
                             pilot.PathPointSet = Helper.lastDestinationOp;
                         }
                     }
@@ -441,27 +404,18 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorRTS(ref EControlCoreSet core)
         {
             if (Helper.IsMultiTech)
-            {   //Override and disable most driving abilities
+            {
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(pilot.Helper, tank, ref core);
                 return true;
             }
             if (!Helper.IsGoingToPositionalRTSDest)
             {
-                if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core)) // When set to chase then chase
+                if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core))
                 {
                     core.DriveDest = EDriveDest.ToLastDestination;
                     core.DriveDir = EDriveFacing.Forwards;
                     pilot.PathPointSet = Helper.RTSDestination;
                     Helper.AutoSpacing = Mathf.Max(Helper.lastTechExtents - 2, 0.5f);
-                    /*// Our target is too far.  We will just fly there without any correction
-                    if (Helper.lastEnemyGet?.tank != null)
-                    {
-                        Helper.UpdateEnemyDistance(Helper.lastEnemyGet.tank.boundsCentreWorld);
-                        core.DriveDest = EDriveDest.ToLastDestination;
-                        core.DriveDir = EDriveFacing.Forwards;
-                        pilot.PathPointSet = Helper.lastEnemyGet.tank.boundsCentreWorld;
-                        Helper.AutoSpacing = Mathf.Max(Helper.lastTechExtents - 2, 0.5f);
-                    }*/
                 }
             }
             else
@@ -485,27 +439,18 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
         {
             if (Helper.IsMultiTech)
-            {   //Override and disable most driving abilities
+            {
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(pilot.Helper, tank, ref core);
                 return true;
             }
             if (!Helper.IsGoingToPositionalRTSDest)
             {
-                if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core)) // When set to chase then chase
+                if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core))
                 {
                     core.DriveDest = EDriveDest.ToLastDestination;
                     core.DriveDir = EDriveFacing.Forwards;
                     pilot.PathPointSet = Helper.RTSDestination;
                     Helper.AutoSpacing = Mathf.Max(Helper.lastTechExtents - 2, 0.5f);
-                    /*// Our target is too far.  We will just fly there without any correction
-                    if (Helper.lastEnemyGet?.tank != null)
-                    {
-                        Helper.UpdateEnemyDistance(Helper.lastEnemyGet.tank.boundsCentreWorld);
-                        core.DriveDest = EDriveDest.ToLastDestination;
-                        core.DriveDir = EDriveFacing.Forwards;
-                        pilot.PathPointSet = Helper.lastEnemyGet.tank.boundsCentreWorld;
-                        Helper.AutoSpacing = Mathf.Max(Helper.lastTechExtents - 2, 0.5f);
-                    }*/
                 }
             }
             else
@@ -528,7 +473,7 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorEnemy(EnemyMind mind, ref EControlCoreSet core)
         {
             if (pilot.Grounded)
-            {   //Become a ground vehicle for now
+            {
                 if (!AIEPathing.AboveHeightFromGroundTech(pilot.Helper, Helper.lastTechExtents * 2))
                 {
                     return false;
@@ -539,13 +484,12 @@ namespace TAC_AI.AI.Movement.AICores
             if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core))
             {
                 if (Helper.DriveDestDirected == EDriveDest.ToLastDestination)
-                {   // Fly to target
+                {
                     pilot.PathPointSet = Helper.lastDestinationOp;
                 }
                 else if (Helper.DriveDestDirected == EDriveDest.FromLastDestination)
-                {   // Fly away from target
+                {
                     pilot.PathPointSet = Helper.lastDestinationOp;
-                    //pilot.AirborneDest = ((pilot.tank.trans.position - Helper.lastDestination).normalized * (pilot.DestSuccessRad * 2)) + pilot.tank.boundsCentreWorldNoCheck;
                 }
                 else
                 {
@@ -555,8 +499,7 @@ namespace TAC_AI.AI.Movement.AICores
                         pilot.PathPointSet.y = Helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + (Helper.GroundOffsetHeight / 5);
                     }
                     else
-                    {   //Fly off the screen
-                        //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + pilot.Tank.name + "  Leaving scene!");
+                    {
                         Vector3 fFlat = pilot.Tank.rootBlockTrans.forward;
                         fFlat.y = 0;
                         pilot.PathPointSet = (fFlat.normalized * 1000) + pilot.Tank.boundsCentreWorldNoCheck;
@@ -584,9 +527,9 @@ namespace TAC_AI.AI.Movement.AICores
                 Tank lastCloseAlly;
                 float lastAllyDist;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
-                if (helper.SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
+                if (helper.SecondAvoidence && AlliesAlt.Count > 1)
                 {
-                    lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, predictionOffset, out Tank lastCloseAlly2, 
+                    lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, predictionOffset, out Tank lastCloseAlly2,
                         out lastAllyDist, out float lastAuxVal, helper);
                     float predictOffset = (predictionOffset - tank.boundsCentreWorldNoCheck).magnitude;
                     if (lastCloseAlly && lastAllyDist < helper.lastTechExtents + lastCloseAlly.GetCheapBounds() + 12 + predictOffset)
@@ -602,9 +545,6 @@ namespace TAC_AI.AI.Movement.AICores
 
                 }
                 lastCloseAlly = AIEPathing.ClosestAllyPrecision(AlliesAlt, predictionOffset, out lastAllyDist, pilot.Helper);
-                // Deferred-7 fix: previously logged but fell through, then dereferenced the null
-                // lastCloseAlly. The catch below would swallow the NRE and return targetIn anyway;
-                // returning here keeps that fallback but skips the noisy AvoidAssist crash log.
                 if (lastCloseAlly == null)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
@@ -624,7 +564,6 @@ namespace TAC_AI.AI.Movement.AICores
             if (targetIn.IsNaN())
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssistAir IS NaN!!");
-                //TankAIManager.FetchAllAllies();
             }
             return targetIn;
         }
@@ -638,9 +577,6 @@ namespace TAC_AI.AI.Movement.AICores
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
-                // P08 B-NEW5-8: was relying on C# implicit Unity-object truthiness against `?.tank`
-                // — if `theResource` is non-null but its `tank` is a destroyed Unity object, the
-                // dereference at line below would NRE. Use IsNotNull() to handle the destroyed case.
                 if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);
@@ -650,10 +586,10 @@ namespace TAC_AI.AI.Movement.AICores
                 if (helper.SideToThreat)
                 {
                     if (helper.FullMelee)
-                    {   //orbit WHILE at enemy!
+                    {
                         core.DriveDir = EDriveFacing.Perpendicular;
                         pos = helper.lastEnemyGet.transform.position;
-                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
+                        helper.AutoSpacing = 0;
                     }
                     else if (driveDyna == 1)
                     {
@@ -681,15 +617,13 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveDir = EDriveFacing.Forwards;
                         pos = helper.lastEnemyGet.transform.position;
-                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
-                                                //thisControl.m_Movement.DriveToPosition(tank, helper.AvoidAssist(helper.lastEnemy.transform.position), 1, TankControl.DriveRestriction.ForwardOnly, helper.lastEnemy, Mathf.Max(helper.lastTechExtents - 10, 0.2f));
+                        helper.AutoSpacing = 0;
                     }
                     else if (driveDyna == 1)
                     {
                         core.DriveDir = EDriveFacing.Forwards;
                         pos = helper.AvoidAssist(helper.lastEnemyGet.transform.position);
                         helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 5;
-                        //thisControl.m_Movement.DriveToPosition(tank, helper.AvoidAssist(helper.lastEnemy.transform.position), 1, TankControl.DriveRestriction.None, helper.lastEnemy, helper.lastTechExtents + AIEnhancedCore.Extremes(helper.lastEnemy.tank.blockBounds.extents) + 5);
                     }
                     else if (driveDyna < 0)
                     {
@@ -697,13 +631,11 @@ namespace TAC_AI.AI.Movement.AICores
                         core.DriveDest = EDriveDest.FromLastDestination;
                         pos = helper.AvoidAssist(helper.lastEnemyGet.transform.position);
                         helper.AutoSpacing = 0.5f;
-                        //thisControl.m_Movement.DriveToPosition(tank, helper.AvoidAssist(helper.lastEnemy.transform.position), 1, TankControl.DriveRestriction.None, helper.lastEnemy, helper.lastTechExtents + AIEnhancedCore.Extremes(helper.lastEnemy.tank.blockBounds.extents) + 5);
                     }
                     else
                     {
                         pos = helper.lastEnemyGet.transform.position;
                         helper.AutoSpacing = 0;
-                        //thisControl.m_Movement.FacePosition(tank, helper.lastEnemy.transform.position, driveDyna);//Face the music
                     }
                 }
             }
@@ -724,10 +656,10 @@ namespace TAC_AI.AI.Movement.AICores
                 if (mind.CommanderAttack == EAttackMode.Circle)
                 {
                     if (mind.CommanderMind == EnemyAttitude.Miner)
-                    {   //orbit WHILE at enemy!
+                    {
                         core.DriveDir = EDriveFacing.Perpendicular;
                         pos = RCore.GetTargetCoordinates(helper, helper.lastEnemyGet, mind);
-                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
+                        helper.AutoSpacing = 0;
                     }
                     else if (driveDyna == 1)
                     {
@@ -755,7 +687,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveDir = EDriveFacing.Forwards;
                         pos = RCore.GetTargetCoordinates(helper, helper.lastEnemyGet, mind);
-                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
+                        helper.AutoSpacing = 0;
                     }
                     else if (driveDyna == 1)
                     {

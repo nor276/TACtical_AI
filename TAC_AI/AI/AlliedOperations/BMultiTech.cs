@@ -7,7 +7,7 @@ namespace TAC_AI.AI.AlliedOperations
     internal static class BMultiTech
     {
         public static void MTStatic(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
-        {   // stay still
+        {
             helper.lastPlayer = helper.GetPlayerTech();
             helper.IsMultiTech = true;
 
@@ -47,18 +47,13 @@ namespace TAC_AI.AI.AlliedOperations
                         var otherHelper = hostTech.GetHelperInsured();
                         if (otherHelper.MultiTechsAffiliated.Add(tank))
                             otherHelper.dirtyExtents = true;
-                        //DebugTAC_AI.Log("Found " + hostTech.name);
                     }
                     else
-                        hostTech = null;//helper.GetPlayerTech().tank;
+                        hostTech = null;
 
-                    //hostTech = AIEPathing.ClosestAllyPrecision(AIEPathing.AllyList(tank), tank.boundsCentreWorldNoCheck, out dist, tank);
-                    //float distSqr = 0;
-                    //if ((bool)helper.theResource?.tank)
 
                     if ((bool)hostTech)
                     {
-                        //hostTech = helper.theResource.tank;
                         distSqr = (hostTech.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).sqrMagnitude;
                     }
                     else
@@ -102,7 +97,6 @@ namespace TAC_AI.AI.AlliedOperations
                     copyTargVis = hostTech;
                 }
 
-                //float range = helper.lastTechExtents + vis.GetCheapBounds();
                 if (!helper.MTMimicHostAvail)
                 {
                     helper.MTMimicHostAvail = true;
@@ -119,7 +113,6 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.MTOffsetPos = copyTargVis.trans.InverseTransformPoint(tank.trans.position);
                     helper.MTOffsetRot = copyTargVis.trans.InverseTransformDirection(tank.trans.forward);
                     helper.MTOffsetRotUp = copyTargVis.trans.InverseTransformDirection(tank.trans.up);
-                    //DebugTAC_AI.Log(KickStart.ModID + ":AI " + tank.name + ": Synced position to " + helper.MTOffsetPos + " and rot to " + helper.MTOffsetRot);
                     helper.MTLockedToTechBeam = true;
                 }
                 else if (helper.MTLockedToTechBeam && !copyTargVis.beam.IsActive)
@@ -152,7 +145,6 @@ namespace TAC_AI.AI.AlliedOperations
                         hostTech = vis2.tank;
                     else
                         hostTech = null;
-                    //hostTech = AIEPathing.ClosestAllyPrecision(AIEPathing.AllyList(tank), tank.boundsCentreWorldNoCheck, out dist, tank);
                     if (hostTech == null)
                     {
                         helper.MTLockedToTechBeam = false;
@@ -188,7 +180,6 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.MTOffsetPos = vis.trans.InverseTransformPoint(tank.trans.position);
                     helper.MTOffsetRot = vis.trans.InverseTransformDirection(tank.trans.forward);
                     helper.MTOffsetRotUp = vis.trans.InverseTransformDirection(tank.trans.up);
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Synced position to " + helper.MTOffsetPos + " and rot to " + helper.MTOffsetRot);
                     helper.MTLockedToTechBeam = true;
                 }
                 else if (helper.MTLockedToTechBeam && !vis.beam.IsActive)
@@ -204,18 +195,12 @@ namespace TAC_AI.AI.AlliedOperations
 
         public static void MimicDefend(TankAIHelper helper, Tank tank)
         {
-            // Determines the weapons actions and aiming of the AI, this one is for MTs that have a host
             helper.WantsToFight = false;
             if (helper.theResource?.tank)
-            {   //Get the tech the player is aiming at
+            {
                 Visible playerTarget = helper.theResource.tank.Weapons.GetManualTarget();
                 if (playerTarget != null && playerTarget.tank != null && playerTarget.isActive)
                 {
-                    // B13: was `helper.lastEnemy = playerTarget;` — bypassed SetPursuit, so
-                    // KeepEnemyFocus stayed false and the next idle tick's TryRefreshEnemyAllied
-                    // overwrote the host's pick. Mirror TryRefreshEnemyAllied's host-aim semantics
-                    // (Provoked=0, full release, force-acquire) so the host's reticle is treated
-                    // as an explicit fire order regardless of any prior held lock.
                     helper.Provoked = 0;
                     helper.ReleaseTarget();
                     helper.SetPursuit(playerTarget, force: true);

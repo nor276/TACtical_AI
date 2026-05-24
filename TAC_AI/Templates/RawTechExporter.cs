@@ -15,7 +15,7 @@ using TerraTechETCUtil;
 namespace TAC_AI.Templates
 {
     public class AIBookmarker : MonoBehaviour
-    {   // External AI-setting interface - used to set Tech AI state externally
+    {
         public EnemyHandling commander = EnemyHandling.Wheeled;
         public EAttackMode attack = EAttackMode.Circle;
         public EnemyAttitude attitude = EnemyAttitude.Default;
@@ -24,7 +24,7 @@ namespace TAC_AI.Templates
     }
 
     public class RawTechTemplateFast
-    {   // External builder interface - use to save Techs externally
+    {
         public string Name = "unset";
         public string Blueprint;
         public bool InfBlocks;
@@ -63,7 +63,7 @@ namespace TAC_AI.Templates
     {
         public static RawTechExporter inst;
         public static GameObject GUIWindow;
-        private static Rect HotWindow = new Rect(0, 0, 230, 230);   // the "window"
+        private static Rect HotWindow = new Rect(0, 0, 230, 230);
         public static bool isOpen;
         public static bool pendingInGameReload;
 
@@ -103,11 +103,10 @@ namespace TAC_AI.Templates
         {
             if (inst)
                 return;
-            GuardAIIcon = Resources.FindObjectsOfTypeAll<Sprite>().FirstOrDefault(delegate 
+            GuardAIIcon = Resources.FindObjectsOfTypeAll<Sprite>().FirstOrDefault(delegate
                 (Sprite cand)
             { return cand.name == "Icon_AI_Guard"; });
 #if STEAM
-            // Steam does not support RawTech loading the same way as Unofficial.
             if (!firstInit)
             {
                 SetupWorkingDirectoriesSteam();
@@ -144,7 +143,6 @@ namespace TAC_AI.Templates
                 DebugTAC_AI.Log(KickStart.ModID + ": FirstInit RawTechExporter");
                 TankAIManager.toggleAuto = new ManToolbar.ToolbarToggle(LOC_Autopilot, aiIconsEnemy[EnemySmarts.Meh],
                     TankAIManager.ButtonTogglePlayerAutopilot);
-                    //new AbilityToggle("Autopilot", aiIconsEnemy[EnemySmarts.IntAIligent], TankAIManager.TogglePlayerAutopilot, 0.2f);
             }
             inst = Instantiate(new GameObject("RawTechExporter")).AddComponent<RawTechExporter>();
             inst.Invoke("LateInitiate", 0.001f);
@@ -200,7 +198,7 @@ namespace TAC_AI.Templates
             Destroy(inst.gameObject);
             inst = null;
         }
-       
+
         private static bool isSubbed = false;
         public void LateInitiate()
         {
@@ -211,7 +209,6 @@ namespace TAC_AI.Templates
             if (KickStart.isBlockInjectorPresent)
                 BlockIndexer.ConstructModdedIDList();
             isSubbed = true;
-            //Globals.inst.m_BlockSurvivalChance = KickStart.EnemyBlockDropChance / 100.0f;
         }
 
         public void UpdatePauseStatus(bool paused)
@@ -273,7 +270,7 @@ namespace TAC_AI.Templates
             pendingInGameReload = false;
             ModTechsDatabase.ValidateAndAddAllExternalTechs();
         }
-        
+
         internal class GUIRawDisplay : MonoBehaviour
         {
             internal void OnGUI()
@@ -286,29 +283,21 @@ namespace TAC_AI.Templates
         }
         private static void GUIHandler(int ID)
         {
-            //bool snapsAvail = SnapsAvailable();
             bool snapsAvail = true;
             GUI.tooltip = "Make your own techs spawn as enemies! Local only.";
-            //"The techs are saved to your Raw Techs directory";
-            /*
-            if (GUILayout.Button(new GUIContent("Save Current", "Export your current Tech to the lightweight RawTech format."), AltUI.ButtonBlue))
-            {
-                SaveTechToRawJSON(Singleton.playerTank);
-            }
-            */
-            if (GUILayout.Button(new GUIContent("To Enemy", "Save your current Tech to the Enemy Spawn Pool"), 
+            if (GUILayout.Button(new GUIContent("To Enemy", "Save your current Tech to the Enemy Spawn Pool"),
                 AltUI.ButtonBlueLarge, GUILayout.Height(40)))
             {
                 SaveEnemyTechToRawJSON(Singleton.playerTank);
                 inst.ReloadRawTechLoader();
             }
-            if (GUILayout.Button(new GUIContent("All To Enemy", snapsAvail ? "Save ALL your local Techs to the Enemy Spawn Pool." : "Open your Load Techs at least once!"), 
+            if (GUILayout.Button(new GUIContent("All To Enemy", snapsAvail ? "Save ALL your local Techs to the Enemy Spawn Pool." : "Open your Load Techs at least once!"),
                 snapsAvail ? AltUI.ButtonBlueLarge : AltUI.ButtonGreyLarge, GUILayout.Height(40)))
             {
                 SaveEnemyTechsToRawBLK();
                 inst.ReloadRawTechLoader();
             }
-            if (GUILayout.Button(new GUIContent("Global Pool", "Add your Tech or suggest changes to the global Enemy Tech pool!"), 
+            if (GUILayout.Button(new GUIContent("Global Pool", "Add your Tech or suggest changes to the global Enemy Tech pool!"),
                 AltUI.ButtonOrangeLarge, GUILayout.Height(40)))
             {
                 ManSteamworks.inst.OpenOverlayURL("https://steamcommunity.com/workshop/filedetails/discussion/2765217410/3790379982475551622/");
@@ -321,11 +310,9 @@ namespace TAC_AI.Templates
         {
             if (Singleton.playerTank.IsNull() || !KickStart.EnableBetterAI)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": TANK IS NULL!");
                 CloseSubMenu();
                 return;
             }
-            //DebugTAC_AI.Log(KickStart.ModID + ": Opened RawJSON menu");
             isOpen = true;
             GUIWindow.SetActive(true);
         }
@@ -336,7 +323,6 @@ namespace TAC_AI.Templates
                 isOpen = false;
                 GUIWindow.SetActive(false);
                 KickStart.ReleaseControl();
-                //DebugTAC_AI.Log(KickStart.ModID + ": Closed RawJSON menu");
             }
         }
 
@@ -344,10 +330,10 @@ namespace TAC_AI.Templates
         public static void SetupWorkingDirectories()
         {
             DirectoryInfo di = new DirectoryInfo(Assembly.GetExecutingAssembly().Location);
-            di = di.Parent; // off of this DLL
+            di = di.Parent;
             DLLDirectory = di.ToString();
-            di = di.Parent; // out of the DLL folder
-            di = di.Parent; // out of QMods
+            di = di.Parent;
+            di = di.Parent;
             BaseDirectory = di.ToString();
 #if DEBUG
             DebugTAC_AI.Info(KickStart.ModID + ": DLL folder is at: " + DLLDirectory);
@@ -371,11 +357,11 @@ namespace TAC_AI.Templates
         public static void SetupWorkingDirectoriesSteam()
         {
             DirectoryInfo di = new DirectoryInfo(Assembly.GetExecutingAssembly().Location);
-            di = di.Parent; // off of this DLL
+            di = di.Parent;
             DLLDirectory = di.ToString();
 
             DirectoryInfo Navi = new DirectoryInfo(Application.dataPath);
-            Navi = Navi.Parent; // out of the GAME folder
+            Navi = Navi.Parent;
             BaseDirectory = Navi.ToString();
 #if DEBUG
             DebugTAC_AI.Info(KickStart.ModID + ": DLL folder is at: " + DLLDirectory);
@@ -397,7 +383,7 @@ namespace TAC_AI.Templates
         {
 #if STEAM
             int count = 0;
-            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();// Go to the cluster directory
+            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();
 
             DebugTAC_AI.LogDevOnlyAssert(KickStart.ModID + ": RegisterExternalCorpTechs - searching in " + location);
             string fileName = "RawTechs.RTList";
@@ -450,10 +436,8 @@ namespace TAC_AI.Templates
         internal static string LoadCommunityDeployedTechs(Stream streamData)
         {
             string toAdd = "";
-            //DebugTAC_AI.Log(KickStart.ModID + ": RegisterExternalCorpTechs - searching in " + location);
             try
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": RegisterExternalCorpTechs - looked in " + GO);
                 using (GZipStream GZS = new GZipStream(streamData, CompressionMode.Decompress))
                 {
                     using (StreamReader SR = new StreamReader(GZS))
@@ -475,17 +459,15 @@ namespace TAC_AI.Templates
         {
 #if STEAM
             List<RawTechTemplate> toAdd = new List<RawTechTemplate>();
-            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();// Go to the cluster directory
+            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();
 
-            //DebugTAC_AI.Log(KickStart.ModID + ": RegisterExternalCorpTechs - searching in " + location);
 
-            string fileName = "RawTechs.RTList"; 
+            string fileName = "RawTechs.RTList";
             foreach (string directoryLoc in Directory.GetDirectories(location))
             {
                 try
                 {
                     string GO = Path.Combine(directoryLoc, fileName);
-                    //DebugTAC_AI.Log(KickStart.ModID + ": RegisterExternalCorpTechs - looked in " + GO);
                     if (File.Exists(GO))
                     {
                         using (FileStream FS = File.Open(GO, FileMode.Open, FileAccess.Read))
@@ -529,14 +511,14 @@ namespace TAC_AI.Templates
                     try
                     {
                         RawTechTemplateFast ext = LoadEnemyTech(name, Dir);
-                        errorLevel++; // 1
+                        errorLevel++;
                         RawTechTemplate temp = new RawTechTemplate
                         {
                             techName = ext.Name,
                             savedTech = ext.Blueprint,
                             startingFunds = ValidateCost(ext.Blueprint, ext.Cost),
                         };
-                        errorLevel++; // 2
+                        errorLevel++;
                         FactionSubTypes MainCorp;
                         if (ext.Faction == FactionSubTypes.NULL)
                         {
@@ -544,7 +526,7 @@ namespace TAC_AI.Templates
                         }
                         else
                             MainCorp = ext.Faction;
-                        errorLevel++; // 3
+                        errorLevel++;
                         temp.purposes = RawTechBase.GetHandler(ext.Blueprint, (FactionTypesExt)MainCorp, ext.IsAnchored, out BaseTerrain terra, out int minCorpGrade);
                         temp.IntendedGrade = minCorpGrade;
                         temp.factionName = ManMods.inst.FindCorpShortName(MainCorp);
@@ -565,8 +547,8 @@ namespace TAC_AI.Templates
         {
             List<string> Cleaned = new List<string>();
             List<string> Dirs = GetALLDirectoriesInFolder(directory);
-            Dirs.Add(directory); 
-            
+            Dirs.Add(directory);
+
             foreach (string Dir in Dirs)
             {
                 Cleaned.AddRange(GetTechNameList(Dir));
@@ -640,10 +622,10 @@ namespace TAC_AI.Templates
                         return false;
                     }
                     else
-                        SB.Remove(SB.Length - 5, 5);// remove ".JSON"
+                        SB.Remove(SB.Length - 5, 5);
                 }
                 else
-                    SB.Remove(SB.Length - 8, 8);// remove ".RAWTECH"
+                    SB.Remove(SB.Length - 8, 8);
 
                 output = SB.ToString();
             }
@@ -713,12 +695,11 @@ namespace TAC_AI.Templates
             {
                 return false;
             }
-            // No snaps loaded.
             return false;
         }
         public static void SaveEnemyTechsToRawBLK()
         {
-            List<SnapshotDisk> Snaps = ManSnapshots.inst.ServiceDisk.GetSnapshotCollectionDisk().Snapshots.ToList();// ManSnapshots.inst.m_Snapshots.ToList();
+            List<SnapshotDisk> Snaps = ManSnapshots.inst.ServiceDisk.GetSnapshotCollectionDisk().Snapshots.ToList();
             if (Snaps.Count == 0)
                 return;
             foreach (SnapshotDisk snap in Snaps)
@@ -748,7 +729,7 @@ namespace TAC_AI.Templates
             RawTechTemplateFast builder = new RawTechTemplateFast
             {
                 Name = tank.name,
-                Faction = TankExtentions.GetMainCorp(tank),//GetTopCorp(tank);
+                Faction = TankExtentions.GetMainCorp(tank),
                 Blueprint = RawTechTemplate.TechToJSONExternal(tank),
                 InfBlocks = false,
                 IsAnchored = tank.IsAnchored,
@@ -1163,7 +1144,6 @@ namespace TAC_AI.Templates
             try
             {
                 ModContainer MC = ManMods.inst.FindMod(KickStart.ModID);
-                //ResourcesHelper.LookIntoModContents(MC);
                 if (MC != null)
                     tex = ResourcesHelper.GetTextureFromModAssetBundle(MC, pngName.Replace(".png", ""), false);
                 else
@@ -1264,7 +1244,7 @@ namespace TAC_AI.Templates
             finally { SB.Clear(); }
         }
         private static List<string> GetALLDirectoriesInFolder(string directory)
-        {   // 
+        {
             List<string> final = new List<string>();
             final.Add(directory);
             foreach (string Dir in Directory.GetDirectories(directory))
@@ -1276,7 +1256,7 @@ namespace TAC_AI.Templates
             return final;
         }
         private static bool IsLethal(Tank tank)
-        {   // 
+        {
             return tank.blockman.IterateBlockComponents<ModuleWeapon>().Count() > tank.blockman.IterateBlockComponents<ModuleTechController>().Count();
         }
     }

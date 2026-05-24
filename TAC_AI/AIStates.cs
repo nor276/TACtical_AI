@@ -18,12 +18,12 @@ namespace TAC_AI
 
     public enum AIWeaponType
     {
-        Unknown, 
+        Unknown,
         Direct,
         Indirect,
     }
     public enum AIWeaponState
-    { // 0 Normal, 1 Enemy, 2 HoldFire, 3 Obsticle, 4 Mimic
+    {
         Normal,
         Enemy,
         HoldFire,
@@ -48,10 +48,6 @@ namespace TAC_AI
         NonPlayer,
         Neutral,
     }
-    /// <summary>
-    /// Throttle application mode. Declaration order is NOT load-bearing — all consumers use
-    /// named values via switch or `==`/`!=`. Free to reorder if needed.
-    /// </summary>
     public enum AIThrottleState
     {
         PivotOnly,

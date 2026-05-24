@@ -25,25 +25,6 @@ namespace TAC_AI
             }
         }
 #endif
-        /*
-        internal static class ManSpawnPatches
-        {
-            internal static Type target = typeof(ManSpawn);
-
-            static readonly FieldInfo teamC = typeof(ManSpawn).GetField("m_TeamCounter", BindingFlags.NonPublic | BindingFlags.Instance);
-            //Startup - On very late update
-            private static void GenerateAutomaticTeamID_Prefix(ref ManSpawn __instance, ref int __result)
-            {
-                if (__result == -1)
-                {
-                    if (AIGlobals.IsBaseTeam((int)teamC.GetValue(__instance)))
-                    {
-                        __result = AIGlobals.BaseTeamsEnd + 1;
-                        teamC.SetValue(__instance, AIGlobals.BaseTeamsEnd + 2);
-                    }
-                }
-            }
-        }*/
 
         internal static class ManPlayerPatches
         {
@@ -59,8 +40,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(SpawnTechData);
 
-            //Startup - On very late update
-            private static void SpawnTechInEncounter_Postfix(SpawnTechData __instance,  
+            private static void SpawnTechInEncounter_Postfix(SpawnTechData __instance,
                 ref Encounter encounterToSpawnInto, ref string nameOverride)
             {
                 string text = !nameOverride.NullOrEmpty() ? nameOverride : __instance.UniqueName;
@@ -68,18 +48,6 @@ namespace TAC_AI
                     TankAIManager.RegisterMissionTechVisID(vis.ID);
             }
         }
-        /*
-        internal static class ModePatches
-        {
-            internal static Type target = typeof(Mode);
-
-            //Startup - On very late update
-            private static void EnterPreMode_Prefix()
-            {
-                if (!KickStart.firedAfterBlockInjector)//KickStart.isBlockInjectorPresent && 
-                    KickStart.DelayedBaseLoader();
-            }
-        }*/
         internal static class ModeMainPatches
         {
             internal static Type target = typeof(ModeMain);
@@ -115,15 +83,6 @@ namespace TAC_AI
         internal static class TankControlPatches
         {
             internal static Type target = typeof(TankControl);
-            /*
-            private static void ApplyCollectedMovementInputs_Prefix(TankControl __instance, ref TankControl other)
-            {
-                try
-                {
-                }
-                catch
-                { }
-            }*/
             private static void CopySchemesFrom_Prefix(TankControl __instance, ref TankControl other)
             {
                 DebugTAC_AI.FirstFire("TankControl.CopySchemesFrom_Prefix",
@@ -143,20 +102,14 @@ namespace TAC_AI
             static readonly FieldInfo beamPush = typeof(TankBeam).GetField("m_NudgeStrafe", BindingFlags.NonPublic | BindingFlags.Instance);
             static readonly FieldInfo beamRot = typeof(TankBeam).GetField("m_NudgeRotate", BindingFlags.NonPublic | BindingFlags.Instance);
 
-            //PatchTankBeamToHelpAI - Give the AI some untangle help
             private static void OnUpdate_Postfix(TankBeam __instance)
             {
-                // P09 T-7-1: fail-fast log on reflection-null (mirrors GlobalPatches.cs:129 FirstFire pattern).
                 if (beamPush == null || beamRot == null)
                 {
                     DebugTAC_AI.FirstFire("TankBeamPatches.OnUpdate_Postfix.reflectionNull",
                         "TankBeam.m_NudgeStrafe/m_NudgeRotate not found (vanilla API change?) - beam-assisted unjam disabled");
                     return;
                 }
-                // P09 B-9-5: dropped `!ManNetwork.IsNetworked` gate. BeamMaintainer doesn't MP-gate,
-                // so beam DOES enable for AI techs on host in MP - leaving the vanilla world-east push
-                // bug active in MP. Patch only mutates local TankBeam fields (not networked); client
-                // can't accidentally fire because BeamMaintainer doesn't enable beam for AI techs on client.
                 if (__instance.IsActive && !ManGameMode.inst.IsCurrent<ModeSumo>())
                 {
                     var helper = __instance.GetComponent<TankAIHelper>();
@@ -207,15 +160,6 @@ namespace TAC_AI
                             if (helper.DriveVar != 0)
                             {
                                 forceVal = helper.DriveVar;
-                                // Was (new Vector2(1, 0) * forceVal): hardcoded world-east push that ignored
-                                // headingVec entirely. Since this branch fires during the stuck-recovery
-                                // ForceSetBeam window (DriveVar = +/-1), it was shoving the tech east every
-                                // time the beam triggered — the "random direction" loop the player sees.
-                                // P09 B-8-1: was passing Vector2 to InverseTransformDirection. C# implicit
-                                // Vector2→Vector3 conversion produces (worldX, worldZ, 0) — the world-Z
-                                // component lands in the local-Y slot, then the TankBeam consumer SetY(0)'s
-                                // it, losing forward push entirely. ToVector3XZ() correctly lifts
-                                // Vector2(x,y) → Vector3(x, 0, y), restoring goal-aligned local-space push.
                                 beamPush.SetValue(__instance,
                                     helper.tank.rootBlockTrans.InverseTransformDirection(((headingVec * forceVal).
                                     Clamp(-Vector2.one, Vector2.one)).ToVector3XZ()));
@@ -240,7 +184,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(TankCamera);
 
-            //static readonly FieldInfo targPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
             private static void TryKeepManualTargetInView_Postfix(ref Tank tankToFollow, ref bool __result)
             {
                 if (!KickStart.EnableBetterAI || !tankToFollow)
@@ -254,7 +197,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(TechWeapon);
 
-            //static readonly FieldInfo targPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
             private static void GetManualTarget_Postfix(TechWeapon __instance, ref Visible __result)
             {
                 if (!KickStart.EnableBetterAI)
@@ -289,8 +231,7 @@ namespace TAC_AI
                     return tAI.RunState == AIRunState.Default;
                 return true;
             }
-            
-            //ForceAIToComplyAnchorCorrectly - (Allied AI state changing remotes) On Auto Setting Tech AI
+
             private static void UpdateAICategory_Postfix(TechAI __instance)
             {
                 DebugTAC_AI.FirstFire("TechAI.UpdateAICategory_Postfix",
@@ -299,31 +240,9 @@ namespace TAC_AI
                 if (tAI.IsNotNull())
                 {
                     if (tAI.AnchorStateAIInsure && tAI.AIAlign == AIAlignment.Player)
-                    {   //Set the AI back to escort to continue operations if autoanchor is true
+                    {
                         tAI.AnchorStateAIInsure = false;
                         __instance.SetBehaviorType(AITreeType.AITypes.Escort);
-                        /*
-                        if (!__instance.TryGetCurrentAIType(out AITreeType.AITypes type))
-                        {
-                            if (type != AITreeType.AITypes.Escort)
-                            {
-                                __instance.SetBehaviorType(AITreeType.AITypes.Escort);
-                                AITreeType AISetting = (AITreeType)currentTreeActual.GetValue(__instance);
-
-                                AISetting.m_TypeName = AITreeType.AITypes.Escort.ToString();
-
-                                currentTreeActual.SetValue(__instance, AISetting);
-                            }
-                        }
-                        else
-                        {
-                            AITreeType AISetting = (AITreeType)currentTreeActual.GetValue(__instance);
-
-                            AISetting.m_TypeName = AITreeType.AITypes.Escort.ToString();
-
-                            currentTreeActual.SetValue(__instance, AISetting);
-                        }
-                        */
                     }
                 }
             }
@@ -333,7 +252,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ObjectSpawner);
 
-            //EmergencyOverrideOnTechLanding - BEFORE enemy spawn
             private static void TrySpawn_Prefix(ref ManSpawn.ObjectSpawnParams objectSpawnParams, ref ManFreeSpace.FreeSpaceParams freeSpaceParams)
             {
                 DebugTAC_AI.FirstFire("ObjectSpawner.TrySpawn_Prefix",
@@ -351,7 +269,6 @@ namespace TAC_AI
                         catch (Exception e)
                         {
                             DebugTAC_AI.LogWarnPlayerOnce("Advanced AI spawn override threw — falling back to vanilla spawn for this attempt", e);
-                            // Don't re-throw: TSP.m_TechToSpawn is unchanged, so vanilla can still spawn the original.
                         }
                     }
                 }

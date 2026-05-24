@@ -28,7 +28,7 @@ namespace TAC_AI.AI.Movement
 
             Vector3 startPos = pathable.CurrentPosition();
             Vector3 destPos = pathable.GetTargetDestination();
-            
+
             if (!IsFarEnough(startPos, destPos))
                 return false;
             var pathfinder = pathable.Pathfinder;
@@ -46,7 +46,6 @@ namespace TAC_AI.AI.Movement
                 if (IsFarEnough(pathfinder.EndPosWP.ScenePosition, destPos) || (pathfinder.IsFinished && !pathfinder.Success &&
                     IsFarEnough(pathfinder.StartPosWP.ScenePosition, startPos)))
                 {
-                    //DebugTAC_AI.Log("AIAutoPather - RECALC Called.");
                     pathfinder.Recalc(startPos, destPos);
                 }
             }
@@ -492,7 +491,6 @@ namespace TAC_AI.AI.Movement
                 }
                 toCheck.Clear();
             }
-            //DebugTAC_AI.Log("AIAutoPather - Pathing attempt with " + pathed.Count);
             return true;
         }
 
@@ -506,7 +504,6 @@ namespace TAC_AI.AI.Movement
                 PathRoute.RemoveAt(0);
                 partial.Add(posD);
             }
-            //StartPos = PathRoute.Last();
             TryShorten(ref partial);
             DebugTAC_AI.LogPathing("AIAutoPather - Partial path with " + partial.Count + " points and " + pathed.Count + " attempts so far.");
             GetPathEarly(partial, submitCache);
@@ -576,13 +573,11 @@ namespace TAC_AI.AI.Movement
                     {
                         if (item.tank.IsAnchored)
                         {
-                            //DebugTAC_AI.Log("CalcActiveObst - Obstructed by Anchored Tech " + item.tank.name + " at " + posScene);
                             return ObsticleDifficultyAddition;
                         }
                     }
                     else
                     {
-                        //DebugTAC_AI.Log("CalcActiveObst - Obstructed by Scenery at " + posScene);
                         return ObsticleDifficultyAddition;
                     }
                 }
@@ -591,7 +586,6 @@ namespace TAC_AI.AI.Movement
         }
         private byte CalcAll(IntVector3 pos, IntVector3 posCur)
         {
-            //int diff = AIEPathMapper.GetDifficultyWaterInv(Center.ScenePosition + (Vector3)pos.ToVector3XZ() * MoveGridScale, this);
             Vector3 posV = ToScene(pos);
             int diff = AIEPathMapper.GetIsEnterable(posV, this) ? 0 : DefaultMaxDifficulty;
             diff += CalcHeadingDiff(pos, posCur);
@@ -600,7 +594,6 @@ namespace TAC_AI.AI.Movement
         }
         private byte CalcAll(IntVector3 pos)
         {
-            //int diff = AIEPathMapper.GetDifficultyWaterInv(Center.ScenePosition + (Vector3)pos.ToVector3XZ() * MoveGridScale, this);
             Vector3 posV = ToScene(pos);
             int diff = AIEPathMapper.GetIsEnterable(posV, this) ? 0 : DefaultMaxDifficulty;
             diff += CalcActiveObst(posV);
@@ -609,13 +602,9 @@ namespace TAC_AI.AI.Movement
         private byte CalcAvoidWater(IntVector3 pos, IntVector3 posCur)
         {
             Vector3 posV = ToScene(pos);
-            //DebugTAC_AI.Log("Pos" + pos + ", scene " + posV + " alt - " + CurAlt + " vs " + AIEPathMapper.GetAlt(posV));
             int diff = AIEPathMapper.GetIsEnterableAboveWater(posV, this) ? 0 : DefaultMaxDifficulty;
-            //DebugTAC_AI.Log("byte - " + diff);
             diff += CalcHeadingDiff(pos, posCur);
-            //DebugTAC_AI.Log("byte - " + diff);
             diff += CalcActiveObst(posV);
-            //DebugTAC_AI.Assert("Clamp failed on byte as " + diff + " vs " + Mathf.Clamp(diff, 0, AIEPathMapper.maxAltByte));
             return (byte)Mathf.Clamp(diff, 1, AIEPathMapper.maxAltByte);
         }
         private byte CalcAvoidWater(IntVector3 pos)
@@ -649,9 +638,7 @@ namespace TAC_AI.AI.Movement
             if (PathRoute.Count == 0)
             {
                 return;
-                //return new List<WorldPosition>() { WorldPosition.FromScenePosition(EndPosWP.ScenePosition + (Vector3.up * 2)) };
             }
-            //throw new Exception("AIAutoPather - GetPath returned no valid points for pathfinding");
             foreach (var item in PathRoute)
             {
                 cache.Add(WorldPosition.FromScenePosition(ToScene(item) + (Vector3.up * 2)));
@@ -701,7 +688,6 @@ namespace TAC_AI.AI.Movement
             if (PathRoute.Count == 0)
             {
                 return;
-                //throw new Exception("AIAutoPather - TryShorten returned no valid points for pathfinding");
             }
             int removed = 1;
             int index = 0;
@@ -741,7 +727,7 @@ namespace TAC_AI.AI.Movement
                 IntVector3 posNext = PathRoute[step + 1];
                 IntVector3 moveDelta = posNext - posCheck;
                 int ChainRemoveStep = 0;
-                while (step < PathRoute.Count - 2 && PathRoute[step + 2] - PathRoute[step + 1] == moveDelta 
+                while (step < PathRoute.Count - 2 && PathRoute[step + 2] - PathRoute[step + 1] == moveDelta
                     && MaxPointsInLineToRemove > ChainRemoveStep)
                 {
                     PathRoute.RemoveAt(step + 1);
@@ -749,8 +735,6 @@ namespace TAC_AI.AI.Movement
                     ChainRemoveStep++;
                 }
             }
-            //DebugTAC_AI.Log("AIAutoPather - TryShorten has removed " + removed + " entries");
-            //throw new NotImplementedException("AIAutoPather - TryShorten is incomplete");
         }
 
     }

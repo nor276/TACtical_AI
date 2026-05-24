@@ -15,7 +15,7 @@ namespace TAC_AI.World
     {
         [SSManagerInst]
         public static ManWorldRTS inst;
-        public static int MaxCommandDistance = 9001;//500;
+        public static int MaxCommandDistance = 9001;
         public static int MaxAllowedSizeForHighlight = 3;
         public static bool PlayerIsInRTS = false;
         public static bool PlayerRTSOverlay = false;
@@ -125,7 +125,7 @@ namespace TAC_AI.World
                 helper.RTSDestination = GetScenePosition(helper);
                 switch (TypeSwitch)
                 {
-                    case AIType.Null:   // Movement command
+                    case AIType.Null:
                         if (Subject?.tank != null)
                         {
                             helper.SetRTSState(false);
@@ -229,8 +229,6 @@ namespace TAC_AI.World
             }
         }
 
-        // Single source of truth for RTS unit-group bucket count. Save/load/UI all
-        // index by this constant so a future schema bump is one-line.
         public const int UnitGroupCount = 10;
 
         private static List<List<T>> NewBuckets<T>()
@@ -311,10 +309,8 @@ namespace TAC_AI.World
                     DebugTAC_AI.LogError(KickStart.ModID + ": DelayedInitiate - failed to register one or more SelectHalo materials (Default will be used for missing): " + eMat);
                 }
 
-                //SelectHalo.SelectCirclePrefab.AddComponent<MeshRenderer>().material = mat;
                 var ps = SelectHalo.SelectCirclePrefab.AddComponent<ParticleSystem>();
                 var s = ps.shape;
-                //s.texture = (Texture2D)mat.mainTexture;
                 s.textureColorAffectsParticles = false;
                 s.shapeType = ParticleSystemShapeType.Circle;
                 s.radius = 0;
@@ -330,7 +326,6 @@ namespace TAC_AI.World
                 e.rateOverTime = 10;
                 var r = ps.rotationOverLifetime;
                 r.enabled = true;
-                //r.separateAxes = false;
                 r.z = new ParticleSystem.MinMaxCurve
                 {
                     mode = ParticleSystemCurveMode.Constant,
@@ -346,9 +341,6 @@ namespace TAC_AI.World
                 DebugTAC_AI.Log(KickStart.ModID + ": Created SelectCircle.");
             }
 
-            // Destroy before re-Instantiate — DelayedInitiate fires per DLC content load AND on every
-            // runtime strategic-AI/RTS-HUD toggle (see DEAD-2 revive). Without the guard, previous
-            // windows get orphaned in the hierarchy on every call.
             if (SelectWindow != null) Destroy(SelectWindow);
             SelectWindow = Instantiate(new GameObject("TechSelectRect"));
             SelectWindow.AddComponent<GUIRectSelect>();
@@ -480,13 +472,12 @@ namespace TAC_AI.World
         }
         public static void OnRTSEvent(ManPointer.Event click, bool down)
         {
-            if (RTSControl)// && !ManPointer.inst.DraggingItem)
+            if (RTSControl)
             {
                 Globals gInst = Globals.inst;
 
                 if (click == ManPointer.Event.LMB)
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": LEFT MOUSE BUTTON");
 
                     Vector3 pos = Camera.main.transform.position;
                     RaycastHit rayman;
@@ -496,11 +487,11 @@ namespace TAC_AI.World
                         layerMask, QueryTriggerInteraction.Ignore);
 
                     if (down)
-                    {   // Cache Target
+                    {
                         LMBContext = rayman.collider;
                     }
                     else
-                    {   // Only execute if the context is the same
+                    {
                         if (!SameInContext(LMBContext, rayman.collider))
                             return;
                         DebugTAC_AI.Log(KickStart.ModID + ": LEFT MOUSE BUTTON TECHNICAL");
@@ -538,7 +529,6 @@ namespace TAC_AI.World
                                         if (QueuedRelease)
                                         {
                                             inst.ClearList();
-                                            //DebugTAC_AI.Log(KickStart.ModID + ": Cleared Tech Selection.");
                                         }
                                         QueuedRelease = !QueuedRelease;
                                     }
@@ -550,7 +540,7 @@ namespace TAC_AI.World
                                 }
                             }
                             else
-                            {   // We hit NOTHING
+                            {
                                 inst.ClearList();
                                 return;
                             }
@@ -564,40 +554,21 @@ namespace TAC_AI.World
                     RaycastHit rayman;
                     int layerMask = Globals.inst.layerTank.mask | Globals.inst.layerTankIgnoreTerrain.mask | Globals.inst.layerTerrain.mask |
                         Globals.inst.layerLandmark.mask | Globals.inst.layerScenery.mask;
-                    Physics.Raycast(ManUI.inst.ScreenPointToRay(Input.mousePosition), out rayman, MaxCommandDistance, 
+                    Physics.Raycast(ManUI.inst.ScreenPointToRay(Input.mousePosition), out rayman, MaxCommandDistance,
                         layerMask, QueryTriggerInteraction.Ignore);
 
                     if (down)
-                    {   // Cache Target
+                    {
                         RMBContext = rayman.collider;
                     }
                     else
-                    {   // Only execute if the context is the same
-                        //if (!SameInContext(RMBContext, rayman.collider))
-                        //    return;
+                    {
 
                         if ((bool)rayman.collider)
                         {
                             QueuedRelease = false;
-                            inst.LocalPlayerTechsControlled.HandleSelection(rayman.point, 
+                            inst.LocalPlayerTechsControlled.HandleSelection(rayman.point,
                                 ManVisible.inst.FindVisible(rayman.collider), Input.GetKey(KickStart.MultiSelect));
-                            /*
-                            int layer = rayman.collider.gameObject.layer;
-                            if (layer == gInst.layerTerrain || layer == gInst.layerLandmark)
-                            {
-                                QueuedRelease = false;
-                                inst.HandleSelectTerrain(rayman);
-                            }
-                            else if (layer == gInst.layerScenery)
-                            {
-                                QueuedRelease = false;
-                                inst.HandleSelectScenery(rayman);
-                            }
-                            else
-                            {
-                                QueuedRelease = false;
-                                inst.HandleSelectTargetTank(rayman);
-                            }*/
                         }
                     }
                     ControlState = false;
@@ -606,7 +577,6 @@ namespace TAC_AI.World
         }
         private void HandleBoxSelectUnits()
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": GROUP Select ACTIVATED");
             Vector3 ScreenBoxEnd = Input.mousePosition * newMatrixScaleInv;
             float HighX = ScreenBoxStart.x >= ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
             float LowX = ScreenBoxStart.x < ScreenBoxEnd.x ? ScreenBoxStart.x : ScreenBoxEnd.x;
@@ -800,7 +770,6 @@ namespace TAC_AI.World
                             if (StartControlling(TechUnit, controlled))
                             {
                                 SetSelectHalo(TechUnit, true);
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                                 SelectUnitSFX();
                             }
                             QueuedRelease = false;
@@ -820,7 +789,6 @@ namespace TAC_AI.World
                                     {
                                         GrabbedThisFrame = TechUnit;
                                         SetSelectHalo(TechUnit, false);
-                                        //DebugTAC_AI.Log(KickStart.ModID + ": Unselected Tank " + grabbedTech.name + ".");
                                         UnSelectUnitSFX();
                                     }
                                 }
@@ -830,11 +798,9 @@ namespace TAC_AI.World
                                     if (StartControlling(TechUnit, controlled))
                                     {
                                         SetSelectHalo(TechUnit, true);
-                                        //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                                         SelectUnitSFX();
                                     }
                                 }
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                             }
                             QueuedRelease = !QueuedRelease;
                         }
@@ -847,7 +813,6 @@ namespace TAC_AI.World
                             {
                                 GrabbedThisFrame = TechUnit;
                                 SetSelectHalo(TechUnit, false);
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Unselected Tank " + grabbedTech.name + ".");
                                 UnSelectUnitSFX();
                             }
                         }
@@ -861,7 +826,6 @@ namespace TAC_AI.World
                             if (StartControlling(TechUnit, controlled))
                             {
                                 SetSelectHalo(TechUnit, true);
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                                 SelectUnitSFX();
                             }
                         }
@@ -893,7 +857,6 @@ namespace TAC_AI.World
                             if (StartControlling(TechUnit, LocalPlayerTechsControlled))
                             {
                                 SetSelectHalo(TechUnit, true);
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                                 SelectUnitSFX();
                             }
                             QueuedRelease = false;
@@ -912,7 +875,6 @@ namespace TAC_AI.World
                                     if (StartControlling(TechUnit, LocalPlayerTechsControlled))
                                     {
                                         SetSelectHalo(TechUnit, true);
-                                        //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                                         SelectUnitSFX();
                                     }
                                 }
@@ -922,11 +884,9 @@ namespace TAC_AI.World
                                     {
                                         GrabbedThisFrame = TechUnit;
                                         SetSelectHalo(TechUnit, false);
-                                        //DebugTAC_AI.Log(KickStart.ModID + ": Unselected Tank " + grabbedTech.name + ".");
                                         UnSelectUnitSFX();
                                     }
                                 }
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                             }
                             QueuedRelease = !QueuedRelease;
                         }
@@ -940,7 +900,6 @@ namespace TAC_AI.World
                             {
                                 GrabbedThisFrame = TechUnit;
                                 SetSelectHalo(TechUnit, false);
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Unselected Tank " + grabbedTech.name + ".");
                                 UnSelectUnitSFX();
                             }
                         }
@@ -954,7 +913,6 @@ namespace TAC_AI.World
                             if (StartControlling(TechUnit, LocalPlayerTechsControlled))
                             {
                                 SetSelectHalo(TechUnit, true);
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + grabbedTech.name + ".");
                                 SelectUnitSFX();
                             }
                         }
@@ -972,10 +930,8 @@ namespace TAC_AI.World
             if (helper.tank.netTech?.NetPlayer)
             {
                 if (helper.tank.netTech.NetPlayer != ManNetwork.inst.MyPlayer)
-                    return false;// cannot grab other player tech
+                    return false;
             }
-            //if (!TechUnit.ActuallyWorks)
-            //    return false;
             if (GrabbedThisFrame == null)
                 GrabbedThisFrame = helper;
             controlled.Add(helper);
@@ -986,7 +942,7 @@ namespace TAC_AI.World
         {
             if (helper.tank.netTech?.NetPlayer)
             {
-                return false;// cannot grab other player tech
+                return false;
             }
             controlled.Remove(helper);
             dirtyLocalPlayer = true;
@@ -1014,7 +970,6 @@ namespace TAC_AI.World
                         {
                             selected = true;
                             SetSelectHalo(TechUnit, true);
-                            //TechUnit.SetRTSState(true);
                             DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + tech.name + ".");
                         }
                     }
@@ -1093,7 +1048,7 @@ namespace TAC_AI.World
         {
             if (!(bool)helper)
                 return;
-            
+
             if (selectedHalo)
             {
                 var halo = helper.gameObject.GetOrAddComponent<SelectHalo>();
@@ -1135,7 +1090,6 @@ namespace TAC_AI.World
                             {
                                 working = true;
                                 SetSelectHalo(helper, true);
-                                //TechUnit.SetRTSState(true);
                                 DebugTAC_AI.Log(KickStart.ModID + ": Selected Tank " + tech.name + ".");
                             }
                         }
@@ -1246,8 +1200,6 @@ namespace TAC_AI.World
                     }
                     lastTank.DediAI = dediAI;
 
-                    //TankDescriptionOverlay overlay = (TankDescriptionOverlay)GUIAIManager.bubble.GetValue(lastTank.tank);
-                    //overlay.Update();
                 }
                 catch (Exception e)
                 {
@@ -1266,11 +1218,9 @@ namespace TAC_AI.World
                 }
                 lastTank.DediAI = dediAI;
 
-                //TankDescriptionOverlay overlay = (TankDescriptionOverlay)GUIAIManager.bubble.GetValue(lastTank.tank);
-                //overlay.Update();
             }
         }
-        
+
         public void ClearList()
         {
             if (OtherHovered)
@@ -1307,8 +1257,8 @@ namespace TAC_AI.World
                     }
                 }
             }
-            catch 
-            { 
+            catch
+            {
             }
         }
         public void PurgeAllNullLocalPlayer()
@@ -1415,11 +1365,6 @@ namespace TAC_AI.World
                     SetVisOfAll(isRTSState);
                     linesLastUsed = linesUsed;
                     linesUsed = 0;
-                    // P12 BUG-4: own the player-RTS hold-fire command on this single per-frame clock.
-                    // Previously WeaponMaintainer self-promoted FIRE_ALL on the per-tick clock while
-                    // BGeneral.ResetValues cleared it on the slower operations clock, racing into a
-                    // one-tick FireControl flicker. ResetValues is guarded to not stomp a live held
-                    // command (see BGeneral.ResetValues).
                     if (!ManNetwork.IsNetworked && LocalPlayerTechsControlled.Count > 0 &&
                         AIGlobals.PlayerClientFireCommand())
                     {
@@ -1431,15 +1376,12 @@ namespace TAC_AI.World
                     {
                         bool notOverMenus = !ManModGUI.IsMouseOverModGUI || BoxSelecting;
 
-                        //UpdateCameraOverride();
                         UpdateCursor();
 
                         if (!PlayerRTSUI.BuilderMenuOpen || !ManPointer.inst.IsInteractionBlocked)
-                        {   // Detect clicks off of game UI to re-enable the selection
+                        {
                             if (Input.GetMouseButtonUp(0))
                             {
-                                //DebugTAC_AI.Log("LMB Liftoff IsMouseOverModGUI: " + ManModGUI.IsMouseOverModGUI.ToString() +
-                                //    ", BoxSelecting: " + BoxSelecting.ToString());
                                 if (isBoxSelecting)
                                 {
                                     if (!ManPointer.inst.DraggingItem)
@@ -1456,12 +1398,10 @@ namespace TAC_AI.World
                                     lastClickTime = Time.realtimeSinceStartup;
                                 }
                             }
-                            isDragging = (((Input.mousePosition * newMatrixScaleInv) - ScreenBoxStart).sqrMagnitude 
-                                * newMatrixScale) > UIHelpersExt.ROROpenAllowedMouseDeltaSqr;//1024;
+                            isDragging = (((Input.mousePosition * newMatrixScaleInv) - ScreenBoxStart).sqrMagnitude
+                                * newMatrixScale) > UIHelpersExt.ROROpenAllowedMouseDeltaSqr;
                             if (Input.GetMouseButtonUp(1))
                             {
-                                //DebugTAC_AI.Log("RMB Liftoff IsMouseOverModGUI: " + ManModGUI.IsMouseOverModGUI.ToString() +
-                                //    ", BoxSelecting: " + BoxSelecting.ToString() + ", isDragging: " + isDragging.ToString());
                                 if (notOverMenus && !isDragging)
                                 {
                                     OnRTSEvent(ManPointer.Event.RMB, false);
@@ -1516,8 +1456,6 @@ namespace TAC_AI.World
             }
         }
 
-        // Normalize a persisted bucket list to the current schema's bucket count.
-        // Pad short saves with empty buckets; log+drop overflow buckets from oversized saves.
         private static void NormalizeSerial(List<List<int>> serial)
         {
             while (serial.Count < UnitGroupCount) serial.Add(new List<int>());
@@ -1541,10 +1479,6 @@ namespace TAC_AI.World
                     DebugTAC_AI.Log("ManWorldRTS - Save failed, saving instance null??");
                     return;
                 }
-                // Always rebuild the serial buffer from scratch: a non-null UnitGroupsSerial
-                // means the previous save cycle's OnWorldFinishSave never ran (e.g. another
-                // save handler threw mid-chain). Trusting leftover state caused B-08
-                // (double-append corrupts the persisted list on every subsequent save).
                 if (inst.UnitGroupsSerial == null || inst.UnitGroupsSerial.Count != UnitGroupCount)
                     inst.UnitGroupsSerial = NewBuckets<int>();
                 else
@@ -1607,9 +1541,6 @@ namespace TAC_AI.World
                         DebugTAC_AI.Log("ManWorldRTS - UnitGroupsSerial bucket count " +
                             inst.UnitGroupsSerial.Count + " != expected " + UnitGroupCount + "; normalizing.");
                     NormalizeSerial(inst.UnitGroupsSerial);
-                    // Defense-in-depth: bound by Min of all three sources even though
-                    // NormalizeSerial pads UnitGroupsSerial to UnitGroupCount and
-                    // UnitGroups is constructed via NewBuckets at the same size.
                     int upper = Math.Min(UnitGroupCount, Math.Min(inst.UnitGroups.Count, inst.UnitGroupsSerial.Count));
                     for (int i = 0; i < upper; i++)
                     {
@@ -1647,7 +1578,6 @@ namespace TAC_AI.World
         {
             if (DevCamLock == DebugCameraLock.LockCamToTech && Singleton.playerTank != null)
             {
-                //DebugTAC_AI.Assert("UpdateCameraOverride");
                 var instH = Singleton.playerTank.GetHelperInsured();
                 Vector3 tankPos = Singleton.playerTank.boundsCentreWorldNoCheck + new Vector3(0, instH.lastTechExtents * 0.75f, 0);
                 Vector3 lookPos = Singleton.cameraTrans.position;
@@ -1685,7 +1615,7 @@ namespace TAC_AI.World
         private void UpdateLines()
         {
             if (AIGlobals.ShowDebugFeedBack)
-            {   // Show ALL current targets of ALL AI
+            {
                 foreach (TankAIHelper helper in AIECore.IterateAllHelpers(x => x.MovingAndOrHasTarget))
                 {
                     if (!UpdatePathfindingRouteVisualIfAny(helper))
@@ -1704,21 +1634,21 @@ namespace TAC_AI.World
                 }
             }
             if (PlayerHovered && PlayerHovered.MovingAndOrHasTarget && !LocalPlayerTechsControlled.Contains(PlayerHovered))
-            {   // Show player-owned and hovered current target
+            {
                 Vector3 targLoc = PlayerHovered.DriveTargetLocation;
                 targLoc.y += PlayerHovered.lastTechExtents;
                 DrawDirection(PlayerHovered, targLoc, (PlayerHovered == Leading) ? colorLeading : color);
                 UpdatePathfindingRouteVisualIfAny(PlayerHovered);
             }
             if (OtherHovered && OtherHovered.MovingAndOrHasTarget)
-            {   // Show non-player-owned and hovered current target
+            {
                 Vector3 targLoc = OtherHovered.DriveTargetLocation;
                 targLoc.y += OtherHovered.lastTechExtents;
                 DrawDirection(OtherHovered, targLoc, color);
                 UpdatePathfindingRouteVisualIfAny(OtherHovered);
             }
             if (ManNetwork.IsNetworked || !AIGlobals.PlayerClientFireCommand())
-            {   // Show all selected player-owned current targets
+            {
                 foreach (TankAIHelper helper in LocalPlayerTechsControlled)
                 {
                     if (helper != null && helper.MovingAndOrHasTarget)
@@ -1850,14 +1780,14 @@ namespace TAC_AI.World
                                 if (!LocalPlayerTechsControlled.Any() ||
                                     (GroupSelecting && !isAlreadySelected))
                                 {
-                                    cursorState = RTSCursorState.Select; // Show Select Cursor
+                                    cursorState = RTSCursorState.Select;
                                 }
                                 else
                                 {
                                     if (GroupSelecting)
-                                        cursorState = RTSCursorState.Moving; // Show Select Cursor
+                                        cursorState = RTSCursorState.Moving;
                                     else
-                                    {   // Show Protect Cursor
+                                    {
                                         if (helper.tank.IsAnchored)
                                             cursorState = RTSCursorState.Scout;
                                         else
@@ -1866,15 +1796,15 @@ namespace TAC_AI.World
                                 }
                             }
                             else
-                            {   // Player IS NOT hovering over a valid target
+                            {
                                 if (PlayerHovered)
                                 {
                                     SetPlayerHovered(null);
                                 }
                                 if (GroupSelecting)
-                                    cursorState = RTSCursorState.Moving; // Show Select Cursor
+                                    cursorState = RTSCursorState.Moving;
                                 else
-                                {   // Show Protect Cursor
+                                {
                                     if (vis.block.tank.IsAnchored)
                                         cursorState = RTSCursorState.Scout;
                                     else
@@ -1890,7 +1820,7 @@ namespace TAC_AI.World
                             return;
                         }
                         else if (vis.block.tank.Team != ManPlayer.inst.PlayerTeam)
-                        {   // Show Attack Cursor
+                        {
                             if (!ManBaseTeams.IsUnattackable(vis.block.tank.Team, ManPlayer.inst.PlayerTeam))
                                 cursorState = RTSCursorState.Attack;
                             else
@@ -1924,43 +1854,43 @@ namespace TAC_AI.World
                             }
                             return;
                         }
-                        cursorState = RTSCursorState.Empty; // Show Default Cursor
+                        cursorState = RTSCursorState.Empty;
                     }
                     else
                     {
                         if (GroupSelecting)
-                            cursorState = RTSCursorState.Moving; // Show Select Cursor
+                            cursorState = RTSCursorState.Moving;
                         else
                         {
                             if (Leading)
                                 cursorState = RTSCursorState.Fetch;
                             else
-                                cursorState = RTSCursorState.Moving; // Show Default Cursor
+                                cursorState = RTSCursorState.Moving;
                         }
                     }
                 }
                 else if (vis?.resdisp)
                 {
                     if (GroupSelecting)
-                        cursorState = RTSCursorState.Moving; // Show Select Cursor
+                        cursorState = RTSCursorState.Moving;
                     else
                     {
                         if (Leading && !vis.resdisp.GetComponent<Damageable>().Invulnerable)
                             cursorState = RTSCursorState.Mine;
                         else
-                            cursorState = RTSCursorState.Moving; // Show Default Cursor
+                            cursorState = RTSCursorState.Moving;
                     }
                 }
                 else
                 {
                     if (Leading && hit.collider.GetComponent<TerrainCollider>())
-                        cursorState = RTSCursorState.Moving; // Show Move Cursor
+                        cursorState = RTSCursorState.Moving;
                     else
-                        cursorState = RTSCursorState.Empty; // Show Default Cursor
+                        cursorState = RTSCursorState.Empty;
                 }
             }
             else
-                cursorState = RTSCursorState.Empty; // Show Default Cursor
+                cursorState = RTSCursorState.Empty;
             if (PlayerHovered)
             {
                 SetPlayerHovered(null);
@@ -2043,7 +1973,6 @@ namespace TAC_AI.World
                 TankAIHelper helper = TV.visible?.tank?.GetHelperInsured();
                 if (helper?.tank?.visible == null)
                     continue;
-                //DebugTAC_AI.Log(" dist " + (help.tank.boundsCentreWorldNoCheck - help.RTSDestination).magnitude + " vs " + help.lastTechExtents * (1 + (help.recentSpeed / 12)));
                 if (helper.RTSCommand == null || helper.RTSCommand.TestSuccess(helper))
                 {
                     if (TestNextCommandSuccess(helper, out CommandLink nextCommand))
@@ -2073,7 +2002,6 @@ namespace TAC_AI.World
                 else
                 {
                     Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AIIdle);
-                    //Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.DropDown);
                 }
             }
             else if (GrabbedThisFrame)
@@ -2085,7 +2013,6 @@ namespace TAC_AI.World
                 else
                 {
                     Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AIIdle);
-                    //Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.DropDown);
                 }
             }
         }
@@ -2103,7 +2030,6 @@ namespace TAC_AI.World
                     else
                     {
                         Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AIIdle);
-                        //Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.DropDown);
                     }
                 }
             }
@@ -2113,8 +2039,8 @@ namespace TAC_AI.World
             Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.Back);
         }
 
-        private Color color = new Color(1f, 0.75f, 0.25f, 0.8f);//Color(0.25f, 1f, 0.25f, 0.75f);
-        private Color colorLeading = new Color(1f, 0.75f, 0.75f, 0.65f);//Color(0.25f, 1f, 0.25f, 0.75f);
+        private Color color = new Color(1f, 0.75f, 0.25f, 0.8f);
+        private Color colorLeading = new Color(1f, 0.75f, 0.75f, 0.65f);
         private Color colorAttacking = new Color(1f, 0.3f, 0.3f, 0.65f);
         private Color colorAlly = new Color(0.25f, 0.25f, 1f, 0.65f);
         private Color colorCollecting = new Color(1f, 1f, 0.3f, 0.65f);
@@ -2209,7 +2135,6 @@ namespace TAC_AI.World
         }
         private void DrawSelectBox(Vector3 startPosGlobal, Vector3 endPosGlobal)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": DrawSelectBox - " + startPosGlobal + " | " + endPosGlobal);
             Vector3 sPos = startPosGlobal;
             Vector3 ePos = endPosGlobal;
             Vector3 ePosVert = ePos.SetY(sPos.y);
@@ -2234,7 +2159,7 @@ namespace TAC_AI.World
         }
 
         private static GameObject SelectWindow;
-        private static Rect BaxWindow = new Rect(0, 0, 200, 240);   // the "window"
+        private static Rect BaxWindow = new Rect(0, 0, 200, 240);
         private static GUIStyle modifStyle;
         private static GUIStyleState modifStyleState;
         private const int AIBoxSelectID = 8006;
@@ -2273,15 +2198,13 @@ namespace TAC_AI.World
                         {
                             try
                             {
-                                //string DirectoryTarget = RawTechExporter.DLLDirectory + RawTechExporter.up + "AI_Icons" + RawTechExporter.up
-                                //    + "AIOrderBox.png";
                                 matRect = RawTechExporter.FetchTexture("AIOrderBox.png");
                             }
                             catch
                             {
                                 DebugTAC_AI.Assert(true, "ManPlayerRTS: AddBoxSelect - failed to fetch selector texture");
                                 Texture2D[] mats = Resources.FindObjectsOfTypeAll<Texture2D>();
-                                mats = mats.Where(cases => cases.name == "UI_CHECKBOX_OFF").ToArray();//GUI_DottedSquare
+                                mats = mats.Where(cases => cases.name == "UI_CHECKBOX_OFF").ToArray();
                                 foreach (Texture2D matcase in mats)
                                 {
                                     DebugTAC_AI.Log(KickStart.ModID + ": Getting " + matcase.name + "...");
@@ -2336,7 +2259,7 @@ namespace TAC_AI.World
         {
             internal void OnGUI()
             {
-                if (PlayerIsInRTS && !ManPauseGame.inst.IsPaused && !AIGlobals.HideHud && 
+                if (PlayerIsInRTS && !ManPauseGame.inst.IsPaused && !AIGlobals.HideHud &&
                     Singleton.playerTank?.GetHelperInsured())
                 {
                     if (inst.LocalPlayerTechsControlled.Contains(Singleton.playerTank.GetHelperInsured()))
@@ -2352,7 +2275,7 @@ namespace TAC_AI.World
                         {
                             AltUI.EndUI();
                         }
-                    } 
+                    }
                 }
                 else
                 {
@@ -2363,21 +2286,21 @@ namespace TAC_AI.World
         }
         internal static DebugCameraLock DevCamLock = DebugCameraLock.None;
 #if DEBUG
-        private static Rect autopilotMenu = new Rect(0, 0, 160, 110);   // the "window"
+        private static Rect autopilotMenu = new Rect(0, 0, 160, 110);
 #else
-        private static Rect autopilotMenu = new Rect(0, 0, 160, 80);   // the "window"
+        private static Rect autopilotMenu = new Rect(0, 0, 160, 80);
 #endif
 
         private static void GUIHandlerPlayerAutopilot(int ID)
         {
-            if (GUI.Button(new Rect(10, 10, 140, 30), KickStart.AutopilotPlayerMain ? 
-                "<b>" + AILOC.AutoEnabled + "</b>" : AILOC.AutoDisabled, 
+            if (GUI.Button(new Rect(10, 10, 140, 30), KickStart.AutopilotPlayerMain ?
+                "<b>" + AILOC.AutoEnabled + "</b>" : AILOC.AutoDisabled,
                 KickStart.AutopilotPlayerMain ? AltUI.ButtonGreen : AltUI.ButtonBlue))
             {
                 KickStart.AutopilotPlayerMain = !KickStart.AutopilotPlayerMain;
                 TankAIManager.toggleAuto.SetToggleState(KickStart.AutopilotPlayerMain);
             }
-            if (GUI.Button(new Rect(10, 40, 140, 30), DevCamLock == DebugCameraLock.LockCamToTech ? 
+            if (GUI.Button(new Rect(10, 40, 140, 30), DevCamLock == DebugCameraLock.LockCamToTech ?
                 "<b>" + AILOC.CamFollowEnabled + "</b>" : AILOC.CamFollowDisabled))
             {
                 if (DevCamLock == DebugCameraLock.LockCamToTech)
@@ -2391,7 +2314,7 @@ namespace TAC_AI.World
                 }
                 lastCameraPos = WorldPosition.FromScenePosition(Singleton.cameraTrans.position);
             }
-#if DEBUG   // dev side ONLY
+#if DEBUG
             if (GUI.Button(new Rect(10, 70, 140, 30), DevCamLock == DebugCameraLock.LockTechToCam ? "<b>LOCKED TO CAM</b>" : "Lock to Cam"))
             {
                 if (DevCamLock == DebugCameraLock.LockTechToCam)

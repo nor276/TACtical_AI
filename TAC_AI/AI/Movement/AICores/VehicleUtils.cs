@@ -111,10 +111,6 @@ namespace TAC_AI.AI.Movement.AICores
                         if (turnVal < 0 || turnVal > 1 || float.IsNaN(turnVal))
                             DebugTAC_AI.Exception("Invalid Turnval  NaN " + float.IsNaN(turnVal) + "  negative " + (turnVal < 0));
                     }
-                    // P08 doc-bug: Lazy/default branch never wrote `helper.DriveControl` (only Strict
-                    // and MaxSteering did). Maintainer's local `DriveControl` reached physics via
-                    // ProcessControl, but the helper.DriveControl field stayed stale from the prior
-                    // non-Lazy frame, leading to HUD readouts misreporting current drive magnitude.
                     helper.DriveControl = drive;
                     if (helper.FixControlReversal(drive))
                         helper.SteerControl(new Vector3(-destVec.x, destVec.y, -destVec.z), turnVal);
@@ -197,7 +193,7 @@ namespace TAC_AI.AI.Movement.AICores
 
             if (timeCurToReach > 1f)
                 driveVal += deltaThrottle;
-            else // throttleShiftDelay >= timeCurToReach
+            else
                 driveVal += deltaThrottle * timeCurToReach;
         }
 
@@ -211,7 +207,7 @@ namespace TAC_AI.AI.Movement.AICores
                 helper.AutoSpacing = 0.5f;
                 core.DriveDir = EDriveFacing.Forwards;
                 if (helper.IsMultiTech)
-                {   //Override and disable most driving abilities
+                {
                     core.DrivePathing = EDrivePathing.IgnoreAll;
 
                     pos = MultiTechUtils.HandleMultiTech(helper, tank, ref core);
@@ -221,7 +217,7 @@ namespace TAC_AI.AI.Movement.AICores
                     core.DriveDir = EDriveFacing.Forwards;
                     bool Combat = false;
                     if (!helper.IsGoingToPositionalRTSDest)
-                        Combat = controller.AICore.TryAdjustForCombat(true, ref pos, ref core); //If we are set to chase then chase with proper AI
+                        Combat = controller.AICore.TryAdjustForCombat(true, ref pos, ref core);
                     if (Combat)
                         core.DrivePathing = EDrivePathing.OnlyImmedeate;
                     else
@@ -312,7 +308,7 @@ namespace TAC_AI.AI.Movement.AICores
                 helper.AutoSpacing = 0.5f;
                 core.DriveDir = EDriveFacing.Forwards;
                 if (helper.IsMultiTech)
-                {   //Override and disable most driving abilities
+                {
                     core.DrivePathing = EDrivePathing.IgnoreAll;
 
                     pos = MultiTechUtils.HandleMultiTech(helper, tank, ref core);
@@ -322,7 +318,7 @@ namespace TAC_AI.AI.Movement.AICores
                     core.DriveDir = EDriveFacing.Forwards;
                     bool Combat = false;
                     if (!helper.IsGoingToPositionalRTSDest)
-                        Combat = controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core); //If we are set to chase then chase with proper AI
+                        Combat = controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core);
                     if (Combat)
                         core.DrivePathing = EDrivePathing.OnlyImmedeate;
                     else
@@ -395,10 +391,6 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.Log(KickStart.ModID + ": Missing variable(s)");
                 }
             }
-            // P08 B-NEW7-2: unified to `pos` (was `controller.GetDestination()` which re-reads the
-            // field we're about to write — effectively a no-op). All four GetPathingTarget* variants
-            // now persist the freshly-computed `pos` to keep helper.lastDestinationCore in sync with
-            // the Director's actual decision.
             core.lastDestination = pos;
             return true;
         }
@@ -411,7 +403,7 @@ namespace TAC_AI.AI.Movement.AICores
             try
             {
                 if (helper.IsMultiTech)
-                {   //Override and disable most driving abilities
+                {
                     core.DrivePathing = EDrivePathing.IgnoreAll;
                     pos = MultiTechUtils.HandleMultiTech(helper, tank, ref core);
                 }
@@ -528,7 +520,7 @@ namespace TAC_AI.AI.Movement.AICores
                             {
                                 core.DriveDir = EDriveFacing.Forwards;
                                 core.DriveDest = EDriveDest.FromLastDestination;
-                                helper.AutoSpacing = 0;//0.5f;
+                                helper.AutoSpacing = 0;
 
                                 pos = helper.theResource.tank.boundsCentreWorldNoCheck;
                             }
@@ -543,7 +535,6 @@ namespace TAC_AI.AI.Movement.AICores
                             else
                             {
                                 core.DrivePathing = EDrivePathing.IgnoreAll;
-                                //DebugTAC_AI.Log(KickStart.ModID + ": AI IDLE");
                                 core.Stop();
                             }
                         }
@@ -576,7 +567,7 @@ namespace TAC_AI.AI.Movement.AICores
                             {
                                 core.DriveDir = EDriveFacing.Forwards;
                                 core.DriveDest = EDriveDest.FromLastDestination;
-                                helper.AutoSpacing = 0.01f;//0.5f;
+                                helper.AutoSpacing = 0.01f;
 
                                 pos = helper.lastPlayer.tank.boundsCentreWorldNoCheck;
                             }
@@ -594,7 +585,6 @@ namespace TAC_AI.AI.Movement.AICores
                                 core.DrivePathing = EDrivePathing.IgnoreAll;
                                 helper.ThrottleState = AIThrottleState.PivotOnly;
                                 core.Stop();
-                                //DebugTAC_AI.Log(KickStart.ModID + ": AI IDLE");
                             }
                         }
                         else
@@ -626,12 +616,10 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.Log(KickStart.ModID + ": Missing variable(s)");
                 }
             }
-            // P08 B-NEW7-2: unified to `pos` (was `controller.GetTargetDestination()` which returns
-            // the pathfinding target, not the actual resolved Director output post-combat/Aegis).
             core.lastDestination = pos;
             return true;
         }
-        
+
         public static bool GetPathingTargetEnemy(AIControllerDefault controller, out Vector3 pos, ref EControlCoreSet core)
         {
             int errorCode = 0;
@@ -713,9 +701,6 @@ namespace TAC_AI.AI.Movement.AICores
                         controller.Tank.boundsCentreWorldNoCheck, Mathf.Pow(helper.MaxCombatRange * 2, 2),
                         out float bestval, helper)?.visible;
                     helper.theGuardedAlly = helper.theResource;
-                    // P08 B-NEW7-1: HIGH — was calling allied `TryAdjustForCombat` from the enemy
-                    // Guardian branch (B7-pattern copy-paste). Allied variant ignores `mind`, so
-                    // enemy Guardian-attitude techs lost CommanderAttack/MinCombatRange/LikelyMelee.
                     if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core))
                     {
                         if (helper.theResource.IsNotNull())
@@ -724,7 +709,7 @@ namespace TAC_AI.AI.Movement.AICores
                             {
                                 core.DriveDir = EDriveFacing.Forwards;
                                 core.DriveDest = EDriveDest.FromLastDestination;
-                                helper.AutoSpacing = 0;//0.5f;
+                                helper.AutoSpacing = 0;
 
                                 pos = helper.theResource.tank.boundsCentreWorldNoCheck;
                             }
@@ -739,7 +724,6 @@ namespace TAC_AI.AI.Movement.AICores
                             else
                             {
                                 core.DrivePathing = EDrivePathing.IgnoreAll;
-                                //DebugTAC_AI.Log(KickStart.ModID + ": AI IDLE");
                                 core.Stop();
                             }
                         }
@@ -779,8 +763,6 @@ namespace TAC_AI.AI.Movement.AICores
                         {
                             core.DriveDest = EDriveDest.FromLastDestination;
                             helper.AutoSpacing = 0.01f;
-                            //help.MinimumRad = 0.5f;
-                            //core.DrivePathing = EDrivePathing.OnlyImmedeate;
 
                             pos = helper.lastDestinationCore;
                         }

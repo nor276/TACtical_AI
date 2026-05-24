@@ -28,8 +28,8 @@ namespace TAC_AI.Templates
 
         internal static bool CanOpenDebugSpawnMenu
         {
-            get 
-            { 
+            get
+            {
                 if (inst)
                     return inst.enabled;
                 return false;
@@ -41,8 +41,6 @@ namespace TAC_AI.Templates
                     if (!value)
                     {
                         CloseSubMenuClickable();
-                        //if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Plus))
-                        //    CheckAndDestroyAllInvalidVisibles();
                     }
                     inst.enabled = value;
                 }
@@ -63,10 +61,10 @@ namespace TAC_AI.Templates
 
         private static GameObject GUIWindow;
         private static DebugRawTechSpawner inst;
-        private static Rect HotWindow = new Rect(0, 0, 200, 230);   // the "window"
+        private static Rect HotWindow = new Rect(0, 0, 200, 230);
         private const int RawTechSpawnerID = 8002;
 
-        private const string redStart = "<color=#ffcccbff><b>";//"<color=#f23d3dff><b>";
+        private const string redStart = "<color=#ffcccbff><b>";
         private static List<Tank> techCache = new List<Tank>();
 
         public static void Initiate()
@@ -110,7 +108,7 @@ namespace TAC_AI.Templates
                     switch (menu)
                     {
                         case DebugMenus.Prefabs:
-                            HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerPreset, 
+                            HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerPreset,
                                 "RawTech Prefab Spawns", CloseCallback, true, true);
                             break;
                         case DebugMenus.Local:
@@ -122,7 +120,7 @@ namespace TAC_AI.Templates
                                 "RawTech Folders", CloseCallback, true, true);
                             break;
                         default:
-                            HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerDebug, 
+                            HotWindow = AltUI.Window(RawTechSpawnerID, HotWindow, GUIHandlerDebug,
                                 "Advanced AI Mod Info", CloseCallback, true, true);
                             break;
                     }
@@ -218,9 +216,6 @@ namespace TAC_AI.Templates
                     SB.AppendLine(data.techName.NullOrEmpty() ? "<NULL>" : data.techName);
                     SB.AppendLine("Block Count: <b>" + data.savedTech.Count + "</b>");
                     SB.AppendLine("Main Corp: " + (data.FactionActual.NullOrEmpty() ? "<NULL>" : data.FactionActual));
-                    /*
-                    SB.AppendLine("Main Corp(2): " + data.faction.ToString());
-                    SB.AppendLine("Main Corp(3): " + (data.factionName.NullOrEmpty() ? "<NULL>" : data.factionName));//*/
                     SB.AppendLine("Grade - Tech:" + data.IntendedGrade + " | Yours:" + playerGrade);
                     SB.AppendLine("Level - Tech: " + data.factionLim + " | Yours: " + playerLevel);
                     switch (AIGlobals.SpawnDebugOverride)
@@ -297,7 +292,6 @@ namespace TAC_AI.Templates
             else
                 listTemp = ModTechsDatabase.ExtPopTechsMods;
 
-            //scrolll = GUI.BeginScrollView(new Rect(0, 64, HotWindow.width - 20, HotWindow.height - 64), scrolll, new Rect(0, 0, HotWindow.width - 50, scrolllSize));
             scrolll = GUILayout.BeginScrollView(scrolll);
 
             GUILayout.BeginHorizontal();
@@ -374,7 +368,7 @@ namespace TAC_AI.Templates
                     catch { }
                 }
                 AltUI.Tooltip.GUITooltip("Exports it as a RawTechs.RTList file to attach to your mod as a batch of spawnable Techs.");
-                
+
                 StepMenuPlacer();
                 if (GUILayout.Button(redStart + "Bundle Player Techs</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
                 {
@@ -493,7 +487,7 @@ namespace TAC_AI.Templates
                     toWrite.Add("");
                     toWrite.Add("-----------------------------------------------------------");
                     toWrite.Add("");
-                    File.WriteAllText(Path.Combine(export, "Techs.json"), ""); // CLEAR
+                    File.WriteAllText(Path.Combine(export, "Techs.json"), "");
                     File.AppendAllLines(Path.Combine(export, "Techs.json"), toWrite);
                     toWrite.Clear();
 
@@ -501,14 +495,7 @@ namespace TAC_AI.Templates
                     {
                         toWrite.Add(str + ",");
                     }
-                    /*
-
-                    toWrite.Add("");
-                    toWrite.Add("-----------------------------------------------------------");
-                    toWrite.Add("---------------- <<< END EXPORTING >>> --------------------");
-                    toWrite.Add("-----------------------------------------------------------");
-                    */
-                    File.WriteAllText(Path.Combine(export, "ESpawnBaseTypes.json"), ""); // CLEAR
+                    File.WriteAllText(Path.Combine(export, "ESpawnBaseTypes.json"), "");
                     File.AppendAllLines(Path.Combine(export, "ESpawnBaseTypes.json"), toWrite);
 
                     File.WriteAllText(Path.Combine(export, "batchNew.json"), CommunityCluster.GetLocalToPublic());
@@ -536,7 +523,7 @@ namespace TAC_AI.Templates
                 }
             }
             AltUI.Tooltip.GUITooltip("2-Prepare: Copies batchNew.json onto batchEdit.json.");
-            
+
             StepMenuPlacer();
 
             if (GUILayout.Button(redStart + "COM PULL EXISTING</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
@@ -549,7 +536,7 @@ namespace TAC_AI.Templates
                     Dictionary<SpawnBaseTypes, RawTechTemplate> BTs = JsonConvert.DeserializeObject<Dictionary<SpawnBaseTypes, RawTechTemplate>>(CommunityCluster.FetchPublicTechs());
                     CommunityCluster.Organize(ref BTs);
                     Dictionary<int, RawTechTemplate> BTsInt = BTs.ToList().ToDictionary(x => (int)x.Key, x => x.Value);
-                    File.WriteAllText(Path.Combine(export, "batchEdit.json"), JsonConvert.SerializeObject(BTsInt, Formatting.Indented));//, RawTechExporter.JSONDEV));
+                    File.WriteAllText(Path.Combine(export, "batchEdit.json"), JsonConvert.SerializeObject(BTsInt, Formatting.Indented));
                     OpenInExplorer(Path.Combine(export, "batchEdit.json"));
                 }
                 catch (Exception e) {
@@ -618,7 +605,7 @@ namespace TAC_AI.Templates
                 catch (Exception e)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": ERROR - " + e);
-                    ManUI.inst.ShowErrorPopup(KickStart.ModID + ": ERROR - See log!"); 
+                    ManUI.inst.ShowErrorPopup(KickStart.ModID + ": ERROR - See log!");
                 }
             }
             AltUI.Tooltip.GUITooltip("4-Finalize: Exports batchEdit.json to the commBatch.RTList file, maing it public." +
@@ -655,29 +642,6 @@ namespace TAC_AI.Templates
             }
 
             StepMenuPlacer();
-            /*
-            if (GUILayout.Button(redStart + "PURGE MISSING</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
-            {
-                try
-                {
-                    int count = listTemp.Count();
-                    for (int step = 0; step < count; step++)
-                    {
-                        RawTech BT = listTemp[step];
-                        if (BT.IsMissingBlocks())
-                        {
-                            listTemp.Remove(BT);
-                            count--;
-                            step--;
-                        }
-                    }
-                    DebugTAC_AI.Log("-----------------------------------------------------------");
-                    DebugTAC_AI.Log("----------------- <<< END PURGING >>> ---------------------");
-                    DebugTAC_AI.Log("-----------------------------------------------------------");
-                }
-                catch { }
-            }
-            StepMenuPlacer();*/
 
             if (GUILayout.Button(AINoAttackPlayer ? redStart + "Attack Player Off</b></color>" : redStart + "Attack Player ON</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
             {
@@ -754,7 +718,7 @@ namespace TAC_AI.Templates
                         DisplayRawTechInfoOnHoverLocal(listTemp, step);
                         HoriPosOff += ButtonWidth;
                     }
-                    catch { }// error on handling something
+                    catch { }
                 }
             }
             GUILayout.EndHorizontal();
@@ -803,7 +767,7 @@ namespace TAC_AI.Templates
                             Snapshot snap = ManSnapshots.inst.SnapshotCollection.ElementAt(i).m_Snapshot;
                             string name = snap.m_Name.Value;
                             string nameBaseType = name.Replace(" ", "");
-                            if (nameBaseType.Contains('#') || !basetypeNames.Add(nameBaseType) || 
+                            if (nameBaseType.Contains('#') || !basetypeNames.Add(nameBaseType) ||
                                 (Enum.TryParse<SpawnBaseTypes>(nameBaseType, out var type) && type <= SpawnBaseTypes.GSOQuickBuck) ||
                                 CommunityStorage.CommunityStored.Exists(x => { return x.Value.techName == name; }) ||
                                 ListTemp2.Exists(x => { return x.Value.techName == name; }))
@@ -823,8 +787,7 @@ namespace TAC_AI.Templates
         private static void GUIHandlerPreset(int ID)
         {
             ResetMenuPlacer();
-            
-           // scrolll = GUILayout.BeginScrollView(new Rect(0, 64, HotWindow.width - 20, HotWindow.height -64), scrolll, new Rect(0, 0, HotWindow.width - 50, scrolllSize));
+
             scrolll = GUILayout.BeginScrollView(scrolll);
 
             GUILayout.BeginHorizontal();
@@ -854,7 +817,7 @@ namespace TAC_AI.Templates
                 RawTechPopParams RTF = RawTechPopParams.Default;
                 RTF.Terrain = BaseTerrain.Any;
                 RTF.MaxPrice = KickStart.EnemySpawnPriceMatching;
-                var temp = RawTechLoader.SpawnRandomTechAtPosHead(GetPlayerPos(), GetPlayerForward(), 
+                var temp = RawTechLoader.SpawnRandomTechAtPosHead(GetPlayerPos(), GetPlayerForward(),
                     AIGlobals.GetRandomBaseTeam(true, false), RTF, true);
                 if (temp == null)
                     AIGlobals.PopupEnemyInfo("Fallback Error", WorldPosition.FromScenePosition(GetPlayerPos()));
@@ -867,7 +830,7 @@ namespace TAC_AI.Templates
                 RTF.Terrain = BaseTerrain.Any;
                 RTF.Purpose = BasePurpose.Harvesting;
                 RTF.MaxPrice = KickStart.EnemySpawnPriceMatching;
-                var temp = RawTechLoader.SpawnRandomTechAtPosHead(GetPlayerPos(), GetPlayerForward(), 
+                var temp = RawTechLoader.SpawnRandomTechAtPosHead(GetPlayerPos(), GetPlayerForward(),
                     AIGlobals.GetRandomBaseTeam(true, false), RTF, true);
                 if (temp == null)
                     AIGlobals.PopupEnemyInfo("Fallback Error", WorldPosition.FromScenePosition(GetPlayerPos()));
@@ -897,13 +860,6 @@ namespace TAC_AI.Templates
             AltUI.Tooltip.GUITooltip("POP CONTROL: Exports ALL snaps to the community pool.  " +
                         "You still have to move it to UnityEditor");
             StepMenuPlacer();
-            /*
-            if (GUILayout.Button(redStart + "Purge RawTechs</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
-            {
-                RawTechExporter.PurgeAllRawTechs();
-            }
-            StepMenuPlacer();
-            */
 
 #endif
             if (GUILayout.Button(AINoAttackPlayer ? redStart + "Attack Player Off</b></color>" : redStart + "Attack Player ON</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
@@ -1029,13 +985,12 @@ namespace TAC_AI.Templates
             foreach (var item in Directory.EnumerateDirectories(pather.ToString()))
             {
                 folders.Add(new KeyValuePair<string, int>(Path.GetFileNameWithoutExtension(item),
-                    Directory.EnumerateFiles(item, "*.json").Count() + 
+                    Directory.EnumerateFiles(item, "*.json").Count() +
                     Directory.EnumerateFiles(item, "*.RAWTECH").Count()));
             }
         }
         private static void GUIHandlerFolderSelect(int ID)
         {
-            //scrolll = GUI.BeginScrollView(new Rect(0, 64, HotWindow.width - 20, HotWindow.height - 64), scrolll, new Rect(0, 0, HotWindow.width - 50, scrolllSize));
             scrolll = GUILayout.BeginScrollView(scrolll);
 
             if (!GUILayout.Button("Exit", AltUI.ButtonRed))
@@ -1149,25 +1104,6 @@ namespace TAC_AI.Templates
                     else if (val.purposes.Contains(BasePurpose.Headquarters))
                     {
                         int team = AIGlobals.GetRandomBaseTeam(true, false);
-                        /*
-                        int index2;
-                        BaseTemplate val2;
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() + (Vector3.forward * 64),  Vector3.forward, team, val2, false));
-
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() - (Vector3.forward * 64), Vector3.forward, team, val2, false));
-
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() + (Vector3.right * 64), Vector3.forward, team, val2, false));
-
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() - (Vector3.right * 64), Vector3.forward, team, val2, false));
-                        */
                         tank = RawTechLoader.SpawnBaseInstant(GetPlayerPos(), Vector3.forward, team, val, true);
                         Singleton.Manager<ManSFX>.inst.PlayMiscSFX(ManSFX.MiscSfxType.AnimHEPayTerminal);
                     }
@@ -1183,25 +1119,6 @@ namespace TAC_AI.Templates
                     {
                         int extraBB = 0;
                         int team = AIGlobals.GetRandomBaseTeam(true, false);
-                        /*
-                        int index2;
-                        BaseTemplate val2;
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        extraBB += RawTechLoader.SpawnBase(GetPlayerPos() + (Vector3.forward * 64),  Vector3.forward, team, val2, false);
-
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        extraBB += RawTechLoader.SpawnBase(GetPlayerPos() - (Vector3.forward * 64),  Vector3.forward, team, val2, false);
-
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        extraBB += RawTechLoader.SpawnBase(GetPlayerPos() + (Vector3.right * 64),  Vector3.forward, team, val2, false);
-
-                        index2 = RawTechLoader.GetExternalIndex(val.faction, BasePurpose.Defense, val.terrain);
-                        val2 = TempManager.ExternalEnemyTechs[index2];
-                        extraBB += RawTechLoader.SpawnBase(GetPlayerPos() - (Vector3.right * 64), Vector3.forward, team, val2, false);
-                        */
                         int BB = RawTechLoader.SpawnBase(GetPlayerPos(), Vector3.forward, team, val, true, ExtraBB: extraBB);
                         ManBaseTeams.InsureBaseTeam(team).AddBuildBucks(BB);
                         Singleton.Manager<ManSFX>.inst.PlayMiscSFX(ManSFX.MiscSfxType.AnimHEPayTerminal);
@@ -1227,7 +1144,7 @@ namespace TAC_AI.Templates
                     RTF.IsPopulation = true;
                     RTF.SpawnCharged = true;
                     RawTechLoader.BypassSpawnCheckOnce = true;
-                    tank = RawTechLoader.SpawnMobileTechPrefab(GetPlayerPos(), GetPlayerForward(), 
+                    tank = RawTechLoader.SpawnMobileTechPrefab(GetPlayerPos(), GetPlayerForward(),
                         AIGlobals.GetRandomBaseTeam(true, false), RawTechLoader.GetBaseTemplate(type), RTF);
                 }
                 else
@@ -1240,27 +1157,6 @@ namespace TAC_AI.Templates
                         else if (val.purposes.Contains(BasePurpose.Headquarters))
                         {
                             int team = AIGlobals.GetRandomBaseTeam(true, false);
-                            /*
-                            SpawnBaseTypes type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() + (Vector3.forward * 64), Vector3.forward, team, type2, false));
-                            }
-                            type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() - (Vector3.forward * 64), Vector3.forward, team, type2, false));
-                            }
-                            type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() + (Vector3.right * 64), Vector3.forward, team, type2, false));
-                            }
-                            type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                RawTechLoader.ChargeAndClean(RawTechLoader.SpawnBaseInstant(GetPlayerPos() - (Vector3.right * 64), Vector3.forward, team, type2, false));
-                            }*/
                             tank = RawTechLoader.SpawnBaseInstant(GetPlayerPos(), Vector3.forward, team, type, true);
                             Singleton.Manager<ManSFX>.inst.PlayMiscSFX(ManSFX.MiscSfxType.AnimHEPayTerminal);
                         }
@@ -1275,27 +1171,6 @@ namespace TAC_AI.Templates
                         {
                             int team = AIGlobals.GetRandomBaseTeam(true, false);
                             int extraBB = 0;
-                            /*
-                            SpawnBaseTypes type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                extraBB += RawTechLoader.SpawnBase(GetPlayerPos() + (Vector3.forward * 64), team, type2, false);
-                            }
-                            type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                extraBB += RawTechLoader.SpawnBase(GetPlayerPos() - (Vector3.forward * 64), team, type2, false);
-                            }
-                            type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                extraBB += RawTechLoader.SpawnBase(GetPlayerPos() + (Vector3.right * 64), team, type2, false);
-                            }
-                            type2 = RawTechLoader.GetEnemyBaseType(val.faction, BasePurpose.Defense, val.terrain);
-                            if (TempManager.techBases.TryGetValue(type2, out _))
-                            {
-                                extraBB += RawTechLoader.SpawnBase(GetPlayerPos() - (Vector3.right * 64), team, type2, false);
-                            }*/
                             int BB = RawTechLoader.SpawnBase(GetPlayerPos(), team, type, true, extraBB);
                             ManBaseTeams.InsureBaseTeam(team).AddBuildBucks(BB);
                             Singleton.Manager<ManSFX>.inst.PlayMiscSFX(ManSFX.MiscSfxType.AnimHEPayTerminal);
@@ -1312,7 +1187,6 @@ namespace TAC_AI.Templates
                     RawTechLoader.ChargeAndClean(tank);
             }
 
-            //Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AIFollow);
         }
 
         public static void RemoveAllEnemiesImmedeatelyButton()
@@ -1321,13 +1195,13 @@ namespace TAC_AI.Templates
             {
                 bool TrackedMode = Input.GetKey(KeyCode.LeftShift);
                 bool ALLMode = Input.GetKey(KeyCode.LeftControl);
-                if (GUILayout.Button(ALLMode ? (redStart + "PURGE ALL ENEMIES</b></color>") : 
-                    (TrackedMode ? (redStart + "PURGE TRACKED ENEMIES</b></color>") : 
+                if (GUILayout.Button(ALLMode ? (redStart + "PURGE ALL ENEMIES</b></color>") :
+                    (TrackedMode ? (redStart + "PURGE TRACKED ENEMIES</b></color>") :
                     (redStart + "PURGE ENEMIES</b></color>")), GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
                 {
                     bool defaultMode = true;
                     if (TrackedMode)
-                    { // REMOVE ALL TRACKED
+                    {
                         DebugTAC_AI.Log(KickStart.ModID + ": RemoveAllEnemiesImmedeately - CALLED TrackedMode");
                         defaultMode = false;
                         try
@@ -1366,7 +1240,7 @@ namespace TAC_AI.Templates
                         }
                     }
                     if (ALLMode)
-                    { // REMOVE ALL STORED
+                    {
                         DebugTAC_AI.Log(KickStart.ModID + ": RemoveAllEnemiesImmedeately - CALLED ALLMode");
                         defaultMode = false;
                         var STs = ManSaveGame.inst.CurrentState?.m_StoredTiles;
@@ -1445,7 +1319,7 @@ namespace TAC_AI.Templates
                         if (WT.StoredVisiblesWaitingToLoad != null && WT.StoredVisiblesWaitingToLoad.Count > 0 && remove.visible.isActive)
                         {
                             step++;
-                            continue; // TECHS ARE LOADING AND IF WE REMOVE IT NOW IT WILL IGNORE TEAMS
+                            continue;
                         }
 
                         if (AIGlobals.VisibleIsSafelyRemoveable(remove.ID, remove.TeamID) && (remove.visible == null || !remove.visible.isActive))
@@ -1457,7 +1331,6 @@ namespace TAC_AI.Templates
                             toDestroy.RemoveAt(step);
                             try
                             {
-                                //ManVisible.inst.ObliterateTrackedVisibleFromWorld(remove.ID); 
                                 ManWorld.inst.TileManager.GetStoredTileIfNotSpawned(remove.Position, false).RemoveSavedVisible(ObjectTypes.Vehicle, remove.ID);
 
                             }
@@ -1587,90 +1460,6 @@ namespace TAC_AI.Templates
         {
             AIGlobals.LogAllTrackedEnemyBaseVisibles(DoCullInvalidVisibles);
             return;
-            /*
-            if (DoCullInvalidVisibles)
-            {
-                var cullList = new List<TrackedVisible>(ManVisible.inst.AllTrackedVisibles);
-                foreach (var item in cullList)
-                {
-                    if (item == null)
-                        continue;
-                    if (item.ObjectType == ObjectTypes.Vehicle)
-                    {
-                        if (ManWorld.inst.TileManager.IsTileAtPositionLoaded(item.Position))
-                        {
-                            WorldPosition WP = item.GetWorldPosition();
-                            WorldTile WT = ManWorld.inst.TileManager.LookupTile(WP.TileCoord);
-                            if (WT.StoredVisiblesWaitingToLoad != null && WT.StoredVisiblesWaitingToLoad.Exists(x => x.m_ID == item.HostID))
-                            {
-                                DebugTAC_AI.Info("  Waiting to load visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                            }
-                            else if (item.wasDestroyed || item.visible == null)
-                            {
-                                ManSaveGame.StoredTech ST = AIGlobals.FindStoredTech(item.ID, WP.TileCoord, checkALLJSONTilesToo);
-                                if (ST != null)
-                                {
-                                    if (ManBaseTeams.IsBaseTeamAny(item.TeamID))
-                                    {
-                                        DebugTAC_AI.Info("  Invalid Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                                        ManVisible.inst.StopTrackingVisible(item.ID);
-                                    }
-                                    else if (ManBaseTeams.IsBaseTeamDynamicOrUnregistered(item.TeamID))
-                                    {
-                                        DebugTAC_AI.Info("  Invalid UNREGISTERED Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                                        ManVisible.inst.StopTrackingVisible(item.ID);
-                                    }
-                                    else
-                                        DebugTAC_AI.Info("  Invalid Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                                }
-                                else
-                                {
-                                    if (ManBaseTeams.IsBaseTeamAny(item.TeamID))
-                                    {
-                                        DebugTAC_AI.Info("  NULL Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                                        ManVisible.inst.StopTrackingVisible(item.ID);
-                                    }
-                                    else if (ManBaseTeams.IsBaseTeamDynamicOrUnregistered(item.TeamID))
-                                    {
-                                        DebugTAC_AI.Info("  NULL UNREGISTERED Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                                        ManVisible.inst.StopTrackingVisible(item.ID);
-                                    }
-                                    else
-                                        DebugTAC_AI.Info("  NULL Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                                }
-                            }
-                            else
-                            {   // It might be in limbo???
-                                if (ManBaseTeams.IsBaseTeamAny(item.TeamID))
-                                {
-                                    if (ManTechs.inst.IterateTechs().Any(x => x.visible.ID == item.HostID))
-                                    {
-                                        DebugTAC_AI.Info("  Active Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed false");
-                                    }
-                                    else
-                                    {   // UNLOADED!?!
-                                        var ST = AIGlobals.FindStoredTech(item.ID, WP.TileCoord, false);
-                                        if (ST != null)
-                                            DebugTAC_AI.Info("  Unloaded Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed false");
-                                        else
-                                        {
-                                            if (ST != null)
-                                                DebugTAC_AI.Info("  JSON Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed false");
-                                            else
-                                            {
-                                                DebugTAC_AI.Info("  NULL Base Team Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                                                ManVisible.inst.StopTrackingVisible(item.ID);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        else
-                            DebugTAC_AI.Info("  Unloaded Tech visible " + item.ID + ",  Team " + item.TeamID + ",  Destroyed " + item.wasDestroyed);
-                    }
-                }
-            }//*/
         }
 
         internal static void SaveLocalPoolBackToDisk()
@@ -1719,7 +1508,7 @@ namespace TAC_AI.Templates
 #if DEBUG
             return true;
 #else
-            if (ManGameMode.inst.IsCurrent<ModeMisc>() || 
+            if (ManGameMode.inst.IsCurrent<ModeMisc>() ||
                 (ManDevCommands.inst.CommandAccessLevel >= Access.Cheat && ManNetwork.IsHost))
             {
                 return true;
@@ -1734,7 +1523,7 @@ namespace TAC_AI.Templates
                 PlayerLoc = Singleton.camera.transform.position;
                 return Singleton.camera.transform.position + (Singleton.camera.transform.forward * 64);
             }
-            catch 
+            catch
             {
                 return PlayerLoc + (Vector3.forward * 64);
             }

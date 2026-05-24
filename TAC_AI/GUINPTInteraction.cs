@@ -34,15 +34,13 @@ namespace TAC_AI.AI
             netHook.Enable();
         }
 
-        //Handles the display that's triggered on right-click on friendly or neutral base team
         private static GUINPTInteraction inst;
         public static Vector3 PlayerLoc = Vector3.zero;
         public static bool isCurrentlyOpen = false;
         internal static Tank lastTank;
 
-        // Mode - Setting
         private static GameObject GUIWindow;
-        private static Rect HotWindow = new Rect(0, 0, 200, 160);   // the "window"
+        private static Rect HotWindow = new Rect(0, 0, 200, 160);
 
         private static string teamName = "Unknown";
         private static int techCost = 0;
@@ -118,7 +116,7 @@ namespace TAC_AI.AI
 
         internal static void GetTank(Tank tank)
         {
-            lastTank = tank; 
+            lastTank = tank;
             try
             {
                 UIHelpersExt.ClampGUIToScreen(ref HotWindow, true);
@@ -164,8 +162,6 @@ namespace TAC_AI.AI
                 throw new Exception("teamName is worthless");
             }
             LaunchSubMenuClickable();
-            // BROKEN!!!!
-            //AIGlobals.ModularMenu.OpenGUI(lastTank.blockman.IterateBlocks().FirstOrDefault());
         }
         public static bool IsTankNull()
         {
@@ -227,7 +223,7 @@ namespace TAC_AI.AI
         private static int playerTeam => ManPlayer.inst.PlayerTeam;
         private static void GUIOwnTeam()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
+            GUILayout.Label("<b>" + teamName + "</b>");
             if (GUILayout.Button(new GUIContent("Enable Auto", "Automatically Build Bases"), AltUI.ButtonGreen))
             {
                 ManSFX.inst.PlayUISFX(ManSFX.UISfxType.RadarOn);
@@ -240,7 +236,7 @@ namespace TAC_AI.AI
 
         private static void GUIAlliedAutoTeam()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
+            GUILayout.Label("<b>" + teamName + "</b>");
             if (ManBaseTeams.TryGetBaseTeamDynamicOnly(lastTank.Team, out var ETD))
             {
                 GUILayout.BeginHorizontal(AltUI.TextfieldBlackHuge);
@@ -271,7 +267,7 @@ namespace TAC_AI.AI
         }
 
         private static void GUIBaseTeamStatic()
-        { // Bases that store BB
+        {
             int teamFunds = 0;
             if (ManBaseTeams.TryGetBaseTeamDynamicOnly(lastTank.Team, out var ETD))
             {
@@ -290,7 +286,7 @@ namespace TAC_AI.AI
                     }
                 }
             }
-            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
+            GUILayout.Label("<b>" + teamName + "</b>");
             GUILayout.BeginHorizontal();
             GUILayout.Label("¥¥: ");
             if (ManBaseTeams.TryGetBaseTeamDynamicOnly(lastTank.Team, out ETD))
@@ -401,7 +397,7 @@ namespace TAC_AI.AI
                 else
                 {
                     bool canPursuade = ManBaseTeams.CanAlterRelations(playerTeam, lastTeam);
-                    if (GUILayout.Button(new GUIContent(randomEvict, canPursuade ? "Annoy the Team" : "Cannot annoy"), 
+                    if (GUILayout.Button(new GUIContent(randomEvict, canPursuade ? "Annoy the Team" : "Cannot annoy"),
                         canPursuade ? AltUI.ButtonRed : AltUI.ButtonGrey))
                     {
                         ManSFX.inst.PlayUISFX(ManSFX.UISfxType.PayloadIncoming);
@@ -436,7 +432,7 @@ namespace TAC_AI.AI
 
         private static void GUIBaseTeamTech()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
+            GUILayout.Label("<b>" + teamName + "</b>");
             if (playerTeam == lastTank.Team)
             {
                 if (GUILayout.Button(new GUIContent("Enable Auto", "Automatically Build Bases"), AltUI.ButtonGreen))
@@ -534,7 +530,7 @@ namespace TAC_AI.AI
 
         private static void GUILoneTech()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
+            GUILayout.Label("<b>" + teamName + "</b>");
             if (playerTeam == lastTank.Team)
             {
                 if (GUILayout.Button(new GUIContent("Enable Auto", "Automatically Build Bases"), AltUI.ButtonGreen))
@@ -671,7 +667,7 @@ namespace TAC_AI.AI
                 }
             }
         }
-        
+
         internal static void LaunchSubMenuClickable()
         {
             if (!KickStart.EnableBetterAI)

@@ -12,7 +12,6 @@ namespace TAC_AI.AI
             bDPS = typeof(BeamWeapon).GetField("m_DamagePerSecond", BindingFlags.NonPublic | BindingFlags.Instance),
             burn = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        // Bully-like
         internal const int OHKOCapableDamage = 1750;
 
         internal const int SnipeVelo = 140;
@@ -21,7 +20,6 @@ namespace TAC_AI.AI
         {
                         BlockTypes.GSOMegatonLong_242,
                         BlockTypes.GSOBigBertha_845,
-                        //BlockTypes.VENRPGLauncher_122, // More of a kiting weapon
                         BlockTypes.HE_Mortar_232,
                         BlockTypes.HE_Cannon_Naval_826,
                         BlockTypes.HE_Cruise_Missile_51_121,
@@ -64,27 +62,26 @@ namespace TAC_AI.AI
         {
             bool smolTech = false;
             if (KickStart.isTweakTechPresent && tank.blockman.blockCount <= AIGlobals.SmolTechBlockThreshold)
-            {   // Small Techs should play it mobile
+            {
                 smolTech = true;
             }
 
             EAttackMode attack = EAttackMode.Chase;
-            int strongWeaps = 0; // Weapons with damage surpassing 1750
-            int rangedWeaps = 0; // Weapons with velocity >= 140 or can shoot further than 75
-            int circleWeaps = 0; // Weapons with horizontal aiming range >= 170 and aiming speed of at least 60
-            int fastWeaps = 0;   // Weapons with horizontal aiming speed >= 140
-            int meleeWeaps = 0;  // Drill, Tesla or Flamethrowers
+            int strongWeaps = 0;
+            int rangedWeaps = 0;
+            int circleWeaps = 0;
+            int fastWeaps = 0;
+            int meleeWeaps = 0;
             Vector3 weaponsAngleBias = Vector3.zero;
             int count = 0;
 
-            // Learn from what weapons we have on our Tech:
             foreach (ModuleWeapon weap in tank.blockman.IterateBlockComponents<ModuleWeapon>())
             {
                 count++;
                 var fD = weap.GetComponent<FireData>();
                 var gA = weap.GetComponentsInChildren<GimbalAimer>();
                 bool CircleAiming = false;
-                if (gA.Count() > 0 && weap.RotateSpeed >= 60)// Minimum allowed rotation speed for circling
+                if (gA.Count() > 0 && weap.RotateSpeed >= 60)
                 {
                     foreach (GimbalAimer aim in gA)
                     {
@@ -169,7 +166,6 @@ namespace TAC_AI.AI
                     }
                     else
                     {
-                        // Assume drill, tesla, or flamethrower
                         meleeWeaps++;
                     }
                 }
@@ -183,16 +179,14 @@ namespace TAC_AI.AI
                 new KeyValuePair<int, int>(meleeWeaps, 4)
             };
 
-            // Sort based on weapon abilities:
             sortList = sortList.OrderBy(x => x.Key).ToList();
-            bool isStrong = false;  // High Alpha weapons
-            bool isRanged = false;  // Ranged weapons
-            bool isRaider = false;  // Circle weapons
-            bool isFast = false;    // weapons that aim fast
+            bool isStrong = false;
+            bool isRanged = false;
+            bool isRaider = false;
+            bool isFast = false;
             bool isMelee = false;
             bool Forwards = (weaponsAngleBias / count).z > 0.7f;
 
-            // Pick the top two canidates to determine our combat mindset:
             switch (sortList.ElementAt(4).Value)
             {
                 case 0:
@@ -229,15 +223,12 @@ namespace TAC_AI.AI
                     isMelee = true;
                     break;
             }
-            //DebugTAC_AI.Log(KickStart.ModID + ": Enemy AI " + tank.name + " Combat type " + sortList.ElementAt(0).Value + " | " + sortList.ElementAt(1).Value);
 
-            // Determine based on Tech Size and driving class:
-            // Because we want the combat to not be irritating, circle should only be used if the player has target leading
             switch (helper.DediAI)
             {
                 case AIType.MTMimic:
                 case AIType.MTStatic:
-                case AIType.MTTurret: // NEVER use circle on a static defense
+                case AIType.MTTurret:
                     if (isStrong && (isMelee || isFast || Forwards))
                         attack = EAttackMode.Strong;
                     else if ((isStrong || Forwards) && isRanged && !isMelee)
@@ -249,7 +240,7 @@ namespace TAC_AI.AI
                     if (helper.MovementController is AIControllerAir air)
                     {
                         if (air.AICore is TAC_AI.AI.Movement.AICores.IAirMovementAICore aircore && aircore.IsRotorcraft)
-                        {   // Try use our height to our advantage
+                        {
                             if (smolTech)
                             {
                                 if (isFast && (isRaider || isStrong))
@@ -274,7 +265,7 @@ namespace TAC_AI.AI
                             }
                         }
                         else
-                        {   // Try use our height and speed to our advantage
+                        {
                             if (smolTech)
                             {
                                 if (isStrong && (isMelee || isFast || Forwards))
@@ -300,7 +291,7 @@ namespace TAC_AI.AI
                         }
                     }
                     break;
-                case AIType.Astrotech: // Abuse the crab out of our absurd mobility
+                case AIType.Astrotech:
                     if (smolTech)
                     {
                         if (isFast && (isRaider || isStrong))
@@ -319,14 +310,14 @@ namespace TAC_AI.AI
                             attack = EAttackMode.Strong;
                         }
                         else if ((isStrong || Forwards) && isRanged && !isMelee)
-                            attack = EAttackMode.Ranged; // Most large Spaceships feature a large forwards weapons array
+                            attack = EAttackMode.Ranged;
                         else if (isFast && (isRaider || isStrong))
                             attack = EAttackMode.Random;
                         else if (!Forwards)
                             attack = EAttackMode.Circle;
                     }
                     break;
-                case AIType.Buccaneer: // Abuse the sea
+                case AIType.Buccaneer:
                     if (smolTech)
                     {
                         if (!Forwards)
@@ -350,7 +341,7 @@ namespace TAC_AI.AI
                             attack = EAttackMode.Random;
                     }
                     break;
-                default:    // Likely Ground
+                default:
                     if (smolTech)
                     {
                         if (isFast && (isRaider || isStrong))

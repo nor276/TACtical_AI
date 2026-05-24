@@ -230,11 +230,6 @@ namespace TAC_AI.World
                     error = 4;
                     if (ManHUD.inst.IsHudElementVisible(ManHUD.HUDElementType.TechLoader))
                     {
-                        /*
-                        DebugTAC_AI.Log("TechSelectorExt.Open was called while TechLoader was already open, sending a fake" +
-                            "ManHUD.inst.OnHideHUDElementEvent to fool button to still be clickable");
-                        ManHUD.inst.OnHideHUDElementEvent.Send(ManHUD.inst.GetHudElement(ManHUD.HUDElementType.TechLoader));
-                        */
                         ManHUD.inst.HideHudElement(ManHUD.HUDElementType.TechLoader);
                     }
                     error = 5;
@@ -319,11 +314,6 @@ namespace TAC_AI.World
                 {
                     if (ManHUD.inst.IsHudElementVisible(ManHUD.HUDElementType.TechLoader))
                     {
-                        /*
-                        DebugTAC_AI.Log("TechSelectorExt.Open was called while TechLoader was already open, sending a fake" +
-                            "ManHUD.inst.OnHideHUDElementEvent to fool button to still be clickable");
-                        ManHUD.inst.OnHideHUDElementEvent.Send(ManHUD.inst.GetHudElement(ManHUD.HUDElementType.TechLoader));
-                        */
                         ManHUD.inst.HideHudElement(ManHUD.HUDElementType.TechLoader);
                     }
                     if (!IsSelectingFolder)
@@ -387,14 +377,6 @@ namespace TAC_AI.World
         internal static class VMSnapshotPanelPatches
         {
             internal static Type target = typeof(VMSnapshotPanel);
-            /*
-            [HarmonyPatch(new Type[] { typeof(string) })]
-            private static bool SetSelectedSnapshotFolder_Prefix(VMSnapshotPanel __instance)
-            {
-                if (!TechLoaderExt.QueuedOpen && TechLoaderExt.OnFolderSelect())
-                    return false;
-                return true;
-            }*/
             private static bool Place_Prefix(VMSnapshotPanel __instance)
             {
                 if (!TechLoaderExt.QueuedOpen && TechLoaderExt.OnSnapPlacement())

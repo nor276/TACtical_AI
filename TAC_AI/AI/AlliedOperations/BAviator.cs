@@ -4,10 +4,10 @@ using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI.AlliedOperations
 {
-    internal static class BAviator 
+    internal static class BAviator
     {
         public static void MotivateFly(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
-        {   // Will have to account for the different types of flight methods available
+        {
             helper.lastPlayer = helper.GetPlayerTech();
             helper.IsMultiTech = false;
 
@@ -20,7 +20,7 @@ namespace TAC_AI.AI.AlliedOperations
                 return;
             }
             if (helper.lastPlayer == tank.visible)
-            {   // WE ARE FOLLOWING OURSELVES, just hold position!
+            {
                 direct.DriveDest = EDriveDest.None;
                 return;
             }
@@ -51,46 +51,46 @@ namespace TAC_AI.AI.AlliedOperations
                 float spacingCombat = thisExtents + helper.lastEnemyGet.GetCheapBounds();
                 direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
                 if (distCombat < spacingCombat + (AIGlobals.PathfindingExtraSpace * 2))
-                {   // TOO CLOSE!!! WE DODGE!!!
+                {
                     direct.DriveDest = EDriveDest.FromLastDestination;
                 }
                 else if (distCombat > spacing && distCombat < spacingCombat)
-                {   // Follow the enemy
+                {
                     direct.DriveDest = EDriveDest.ToLastDestination;
                 }
                 else
-                {   // Far behind, must catch up
+                {
                     direct.DriveDest = EDriveDest.ToLastDestination;
-                    helper.FullBoost = true; // boost in forwards direction towards objective
+                    helper.FullBoost = true;
                 }
             }
             else
             {
                 direct.SetLastDest(helper.lastPlayer.tank.boundsCentreWorldNoCheck);
                 if (dist < spacing + (AIGlobals.PathfindingExtraSpace * 2))
-                {   // TOO CLOSE!!! WE DODGE!!!
+                {
                     direct.DriveDest = EDriveDest.FromLastDestination;
                 }
                 else if (dist > spacing && dist < range)
-                {   // Follow the leader
+                {
                     direct.DriveDest = EDriveDest.ToLastDestination;
                 }
                 else if (dist < range * 3)
-                {   // Far behind, must catch up
+                {
                     direct.DriveDest = EDriveDest.ToLastDestination;
-                    helper.FullBoost = true; // boost in forwards direction towards objective
+                    helper.FullBoost = true;
                 }
                 else
-                {   // SUPER Far behind, must catch up
+                {
                     direct.DriveDest = EDriveDest.ToLastDestination;
                     helper.Retreat = true;
-                    helper.FullBoost = true; // boost in forwards direction towards objective
+                    helper.FullBoost = true;
                 }
             }
         }
 
         public static void Dogfighting(TankAIHelper helper, Tank tank)
-        {   // Will have to account for the different types of flight methods available
+        {
 
             helper.WantsToFight = false;
             helper.TryRefreshEnemyAllied();
@@ -98,21 +98,8 @@ namespace TAC_AI.AI.AlliedOperations
             {
                 Vector3 aimTo = (helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).normalized;
                 Vector3 foreDirect = tank.rootBlockTrans.InverseTransformDirection(aimTo);
-                /*
-                AIControllerAir pilot = (AIControllerAir) helper.MovementController;
-                if (KickStart.isWeaponAimModPresent && helper.SideToThreat && (pilot.LargeAircraft || pilot.BankOnly))
-                {   // AC-130 broadside attack
-                    if ( Mathf.Abs(Vector3.Dot(tank.rootBlockTrans.right, aimTo)) > 0.25f || helper.Urgency >= 30)
-                    {
-                        helper.DANGER = true;
-                        //helper.Urgency = 50;
-                        helper.SettleDown();
-                    }
-                }
-                else
-                {  */ // Normal Dogfighting
                 if (helper.SideToThreat)
-                {   // Wide forwards attack
+                {
                     helper.Urgency += KickStart.AIClockPeriod / 5f;
                     if ((foreDirect.z > 0.15f && foreDirect.x > -0.5f && foreDirect.x < 0.5f) || helper.Urgency >= 30)
                     {
@@ -121,7 +108,7 @@ namespace TAC_AI.AI.AlliedOperations
                     }
                 }
                 else
-                {   // Normal Dogfighting
+                {
                     helper.Urgency += KickStart.AIClockPeriod / 5f;
                     if ((foreDirect.z > 0.15f && foreDirect.x > -0.35f && foreDirect.x < 0.35f) || helper.Urgency >= 30)
                     {
@@ -129,7 +116,6 @@ namespace TAC_AI.AI.AlliedOperations
                         helper.SettleDown();
                     }
                 }
-                //}
             }
             else
             {

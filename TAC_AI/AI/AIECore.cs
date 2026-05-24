@@ -9,45 +9,12 @@ using UnityEngine;
 
 namespace TAC_AI.AI
 {
-    /*
-        Summary of functions: Handles Allied AI and Enemy AI
-        
-        AIECore contains the macro parameters that direct AI execution
-
-        AI Control is handled via 2 separate execution flows.
-        
-        Flow 1 - Execution of plan:
-        TankControl.Update -> ModuleTechController.ExecuteControl -> TankAIHelper.BetterAI
-         - AI Movement Controller (IMovementAIController) handles all execution.
-             - AI Movement Director - Tells the AI how to navigate safely and avoid obsticles along the way
-             - AI Movement Maintainer - Makes the AI drive to the director's coordinates
-             - AI Core - Each Core implements Director and Maintainer, and contain the details of how to move (Classes like AiplaneAICore vs VehicleAICore)
-
-        Flow 2 - Planning flow:
-        TankAIHelper.FixedUpdate -> AlliedOperationsController.Execute
-         - AI types are reset/refreshed - Tells the AI which Allied/Enemy Operations to run, and which IMovementAIController to use
-            VVVVV
-         - Allied Operations are executed - Handles the destinations AI should drive to, and how to do it (Classes like BEscort or RWheeled)
-         - Enemy Operations are executed
-
-          As such, it's important to note that:
-            AI Set Types and Attitudes - fires on change and on spawn/load
-            Operations - must fire constantly (but can be slowed) to maintain consistant operation
-            Movement Directors - are the major CPU bottlenecks of this mod
-            Movement Maintainers - must be fired every Update to prevent AIs from bugging out on drive/fire operations
-
-        Important to note that this Allied AI will not fire Explosive Bolts under any cirumstances. 
-            The player should do that on their own accord as Explosive Bolts cost resources to make.
-    */
     public class AIECore
     {
-        //-------------------------------------
-        //-------------------------------------
-        // Note: All neutrals are under -1 (-256) for this mod
 
         internal static HashSet<SceneryTypes> IndestructableScenery = new HashSet<SceneryTypes>
         {
-            SceneryTypes.Pillar, SceneryTypes.ScrapPile, 
+            SceneryTypes.Pillar, SceneryTypes.ScrapPile,
         };
 
         public static Event<Tank, string> AIMessageEvent = new Event<Tank, string>();
@@ -88,16 +55,8 @@ namespace TAC_AI.AI
         public static bool PlayerIsInNonCombatZone => _playerIsInNonCombatZone;
         internal static bool _playerIsInNonCombatZone = false;
         internal static bool PlayerCombatLastState = false;
-        //private static int lastTechCount = 0;
 
-        internal static bool Feedback = false;// set this to true to get AI feedback testing
-        /*
-#if DEBUG
-        internal static bool debugVisuals = true;// set this to true to get AI visual testing
-#else
-        internal static bool debugVisuals = false;// set this to true to get AI visual testing
-#endif
-        */
+        internal static bool Feedback = false;
 
         public static Func<int, IEnumerable<Tank>> GetTeamTanks => TankAIManager.GetTeamTanks;
         public static Func<int, IEnumerable<Tank>> GetNonEnemyTanks => TankAIManager.GetNonEnemyTanks;
@@ -108,10 +67,10 @@ namespace TAC_AI.AI
             bool fired = false;
             theBase = null;
             finalPos = null;
-            float bestValue = MaxScanRange * MaxScanRange;// MAX SCAN RANGE
+            float bestValue = MaxScanRange * MaxScanRange;
             foreach (ModuleHarvestReciever reciever in Depots)
             {
-                if (!reciever.tank.boundsCentreWorldNoCheck.Approximately(tankPos, 1) && (reciever.tank.Team == team || 
+                if (!reciever.tank.boundsCentreWorldNoCheck.Approximately(tankPos, 1) && (reciever.tank.Team == team ||
                     (includeTradingStations && reciever.tank.Team == ManSpawn.NeutralTeam)))
                 {
                     float temp = (reciever.trans.position - tankPos).sqrMagnitude;
@@ -130,7 +89,7 @@ namespace TAC_AI.AI
         {
             bool fired = false;
             theResource = null;
-            float bestValue = MaxScanRange * MaxScanRange;// MAX SCAN RANGE
+            float bestValue = MaxScanRange * MaxScanRange;
             int run = Minables.Count;
             for (int step = 0; step < run; step++)
             {
@@ -140,11 +99,9 @@ namespace TAC_AI.AI
                     var res = trans.GetComponent<ResourceDispenser>();
                     if (!res.IsDeactivated && res.visible.isActive)
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ":Skipped over inactive");
-                        if (!trans.GetComponent<Damageable>().Invulnerable && 
+                        if (!trans.GetComponent<Damageable>().Invulnerable &&
                             !IndestructableScenery.Contains(res.GetSceneryType()))
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": Skipped over invincible");
                             float temp = (trans.trans.position - tankPos).sqrMagnitude;
                             if (bestValue > temp && temp != 0)
                             {
@@ -163,15 +120,13 @@ namespace TAC_AI.AI
             return fired;
         }
 
-        // Scavenging - Under Construction!
-        //private static List<Visible> looseBlocksCache = new List<Visible>();
 
         public static bool FetchClosestBlockReceiver(Vector3 tankPos, float MaxScanRange, out IAIFollowable finalPos, out Tank theBase, int team)
         {
             bool fired = false;
             theBase = null;
             finalPos = null;
-            float bestValue = MaxScanRange * MaxScanRange;// MAX SCAN RANGE
+            float bestValue = MaxScanRange * MaxScanRange;
             foreach (ModuleHarvestReciever reciever in BlockHandlers)
             {
                 if (!reciever.tank.boundsCentreWorldNoCheck.Approximately(tankPos, 1) && reciever.tank.Team == team)
@@ -192,13 +147,13 @@ namespace TAC_AI.AI
         {
             bool fired = false;
             theResource = null;
-            float bestValue = MaxScanRange * MaxScanRange;// MAX SCAN RANGE
+            float bestValue = MaxScanRange * MaxScanRange;
             foreach (Visible vis in ManWorld.inst.TileManager.IterateVisibles(ObjectTypes.Block, tankPos, MaxScanRange))
             {
                 if (!vis?.block || !vis.isActive)
                     continue;
                 if (vis.block.IsAttached || vis.InBeam || !vis.IsInteractible || ManPointer.inst.DraggingItem == vis)
-                    continue;   // no grab aquired blocks
+                    continue;
                 try
                 {
                     float temp = (vis.centrePosition - tankPos).sqrMagnitude;
@@ -211,13 +166,11 @@ namespace TAC_AI.AI
                 }
                 catch { }
             }
-            //DebugTAC_AI.Log("found Block " + fired);
             return fired;
         }
 
         internal static FieldInfo blocksGet = typeof(TankControl).GetField("m_ControlState", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        // Multi-Techs
         public static bool FetchCopyableAlly(Vector3 tankPos, TankAIHelper helper, out float distanceSqr, out Visible ToFetch)
         {
             distanceSqr = 62500;
@@ -241,7 +194,6 @@ namespace TAC_AI.AI
                 if (bestStep == null)
                     return false;
                 ToFetch = bestStep.visible;
-                //DebugTAC_AI.Log(KickStart.ModID + ": FetchCopyableAlly " + bestStep.name);
                 return true;
             }
             catch (Exception e)
@@ -256,7 +208,7 @@ namespace TAC_AI.AI
                 team = Singleton.Manager<ManPlayer>.inst.PlayerTeam;
             Vector3 tankPos = tank.boundsCentreWorldNoCheck;
 
-            float scanRange = Mathf.Pow(MaxScanRange, 2);// MAX SCAN RANGE
+            float scanRange = Mathf.Pow(MaxScanRange, 2);
             foreach (ModuleChargerTracker charge in Chargers)
             {
                 if (charge.tank != tank && charge.tank.Team == team && charge.CanTransferCharge(tank))
@@ -277,7 +229,7 @@ namespace TAC_AI.AI
             bool fired = false;
             theBase = null;
             finalPos = null;
-            float bestValue = Mathf.Pow(MaxScanRange, 2);// MAX SCAN RANGE
+            float bestValue = Mathf.Pow(MaxScanRange, 2);
             foreach (ModuleChargerTracker charge in Chargers)
             {
                 if (charge.tank != tank && charge.tank.Team == team && charge.CanTransferCharge(tank))
@@ -319,18 +271,16 @@ namespace TAC_AI.AI
                 if (bestStep == null)
                     return false;
                 toCharge = bestStep.visible;
-                //DebugTAC_AI.Log(KickStart.ModID + ":ClosestAllyProcess " + closestTank.name);
                 return bestStep != null;
             }
-            catch //(Exception e)
+            catch
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": Crash on ClosestAllyProcess " + e);
             }
             return false;
         }
 
         public static bool FindTarget(Tank tank, TankAIHelper helper, Visible targetIn, out Visible target)
-        {   // Grants a much larger target search range
+        {
 
             float TargetRange = helper.MaxCombatRange * 2;
             TargetRange *= TargetRange;
@@ -360,12 +310,6 @@ namespace TAC_AI.AI
             return target;
         }
 
-        /*
-        public static float Extremes(Vector3 input)
-        {
-            return Mathf.Max(Mathf.Max(input.x, input.y), input.z);
-        }
-        */
         public static float ExtremesAbs(Vector3 input)
         {
             return Mathf.Max(Mathf.Max(Mathf.Abs(input.x), Mathf.Abs(input.y)), Mathf.Abs(input.z));
@@ -604,7 +548,6 @@ namespace TAC_AI.AI
                 if (biasDirection.y > 0.6)
                     isFlyingDirectionForwards = false;
             }
-            //Debug.Info(KickStart.ModID + ": Tech " + tank.name + "  Has block count " + blocs.Count() + "  | " + modBoostCount + " | " + modAGCount);
 
             if (tank.IsAnchored)
             {

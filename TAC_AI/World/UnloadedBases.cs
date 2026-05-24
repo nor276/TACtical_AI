@@ -16,7 +16,6 @@ namespace TAC_AI.World
         {
             if (EP.EBUs.Count == 0)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": " + Team + " CALLED GetTeamFunds WITH NO BASE!!!");
                 EP.MainBase = null;
                 return null;
             }
@@ -26,7 +25,6 @@ namespace TAC_AI.World
             }
             else if (EP.EBUs.Count > 1)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": " + EP.Team + " has " + EP.EBUs.Count + " bases on scene. The richest will be selected.");
                 NP_BaseUnit funder = null;
                 int highestFunds = -1;
                 foreach (NP_BaseUnit funds in EP.EBUs)
@@ -141,7 +139,7 @@ namespace TAC_AI.World
         {
             if (EP.attackStarted || EP.scannedPositions.Contains(scanPos))
                 return;
-            EP.scannedPositions.Add(scanPos); 
+            EP.scannedPositions.Add(scanPos);
             SearchPatternCachFetch(scanPos, sightRadTiles, ref EP.scannedEnemyTiles);
         }
         private static List<Vector2> cachSearchPattern = new List<Vector2>();
@@ -167,10 +165,8 @@ namespace TAC_AI.World
             {
                 if (!SearchedTiles.Contains(IV2))
                     SearchedTiles.Add(IV2);
-                //DebugTAC_AI.Log(KickStart.ModID + ": SearchPatternCachFetch - Scanned " + IV2);
                 numScanned++;
             }
-            //DebugTAC_AI.Log(KickStart.ModID + ": SearchPatternCachFetch - Scanned a total of " + numScanned);
         }
         internal static bool SearchPatternCacheNoSort(NP_Presence EP, HashSet<IntVector2> SearchedTiles, out IntVector2 tilePosEnemy)
         {
@@ -195,25 +191,21 @@ namespace TAC_AI.World
                 if (TileHasTargetableEnemy(EP, IV2))
                 {
                     tilePosEnemy = IV2;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": SearchPatternCacheSort - Enemy found at " + tilePosEnemy);
                     return true;
                 }
-                //DebugTAC_AI.Log(KickStart.ModID + ": SearchPatternCacheSort - Scanned " + IV2);
                 numScanned++;
             }
-            //DebugTAC_AI.Log(KickStart.ModID + ": SearchPatternCacheSort - Scanned a total of " + numScanned);
             return false;
         }
         public static bool TileHasTargetableEnemy(NP_Presence EP, IntVector2 tilePos)
         {
             List<NP_TechUnit> ETUe = ManEnemyWorld.GetUnloadedTechsInTile(tilePos);
-            //DebugTAC_AI.Log(KickStart.ModID + ": TileHasEnemy - Tile count " + ETUe.Count());
             return ETUe.Exists(delegate (NP_TechUnit cand) {
                 DebugTAC_AI.Assert(cand == null, "TileHasEnemy - cand IS NULL");
                 if (cand.tech == null)
                     return false;
-                return ManBaseTeams.IsBaseTeamDynamic(cand.tech.m_TeamID)  
-                && ManBaseTeams.IsEnemy(EP.Team, cand.tech.m_TeamID); 
+                return ManBaseTeams.IsBaseTeamDynamic(cand.tech.m_TeamID)
+                && ManBaseTeams.IsEnemy(EP.Team, cand.tech.m_TeamID);
             });
         }
         public static IntVector2 FindTeamBaseTile(NP_Presence EP)
@@ -289,7 +281,7 @@ namespace TAC_AI.World
 
         public static bool CanPurgeTeam(NP_Presence EP, NP_BaseUnit EBU)
         {
-            return KickStart.CullFarEnemyBases && AIGlobals.CanPurgeTeamNotPlayerOwned(EP.Team) && 
+            return KickStart.CullFarEnemyBases && AIGlobals.CanPurgeTeamNotPlayerOwned(EP.Team) &&
                 (EBU.tilePos - WorldPosition.FromScenePosition(Singleton.playerPos).TileCoord).WithinBox(
                     AIGlobals.IgnoreBaseCullingTilesFromOrigin);
         }
@@ -299,7 +291,6 @@ namespace TAC_AI.World
             {
                 if (EBU != null && CanPurgeTeam(EP, EBU))
                 {
-                    // Note: GetBackwardsCompatiblePosition gets the SCENEposition (Position relative to the WorldTreadmillOrigin)!
                     if (!(EBU.tilePos - WorldPosition.FromScenePosition(Singleton.playerPos).TileCoord).
                         WithinBox(KickStart.CullFarEnemyBasesDistance))
                     {
@@ -309,7 +300,7 @@ namespace TAC_AI.World
                     }
                 }
             }
-            catch (Exception e) 
+            catch (Exception e)
             {
                 throw e;
             }
@@ -332,7 +323,7 @@ namespace TAC_AI.World
                 if (ManEnemyWorld.SpecialUpdate == SpecialUpdateType.Building &&
                     EP.MainBase.BuildBucks >= AIGlobals.MinimumBBToTryExpand)
                 {
-                    if (EP.MainBase != null &&// EP.MainBase.Health == EP.MainBase.MaxHealth &&
+                    if (EP.MainBase != null &&
                         !ManEnemyWorld.IsProcessingTech && UnityEngine.Random.Range(1, 100) <=
                         AIGlobals.BaseExpandChance + (EP.BuildBucks() / 10000))
                         ImTakingThatExpansion(EP, EP.MainBase);
@@ -341,11 +332,11 @@ namespace TAC_AI.World
         }
 
         internal static void ImTakingThatExpansion(NP_Presence EP, NP_BaseUnit EBU)
-        {   // Expand the base!
+        {
             try
             {
                 if (AIGlobals.IsAttract)
-                    return; // no branching
+                    return;
 
                 FactionLevel lvl = RawTechLoader.TryGetPlayerLicenceLevel();
                 int grade = 99;
@@ -358,7 +349,7 @@ namespace TAC_AI.World
 
                 int Cost = EP.BuildBucks();
                 if (EP.GlobalMakerBaseCount() >= KickStart.MaxBasesPerTeam || UnityEngine.Random.Range(0,100) > 45)
-                {// Build a mobile Tech 
+                {
                     TryFreeUpBaseSlots(EP, lvl);
                     if (EP.GlobalMobileTechCount() > KickStart.EnemyTeamTechLimit)
                         return;
@@ -391,7 +382,7 @@ namespace TAC_AI.World
                 BaseTerrain Terra;
                 ManSaveGame.StoredTile ST = Singleton.Manager<ManSaveGame>.inst.GetStoredTile(EBU.tilePos, true);
                 if (ST != null && ManEnemyWorld.FindFreeSpaceOnTileCircle(EBU, ST, out Vector2 newPosOff))
-                {   // Try spawning defense
+                {
                     Vector3 pos = ManWorld.inst.TileManager.CalcTileOriginScene(ST.coord) + newPosOff.ToVector3XZ();
                     reason = PickBuildBasedOnPriorities(EP, lvl);
                     Terra = RawTechLoader.GetTerrain(pos);
@@ -416,7 +407,7 @@ namespace TAC_AI.World
                     DebugTAC_AI.LogDevOnly(KickStart.ModID + ": ImTakingThatExpansion - Team " + EP.Team + ": That expansion is mine!");
                 }
                 else
-                {   // Find new home base position
+                {
                     TryFreeUpBaseSlots(EP, lvl);
                     RefreshTeamMainBaseIfAnyPossible(EP);
                     if (EP.GlobalMobileTechCount() > KickStart.EnemyTeamTechLimit)
@@ -452,12 +443,11 @@ namespace TAC_AI.World
             }
         }
         internal static void TryFreeUpBaseSlots(NP_Presence EP, FactionLevel lvl)
-        {   // Remove uneeeded garbage
+        {
             try
             {
                 NP_BaseUnit Main = RefreshTeamMainBaseIfAnyPossible(EP);
                 int TeamBaseCount = EP.GlobalMakerBaseCount();
-                //bool RemoveReceivers = FetchNearbyResourceCounts(tech.Team) == 0;
                 bool RemoveSpenders = EP.BuildBucks() < RawTechLoader.CheapestAutominerPrice(Main.Faction, lvl) / 2;
                 bool ForceRemove = TeamBaseCount > KickStart.MaxBasesPerTeam;
 
@@ -469,7 +459,6 @@ namespace TAC_AI.World
                     attempts = KickStart.MaxBasesPerTeam - TeamBaseCount;
                 }
 
-                // Remove the lower-end first
                 foreach (NP_BaseUnit fund in EP.EBUs.ToList().OrderBy((F) => F.MaxHealth))
                 {
                     if (fund != Main)
@@ -480,13 +469,6 @@ namespace TAC_AI.World
                             if (step >= attempts)
                                 return;
                         }
-                        /*
-                        if (RemoveReceivers && fund.isHarvestBase && fund.revenue > 1)
-                        {
-                            RemoteRemove(fund);
-                            if (step >= attempts)
-                                return;
-                        }*/
                         if (RemoveSpenders && fund.Health < fund.MaxHealth
                             && fund.isTechBuilder && !fund.handlesChunks)
                         {
@@ -504,10 +486,10 @@ namespace TAC_AI.World
             }
         }
         private static BasePurpose PickBuildBasedOnPriorities(NP_Presence EP, FactionLevel lvl)
-        {   // Expand the base!
-            if (EP.BuildBucks() <= RawTechLoader.CheapestAutominerPrice(RefreshTeamMainBaseIfAnyPossible(EP).Faction, lvl) && 
+        {
+            if (EP.BuildBucks() <= RawTechLoader.CheapestAutominerPrice(RefreshTeamMainBaseIfAnyPossible(EP).Faction, lvl) &&
                 !HasTooMuchOfType(EP, BasePurpose.Autominer))
-            {   // YOU MUST CONSTRUCT ADDITIONAL PYLONS
+            {
                 return BasePurpose.Autominer;
             }
             else if (EP.WasInCombat())
@@ -568,7 +550,7 @@ namespace TAC_AI.World
             }
         }
         private static BasePurpose PickBuildNonDefense(NP_Presence EP)
-        {   // Expand the base!
+        {
             switch (UnityEngine.Random.Range(0, 5))
             {
                 case 2:
@@ -589,107 +571,6 @@ namespace TAC_AI.World
             }
         }
 
-        /*
-        internal static bool IsLocationGridEmpty(Vector3 expansionCenter)
-        {
-            bool chained = false;
-            if (!IsLocationValid(expansionCenter + (Vector3.forward * 64), ref chained))
-                return false;
-            if (!IsLocationValid(expansionCenter - (Vector3.forward * 64), ref chained))
-                return false;
-            if (!IsLocationValid(expansionCenter - (Vector3.right * 64), ref chained))
-                return false;
-            if (!IsLocationValid(expansionCenter + (Vector3.right * 64), ref chained))
-                return false;
-            if (!IsLocationValid(expansionCenter + ((Vector3.right + Vector3.forward) * 64), ref chained))
-                return false;
-            if (!IsLocationValid(expansionCenter - ((Vector3.right + Vector3.forward) * 64), ref chained))
-                return false;
-            if (!IsLocationValid(expansionCenter + ((Vector3.right - Vector3.forward) * 64), ref chained))
-                return false;
-            if (!IsLocationValid(expansionCenter - ((Vector3.right - Vector3.forward) * 64), ref chained))
-                return false;
-            return true;
-        }
-        internal static bool TryFindExpansionLocationGrid(Vector3 expansionCenter, out Vector3 pos)
-        {
-            bool chained = false;
-            int MaxPossibleLocations = 7;
-            List<int> location = new List<int>();
-            for (int step = 0; step < MaxPossibleLocations; step++)
-            {
-                location.Add(step);
-            }
-
-            int locationsCount = MaxPossibleLocations;
-            while (locationsCount > 0)
-            {
-                int choice = location.GetRandomEntry();
-                location.Remove(choice);
-                switch (choice)
-                {
-                    case 0:
-                        if (IsLocationValid(expansionCenter + (Vector3.forward * 64), ref chained))
-                        {
-                            pos = expansionCenter + (Vector3.forward * 64);
-                            return true;
-                        }
-                        break;
-                    case 1:
-                        if (IsLocationValid(expansionCenter - (Vector3.forward * 64), ref chained))
-                        {
-                            pos = expansionCenter - (Vector3.forward * 64);
-                            return true;
-                        }
-                        break;
-                    case 2:
-                        if (IsLocationValid(expansionCenter - (Vector3.right * 64), ref chained))
-                        {
-                            pos = expansionCenter - (Vector3.right * 64);
-                            return true;
-                        }
-                        break;
-                    case 3:
-                        if (IsLocationValid(expansionCenter + (Vector3.right * 64), ref chained))
-                        {
-                            pos = expansionCenter + (Vector3.right * 64);
-                            return true;
-                        }
-                        break;
-                    case 4:
-                        if (IsLocationValid(expansionCenter + ((Vector3.right + Vector3.forward) * 64), ref chained))
-                        {
-                            pos = expansionCenter + ((Vector3.right + Vector3.forward) * 64);
-                            return true;
-                        }
-                        break;
-                    case 5:
-                        if (IsLocationValid(expansionCenter - ((Vector3.right + Vector3.forward) * 64), ref chained))
-                        {
-                            pos = expansionCenter - ((Vector3.right + Vector3.forward) * 64);
-                            return true;
-                        }
-                        break;
-                    case 6:
-                        if (IsLocationValid(expansionCenter + ((Vector3.right - Vector3.forward) * 64), ref chained))
-                        {
-                            pos = expansionCenter + ((Vector3.right - Vector3.forward) * 64);
-                            return true;
-                        }
-                        break;
-                    case 7:
-                        if (IsLocationValid(expansionCenter - ((Vector3.right - Vector3.forward) * 64), ref chained))
-                        {
-                            pos = expansionCenter - ((Vector3.right - Vector3.forward) * 64);
-                            return true;
-                        }
-                        break;
-                }
-                locationsCount--;
-            }
-            pos = expansionCenter;
-            return false;
-        }*/
 
         private static bool TryFindExpansionLocation(NP_TechUnit tank, WorldPosition WP, out Vector3 pos)
         {
@@ -764,19 +645,13 @@ namespace TAC_AI.World
             if (ChainCancel)
                 return false;
             bool validLocation = true;
-            /*
-            if (!Singleton.Manager<ManWorld>.inst.GetTerrainHeight(pos, out _))
-            {
-                return false;
-            }*/
-            //WorldPosition WP = WorldPosition.FromScenePosition(posScene);
 
             foreach (NP_TechUnit ETU in ManEnemyWorld.GetTechsInTile(TileCoord, posInTile, 32))
             {
                 if (ETU is NP_BaseUnit EBU)
                 {
                     if (EBU.Health < EBU.MaxHealth)
-                        ChainCancel = true; // A tech is still being built here - we cannot build more until done!
+                        ChainCancel = true;
                 }
                 validLocation = false;
             }
@@ -797,7 +672,7 @@ namespace TAC_AI.World
         private static List<RecipeListWrapper> chunkConverter;
         private static readonly List<RecipeTable.Recipe> chunkConversion = new List<RecipeTable.Recipe>();
         public static ChunkTypes TransChunker(ChunkTypes CT)
-        {   // make autominers mine deep based on biome
+        {
             if (chunkConverter == null)
             {
                 chunkConverter = ((RecipeListWrapper[])ProdSys.GetValue(
@@ -817,7 +692,7 @@ namespace TAC_AI.World
             return ChunkTypes._deprecated_Stone;
         }
         public static ChunkTypes[] GetBiomeResourcesSurface(Vector3 pos)
-        {   // get rough mining yields
+        {
             switch (ManWorld.inst.GetBiomeWeightsAtScenePosition(pos).Biome(0).BiomeType)
             {
                 case BiomeTypes.Grassland:
@@ -831,7 +706,7 @@ namespace TAC_AI.World
                         ChunkTypes.RubberJelly,
                         ChunkTypes.LuxiteShard,
                         ChunkTypes.LuxiteShard,
-                        ChunkTypes.PlumbiteOre, 
+                        ChunkTypes.PlumbiteOre,
                         ChunkTypes.TitaniteOre,
                         ChunkTypes.EruditeShard,
                     };
@@ -847,7 +722,7 @@ namespace TAC_AI.World
                         ChunkTypes.RubberJelly,
                         ChunkTypes.OleiteJelly,
                         ChunkTypes.OleiteJelly,
-                        ChunkTypes.IgniteShard 
+                        ChunkTypes.IgniteShard
                     };
                 case BiomeTypes.Mountains:
                     return new ChunkTypes[9] {
@@ -870,8 +745,8 @@ namespace TAC_AI.World
                         ChunkTypes.TitaniteOre,
                         ChunkTypes.PlumbiteOre,
                         ChunkTypes.TitaniteOre,
-                        ChunkTypes.CarbiteOre, 
-                        ChunkTypes.CarbiteOre, 
+                        ChunkTypes.CarbiteOre,
+                        ChunkTypes.CarbiteOre,
                         ChunkTypes.CelestiteShard };
 
                 case BiomeTypes.Pillars:

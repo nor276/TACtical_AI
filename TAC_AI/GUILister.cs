@@ -18,7 +18,7 @@ namespace TAC_AI
         internal virtual void GUIHandler(int ID)
         {
         }
-        public Rect HotWindow = new Rect(0, 0, 200, 230);   // the "window"
+        public Rect HotWindow = new Rect(0, 0, 200, 230);
     }
     public class GUIListHandler<T> : GUIListHandler
     {
@@ -75,7 +75,7 @@ namespace TAC_AI
         private bool MaxExtensionX = false;
         private bool MaxExtensionY = false;
         protected virtual void GUIHandlerPre(int ID)
-        { 
+        {
         }
 
         protected virtual bool GUIButtonHandler(T ButtonContext)
@@ -121,7 +121,7 @@ namespace TAC_AI
                         }
                         HoriPosOff += ButtonWidth;
                     }
-                    catch { }// error on handling something
+                    catch { }
                 }
             }
 

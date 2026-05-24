@@ -86,8 +86,6 @@ namespace TAC_AI
         internal bool bankrupt = false;
         internal bool Bankrupt => bankrupt;
 
-        // Persisted HQ identity. -1 = unset; survives save/load and is resolved lazily
-        // because the actual base may not have streamed in yet at load time.
         public int hqVisibleID = -1;
         [JsonIgnore] private TeamBasePointer _HQ = null;
         internal TeamBasePointer HQ
@@ -106,20 +104,18 @@ namespace TAC_AI
         }
         private TeamBasePointer ResolveHQFromSavedID()
         {
-            // Loaded base?
             foreach (var f in RLoadedBases.IterateTeamBaseFunders(Team))
             {
                 if (f != null && f.tank != null && f.tank.visible != null && f.tank.visible.ID == hqVisibleID)
                     return f;
             }
-            // Unloaded base?
             var pres = ManEnemyWorld.GetTeam(Team);
             if (pres != null)
             {
                 foreach (NP_BaseUnit u in pres.EBUs)
                     if (u != null && u.ID == hqVisibleID) return u;
             }
-            return null;  // base not yet streamed in; try again next access
+            return null;
         }
         private void SetHQInternal(TeamBasePointer p)
         {
@@ -155,8 +151,6 @@ namespace TAC_AI
         {
             if (IsReadonly || ManSpawn.IsPlayerTeam(teamID))
                 return true;
-            // Require the unloaded-sim presence to actually have units, not just exist.
-            // An empty NP_Presence_Automatic record used to keep orphan teams alive forever.
             var pres = ManEnemyWorld.GetTeam(Team);
             if (pres != null && (pres.EBUs.Count > 0 || pres.EMUs.Count > 0))
                 return true;
@@ -191,16 +185,12 @@ namespace TAC_AI
             Infighting = infighting;
             IsReadonly = setReadonly;
         }
-        public TeamRelations GetRelations(int teamOther, TeamRelations fallback = TeamRelations.Enemy) => 
+        public TeamRelations GetRelations(int teamOther, TeamRelations fallback = TeamRelations.Enemy) =>
             ManBaseTeams.GetRelationsWritablePriority(teamID, teamOther, fallback);
         internal TeamRelations Alignment_Internal(int teamOther)
         {
             switch (teamOther)
             {
-                /*
-                case AIGlobals.DefaultEnemyTeam:
-                case AIGlobals.LonerEnemyTeam:
-                    return TeamRelations.Enemy;*/
                 case ManSpawn.NeutralTeam:
                     return TeamRelations.Neutral;
             }
@@ -238,10 +228,7 @@ namespace TAC_AI
         private void ReadonlyComplaint()
         {
 #if DEBUG
-            /*
-            throw new InvalidOperationException("Team " + teamID +
-                " has IsReadonly set to true!  Check for this first using ManTeams.CanAlterRelations()");
-            // */  DebugTAC_AI.Assert("Team " + teamID + " has IsReadonly set to true!  Check for this first using ManTeams.CanAlterRelations()");
+  DebugTAC_AI.Assert("Team " + teamID + " has IsReadonly set to true!  Check for this first using ManTeams.CanAlterRelations()");
 #endif
         }
 
@@ -315,8 +302,6 @@ namespace TAC_AI
             TeamRelations TRP = Alignment_Internal(team);
             if (TRP >= TeamRelations.AITeammate)
                 return;
-            // P14: clamp to the real relation band [Enemy, AITeammate]. The enum includes SameTeam(9001),
-            // so Enum.GetValues(...).Length was 6 (not the intended max 4); this also drops a per-call alloc.
             TeamRelations TRN = (TeamRelations)Mathf.Clamp((int)TRP + 1, (int)TeamRelations.Enemy, (int)TeamRelations.AITeammate);
             if (AIGlobals.ShowDebugFeedBack)
             {
@@ -359,7 +344,6 @@ namespace TAC_AI
                 if (AIGlobals.DamageAngerDropRelations > angerThreshold)
                     return false;
             }
-            // P14: clamp to the real relation band [Enemy, AITeammate] (see ImproveRelations_Internal).
             TeamRelations TRN = (TeamRelations)Mathf.Clamp((int)TRP - 1, (int)TeamRelations.Enemy, (int)TeamRelations.AITeammate);
             DebugTAC_AI.Log("Degrade in relations between " + TeamNamer.GetTeamName(team) + " and " +
                 TeamNamer.GetTeamName(teamID) + ", " + TRP + " -> " + TRN);
@@ -394,9 +378,6 @@ namespace TAC_AI
             return true;
         }
 
-        // P14: external callers may not flip Infighting on a read-only (default) team. The
-        // default-team seed sets read-only LonerEnemyTeam infighting via the constructor and
-        // SetInfighting_Internal, both of which bypass this guard.
         public void SetInfighting(bool state)
         {
             if (IsReadonly)
@@ -419,8 +400,6 @@ namespace TAC_AI
                 return;
             }
             align[team] = relate;
-            // P14 BUG: skip the symmetric mirror when the partner is a read-only default team —
-            // writing its align poisons it (it answers relations from defaultRelations, not align).
             if (ManBaseTeams.inst.teams.TryGetValue(team, out var val) && !val.IsReadonly && val.Alignment_Internal(teamID) != relate)
             {
                 val.align[teamID] = relate;
@@ -485,12 +464,6 @@ namespace TAC_AI
             if (IsReadonly)
                 throw new InvalidOperationException("What's this? Team " + teamID +
                     " has IsReadonly set to true! This team should NEVER be updated under any circumstances!");
-            /*
-             //This should not update with the active teams updater.
-            NP_Presence_Automatic presence = ManEnemyWorld.GetTeam(Team);
-            if (presence != null)
-                UnloadedBases.TryUnloadedBaseOperations(presence);
-            */
             if (HQ == null)
             {
                 SetHQToStrongestOrRandomBase();
@@ -508,13 +481,6 @@ namespace TAC_AI
                 }
                 else if (HQ is NP_BaseUnit funderU)
                 {
-                    /*
-                    if (funderU.IsValid())
-                    {
-                        NP_Presence presence = ManEnemyWorld.GetTeam(Team);
-                        if (presence != null)
-                            UnloadedBases.TryUnloadedBaseOperations(presence);
-                    }*/
                 }
             }
         }
@@ -534,9 +500,6 @@ namespace TAC_AI
         [SSaveField]
         public HashSet<int> HiddenVisibles = new HashSet<int>();
         [SSaveField]
-        // Tile coords where LastSecondAddBaseToWorldTile has already spawned a base.
-        // Survives tile recycling and save/load so the same deterministic base isn't
-        // re-spawned under a new team ID on every revisit.
         public HashSet<IntVector2> seededSpawnCoords = new HashSet<IntVector2>();
 
         public static void PickupRecycled(Visible vis)
@@ -546,10 +509,6 @@ namespace TAC_AI
                 inst.TradingSellOffers.Remove(vis.ID);
         }
 
-        // Drop sell-offer entries whose Visible no longer exists or is no longer a
-        // trading-station-team tech. Symmetric pre-save and post-load purge self-heals
-        // both race-orphans (RecycledEvent vs SafeSaves snapshot) and legacy orphans
-        // from previously-corrupted saves. (B-07)
         private static int PurgeOrphanedSellOffers(string phase)
         {
             if (inst?.TradingSellOffers == null || inst.TradingSellOffers.Count == 0)
@@ -593,7 +552,7 @@ namespace TAC_AI
             if (!inst.teams.TryGetValue(team, out var ETDG))
             {
                 EnemyTeamData ETD = new EnemyTeamData(lockedReadOnly, team, infighting, defaultRelations);
-                ETD.SetInfighting_Internal(infighting);   // P14: seed path bypasses the read-only guard
+                ETD.SetInfighting_Internal(infighting);
                 inst.teams.Add(team, ETD);
             }
             else if (fixup)
@@ -615,16 +574,12 @@ namespace TAC_AI
                 doFixup = true;
             }
 
-            // P14 BUG: a read-only default team must never carry per-pair align rows (its relations
-            // come from defaultRelations + the Alignment_Internal special cases). Scrub unconditionally
-            // so a poisoned / legacy-serialized row self-heals even when relationInt and Infighting
-            // still read correct (doFixup == false).
             if (lockedReadOnly && ETD.align.Count > 0)
                 ETD.align.Clear();
 
             if (doFixup)
             {
-                ETD.SetInfighting_Internal(infighting);   // P14: seed path bypasses the read-only guard
+                ETD.SetInfighting_Internal(infighting);
                 ETD.defaultRelations = defaultRelations;
             }
         }
@@ -688,8 +643,6 @@ namespace TAC_AI
                 }
             }
         }
-        // P14: removed orphan SanityCheckIfDefaultTeam (zero callers). Its intended job — scrubbing a
-        // poisoned default-team align — is now done unconditionally in SetDefaultTeam.
         public static void DeInit()
         {
             if (inst == null)
@@ -701,9 +654,6 @@ namespace TAC_AI
             inst = null;
         }
 
-        // Canonical session-state reset. Called from every mode boundary so newly-added
-        // [SSaveField] collections only need their cleanup added in one place. Keeps
-        // collections non-null (mid-session readers don't NPE).
         private static void ResetSessionState(string reason)
         {
             if (inst == null) return;
@@ -746,11 +696,6 @@ namespace TAC_AI
                 inst.teams.Remove(team);
             }
         }
-        // P14: intentionally ungated (NOT a missing HasAnyTechsLeftAlive check). This applies a
-        // host-authoritative ToClientsOnly removal — the host already confirmed HasAnyTechsLeftAlive
-        // in OnTeamDestroyedCheck before broadcasting. Re-deriving the predicate here would be wrong:
-        // the client's local presence/visible state lags the host and could refuse a removal the host
-        // committed, permanently desyncing inst.teams. The client must obey unconditionally.
         public static void OnTeamDestroyedRemoteClient(int team)
         {
             DebugTAC_AI.Log("OnTeamDestroyedRemote - Team " + TeamNamer.GetTeamName(team) + " has been completely obliterated!");
@@ -762,7 +707,7 @@ namespace TAC_AI
         {
             foreach (var item in inst.teams.Values)
             {
-                if (item != null && ETD(item)) 
+                if (item != null && ETD(item))
                     yield return item;
             }
         }
@@ -782,21 +727,17 @@ namespace TAC_AI
                     yield return item;
             }
         }
-        // Floor strictly above int.MinValue so we keep a sentinel and never wrap.
         private const int LowTeamFloor = int.MinValue + 1;
 
         private static bool TryReclaimDeadTeamID(out int reclaimed)
         {
-            // Reap dynamic teams with no live techs left; recycle their IDs.
-            // OnTeamDestroyedCheck only fires on the LAST tech-destroyed event, so abandoned
-            // / unloaded factions can leak IDs until this sweep catches them.
             List<int> dead = null;
             foreach (var kv in inst.teams)
             {
                 var ETD = kv.Value;
                 if (ETD == null || ETD.IsReadonly) continue;
                 if (AIGlobals.IsPlayerTeam(kv.Key)) continue;
-                if (kv.Key > AIGlobals.EnemyTeamsRangeStart) continue;  // only dynamic range
+                if (kv.Key > AIGlobals.EnemyTeamsRangeStart) continue;
                 if (!ETD.HasAnyTechsLeftAlive())
                     (dead ?? (dead = new List<int>())).Add(kv.Key);
             }
@@ -806,19 +747,17 @@ namespace TAC_AI
                 TeamRemovedEvent.Send(id);
                 inst.teams.Remove(id);
             }
-            reclaimed = dead.Max();  // prefer the highest (closest to start) free slot
+            reclaimed = dead.Max();
             return true;
         }
 
         private static int GetNewTeamID()
         {
-            // Advance lowTeam past any occupied IDs, bounded by LowTeamFloor.
             while (inst.lowTeam > LowTeamFloor && inst.teams.ContainsKey(inst.lowTeam))
                 inst.lowTeam--;
 
             if (inst.lowTeam <= LowTeamFloor || inst.teams.ContainsKey(inst.lowTeam))
             {
-                // Pool exhausted: try to GC dead factions and reuse a slot.
                 if (TryReclaimDeadTeamID(out int recycled))
                 {
                     DebugTAC_AI.LogError("ManBaseTeams: recycled dead team ID " + recycled +
@@ -854,10 +793,6 @@ namespace TAC_AI
             DebugTAC_AI.Assert("Team " + valNew.teamName + " has spawned as a player auto team!");
             if (!IsPlayerOwnedAIBaseTeam(valNew.teamID))
                 DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but not properly marked as player's AI base team");
-            // P14: verify against `team` (the team the AITeammate relation was just written to),
-            // not the static local `playerTeam`. In MP/co-op `team` can differ from the local player
-            // team, where querying playerTeam hit a missing align key -> Enemy fallback -> a spurious
-            // FatalError on a legitimate ally-team creation.
             if (GetRelationsWithWriteablePriority(valNew.teamID, team, out EnemyTeamData ETD))
             {
                 TeamRelations TR = ETD.Alignment_Internal(ETD.teamID == team ? valNew.teamID : team);
@@ -911,10 +846,6 @@ namespace TAC_AI
         }
         public static EnemyTeamData GetRandomExistingBaseTeam()
         {
-            // P14 BUG: snapshot once (IterateBaseTeams is a lazy iterator over teams.Values, so
-            // Count() + ElementAt walked it twice in possibly-different order) and index with
-            // Random.Range(0, Count) — the int overload is upper-exclusive, so the old
-            // Range(0, count - 1) could never select the last team.
             List<EnemyTeamData> teams = IterateBaseTeams().ToList();
             if (teams.Count < 1)
                 return null;
@@ -922,7 +853,6 @@ namespace TAC_AI
         }
         public static bool TryGetExistingBaseTeamWithPlayerAlignment(TeamRelations relations, out EnemyTeamData data)
         {
-            // P14 BUG: see GetRandomExistingBaseTeam — snapshot once + upper-exclusive Range(0, Count).
             List<EnemyTeamData> teams = IterateBaseTeams(x => x.Alignment_Internal(playerTeam) == relations).ToList();
             if (teams.Count < 1)
             {
@@ -967,17 +897,14 @@ namespace TAC_AI
             return 0;
         }
 
-        // P14: removed dead GetRelationsOnlyWritable (zero callers; byte-identical to
-        // GetRelationsWithWriteablePriority below).
         private static bool GetRelationsWithWriteablePriority(int teamID1, int teamID2, out EnemyTeamData ETD)
         {
             if (teamID2 < teamID1)
-            {   // Lowest team gets searched first
+            {
                 int swapper = teamID1;
                 teamID1 = teamID2;
                 teamID2 = swapper;
             }
-            // ALWAYS prioritize the non-immutable ones to get the correct alignment!
             if (inst.teams.TryGetValue(teamID1, out ETD) && !ETD.IsReadonly)
                 return true;
             if (inst.teams.TryGetValue(teamID2, out ETD))
@@ -989,13 +916,11 @@ namespace TAC_AI
         private static bool GetRelationsWithReadonlyPriority(int teamID1, int teamID2, out EnemyTeamData ETD)
         {
             if (teamID2 < teamID1)
-            {   // Lowest team gets searched first
+            {
                 int swapper = teamID1;
                 teamID1 = teamID2;
                 teamID2 = swapper;
             }
-            // ALWAYS prioritize the immutable ones to get the correct alignment!
-            // ALWAYS prioritize the non-immutable ones to get the correct alignment!
             if (inst.teams.TryGetValue(teamID1, out ETD) && ETD.IsReadonly)
                 return true;
             if (inst.teams.TryGetValue(teamID2, out ETD))
@@ -1029,7 +954,6 @@ namespace TAC_AI
 #if DEBUG
                     DebugTAC_AI.FatalError("We tried to change relations of a READONLY faction - this should be impossible!");
 #else
-            //DebugTAC_AI.Assert("We tried to change relations of a READONLY faction - this should be impossible!");
 #endif
         }
         public static bool CanAlterRelations(int teamID1, int teamID2)
@@ -1159,7 +1083,7 @@ namespace TAC_AI
         }
         public static bool IsPlayerOwnedAIBaseTeam(int team)
         {
-            return GetRelationsWithWriteablePriority(playerTeam, team, out var val) && 
+            return GetRelationsWithWriteablePriority(playerTeam, team, out var val) &&
                 val.PlayerTeam != int.MinValue;
         }
 
@@ -1190,7 +1114,7 @@ namespace TAC_AI
                         count++;
                     }
                     if (averageTechDMG == 0)
-                        continue;   // P14 BUG: was `return` — aborted the whole loop, skipping ManageBases for every later team that tick
+                        continue;
                     averageTechDMG /= count;
                     if (averageTechDMG <= AIGlobals.RetreatBelowTeamDamageThreshold)
                         AIECore.TeamRetreat(Team, false, true);
@@ -1222,22 +1146,20 @@ namespace TAC_AI
         public void MigrateTeamsToNewSaveFormat()
         {
             int count = 0, perTechFailures = 0;
-            // Snapshot post-default team table so a catastrophic mid-migration failure
-            // can roll back rather than leave OnWorldLoad running against torn state.
             var snapshot = new Dictionary<int, EnemyTeamData>(inst.teams);
             int pTeam;
             HashSet<int> loaded;
             try
             {
                 pTeam = ManPlayer.inst.PlayerTeam;
-                loaded = new HashSet<int>(); // INFREQUENTLY CALLED
+                loaded = new HashSet<int>();
                 foreach (var item in ManTechs.inst.IterateTechs())
                     loaded.Add(item.visible.ID);
             }
             catch (Exception ePre)
             {
                 DebugTAC_AI.LogError(KickStart.ModID + ": MigrateTeamsToNewSaveFormat ABORTED pre-scan", ePre);
-                return;  // nothing mutated yet
+                return;
             }
 
             void MigrateOne(ManSaveGame.StoredTech tech, IntVector2 coord)
@@ -1262,14 +1184,6 @@ namespace TAC_AI
                 }
             }
 
-            // P14: the two passes below (m_StoredTiles = awake tiles, m_StoredTilesJSON = dormant
-            // tiles) are disjoint by tile coordinate — the engine keeps them mutually exclusive
-            // (ManSaveGame moves a tile between them, never copies, and asserts no overlap). A team ID
-            // may still appear in both passes (techs split across awake + sleeping tiles), but MigrateOne
-            // classifies purely from GetLegacyNPTTeamType(tech.m_TeamID) — a pure function of the team ID
-            // — so both passes make the identical, idempotent relation write. The apparent
-            // "last-write-wins" is a no-op overwrite, not a defect; a per-team dedupe would only skew the
-            // per-tech count and is intentionally NOT added.
             try
             {
                 var state = Singleton.Manager<ManSaveGame>.inst.CurrentState;
@@ -1312,7 +1226,6 @@ namespace TAC_AI
             }
             catch (Exception e)
             {
-                // Non-isolable outer failure: roll back to pre-migration snapshot.
                 inst.teams = snapshot;
                 DebugTAC_AI.LogError(KickStart.ModID + ": MigrateTeamsToNewSaveFormat FATAL at " + count +
                     " Techs - rolled back to " + snapshot.Count + " teams", e);
@@ -1354,8 +1267,6 @@ namespace TAC_AI
             try
             {
                 ResetSessionState("OnWorldPreLoad");
-                // null sentinel: OnWorldLoad treats teams==null as "no disk data, fresh world".
-                // ResetSessionState only Clear()s, so set null afterward.
                 inst.teams = null;
             }
             catch (Exception e) { DebugTAC_AI.LogError("ManBaseTeams.OnWorldPreLoad failed", e); }
@@ -1366,7 +1277,6 @@ namespace TAC_AI
             {
                 if (inst.HiddenVisibles == null)
                     inst.HiddenVisibles = new HashSet<int>();
-                // SafeSaves may leave this null on saves created before the field existed.
                 if (inst.seededSpawnCoords == null)
                     inst.seededSpawnCoords = new HashSet<IntVector2>();
                 if (inst.TradingSellOffers == null)
@@ -1383,13 +1293,10 @@ namespace TAC_AI
                     InsureDefaultTeams(true);
                     foreach (var item in inst.teams)
                     {
-                        //DebugTAC_AI.LogDevOnly("  Team " + item.Value.teamName + ", relation " + item.Value.Alignment_Internal(playerTeam));
                         TankAIManager.UpdateEntireTeam(item.Key);
                     }
                     DebugTAC_AI.Log("ManBaseTeams - Loaded " + inst.teams.Count + " NPT base teams.");
                 }
-                // Post-deserialization orphan purge: drop sell-offer entries whose visible
-                // no longer exists in this session (legacy save corruption or race-orphan).
                 PurgeOrphanedSellOffers("post-load");
             }
             catch (Exception e)
@@ -1497,23 +1404,18 @@ namespace TAC_AI
         {
             if (ToSend.TryGetValue(team, out byte val) && val > 0)
                 return;
-            ToSend[team] = 1;  // indexer: tolerates pre-existing BB(=0) entry, upgrades to align(=1)
+            ToSend[team] = 1;
         }
         public static void OnNetTeamDestroyed(int team)
         {
-            ToSend[team] = 2;  // indexer: always wins; removal supersedes BB/align
+            ToSend[team] = 2;
         }
 
-        // Hard cap per packet to stay under the byte length prefix AND keep payload
-        // well below typical MTU. Per-tick drains may emit multiple packets.
         private const int MaxPerPacket = 200;
 
         public static void PushTeamDeltasToClients()
         {
             if (ToSend.Count == 0) return;
-            // Priority drain: removals (2) first, then BB (0), then align (1).
-            // Order matters because a dropped/reordered tail packet must not leave the
-            // client believing a removed team is still alive.
             var ordered = new List<KeyValuePair<int, byte>>(ToSend);
             ordered.Sort((a, b) =>
             {
@@ -1531,10 +1433,7 @@ namespace TAC_AI
 
         public class NetworkedAITeamUpdate : MessageBase
         {
-            // Empty ctor required for Mirror/UNet deserialization.
             public NetworkedAITeamUpdate() { }
-            // Producer ctor: takes an explicit slice of a drained list so Serialize is
-            // pure (no static ToSend access, no mutation, safe to re-serialize/retry).
             private readonly List<KeyValuePair<int, byte>> _payload;
             private readonly int _start, _len;
             public NetworkedAITeamUpdate(List<KeyValuePair<int, byte>> payload, int start, int len)
@@ -1545,7 +1444,7 @@ namespace TAC_AI
             public override void Serialize(NetworkWriter write)
             {
                 int count = _len;
-                write.Write((byte)count);  // count is always <= MaxPerPacket (200) <= byte.MaxValue
+                write.Write((byte)count);
                 for (int i = 0; i < count; i++)
                 {
                     var item = _payload[_start + i];
@@ -1604,11 +1503,11 @@ namespace TAC_AI
                 int team = read.ReadPackedInt32();
                 int BB = read.ReadPackedInt32();
                 if (BB == int.MinValue)
-                {   // REMOVE
+                {
                     OnTeamDestroyedRemoteClient(team);
                 }
                 else
-                {   // Add/Update
+                {
                     var teamInst = InsureBaseTeam(team);
                     teamInst.SetBuildBucks = BB;
                     UnpackTeamAlignmentInfo(ref read, ref teamInst.align);
@@ -1641,8 +1540,6 @@ namespace TAC_AI
                     DebugTAC_AI.Log("TAC_AI: FAILED to process UnpackTeamAlignmentInfo(), teams might be corrupted!!! - " + e);
                 }
             }
-            // P14: removed unused PackingInfo / TeamID / BribeAmount fields (never read; not on the
-            // wire — Serialize/Deserialize use the payload list, and OnReceiveTeamUpdate ignores them).
         }
         private static NetworkHook<NetworkedAITeamUpdate> netHook = new NetworkHook<NetworkedAITeamUpdate>(
             "TAC_AI.NetworkedAITeamUpdate", OnReceiveTeamUpdate, NetMessageType.ToClientsOnly);
@@ -1656,8 +1553,6 @@ namespace TAC_AI
             return true;
         }
 
-        // ------------------------------------
-        // ------------------------------------
 
         private static bool IsLegacyBaseTeam(int team)
         {

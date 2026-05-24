@@ -133,8 +133,6 @@ namespace TAC_AI.AI
             _DriveDest = direct.DriveDest;
             _DriveDir = direct.DriveDir;
             DrivePathing = EDrivePathing.OnlyImmedeate;
-            // P08 B-NEW10-4: bypass-of-NaN-guard fix. Constructor was assigning `lastDest` field
-            // directly; route through the `lastDestination` property so the NaN check fires.
             lastDest = Vector3.zero;
             TurningStrictness = ESteeringStrength.Lazy;
             lastDestination = direct.lastDestination;
@@ -202,17 +200,8 @@ namespace TAC_AI.AI
         }
     }
 
-    /// <summary>
-    /// Combat-target-selection mode. Movement layer is uniform per locomotion (RWheeled/RChopper/...)
-    /// — the per-mode differentiation lives in <see cref="TAC_AI.AI.TankAIHelper.FindEnemy"/>
-    /// (Random rotates targets, Strong picks largest, Chase sticks, Closest/default picks nearest).
-    /// FSM `default:` arms covering Chase/Strong/Random is intentional (T2).
-    /// </summary>
     public enum EAttackMode
     {
-        /// <summary>Sentinel: resolved by <see cref="TAC_AI.AI.EWeapSetup.GetAttackStrat"/> on next
-        /// `TankAIHelper.OnRecycle`/equivalent — auto-picks from weapon loadout. Never reaches the
-        /// combat FSM as `AutoSet`. The GUI slider (GUIAIManager.cs:1279) excludes this value.</summary>
         AutoSet,
         Circle,
         Chase,
@@ -222,18 +211,10 @@ namespace TAC_AI.AI
         Safety
     }
 
-    /// <summary>
-    /// Drive-destination semantics for the Maintainer phase.
-    /// **Ordering is LOAD-BEARING**: LandAICore.DriveMaintainer (and Sea/Space/Vehicle equivalents)
-    /// use `>= ToLastDestination` comparisons to mean "has a targeted destination or stronger"
-    /// (accepts AvoidenceActive / ToBase / ToMine / Override). Inserting a new value mid-list, or
-    /// renumbering, will silently change drive behaviour. Add new values at the end.
-    /// </summary>
     public enum EDriveDest
-    {   //Control the AI drive direction
-        None, // No target
+    {
+        None,
 
-        // Coordinate-Based Targets
         FromLastDestination,
 
         ToLastDestination,
@@ -248,13 +229,13 @@ namespace TAC_AI.AI
     }
 
     public enum ESteeringStrength
-    {   //Control the AI drive steering
+    {
         Lazy,
         Strict,
         MaxSteering
     }
     public enum EDriveFacing
-    {   //Control the AI drive direction
+    {
         Stop,
         Neutral,
         Forwards,

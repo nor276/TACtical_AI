@@ -5,7 +5,7 @@ using UnityEngine;
 using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI {
-    
+
     public interface IMovementAIController
     {
         IMovementAICore AICore
@@ -28,8 +28,8 @@ namespace TAC_AI.AI {
             get;
         }
 
-        Vector3 PathPoint { get; }// WHere the Tech is moving towards, not the target's exact location
-        float GetDrive { get; }// The Forwards drive of the Tech
+        Vector3 PathPoint { get; }
+        float GetDrive { get; }
 
         void Initiate(Tank tank, TankAIHelper helper, Enemy.EnemyMind mind = null);
         void UpdateEnemyMind(Enemy.EnemyMind mind);

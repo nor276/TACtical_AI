@@ -9,7 +9,6 @@ namespace TAC_AI.AI.AlliedOperations
         internal const int reverseFromResourceTime = 35;
         public static void MotivateKill(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the Tank (Assassin) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = (helper.DriverType == AIDriverType.Pilot || helper.DriverType == AIDriverType.Astronaut);
 
@@ -25,7 +24,6 @@ namespace TAC_AI.AI.AlliedOperations
             {
                 if ((state.storageTotal - state.spareCapacity) / state.storageTotal < 0.4f)
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Falling back to base! Charge " + (state.storageTotal - state.spareCapacity).ToString());
                     helper.CollectedTarget = false;
                     helper.actionPause = reverseFromResourceTime;
                 }
@@ -34,7 +32,6 @@ namespace TAC_AI.AI.AlliedOperations
             {
                 if ((state.storageTotal - state.spareCapacity) / state.storageTotal > 0.95f)
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Charged up and ready to attack!");
                     helper.CollectedTarget = true;
                     helper.actionPause = AIGlobals.ReverseDelay;
                 }
@@ -43,19 +40,19 @@ namespace TAC_AI.AI.AlliedOperations
             if (!helper.CollectedTarget || helper.Retreat)
             {
                 if (helper.ActionPause > 0)
-                {   // BRANCH - Reverse from Resources
+                {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
-                    { /* actionPause self-counts via its AITimer now */ }
+                    {  }
                     return;
                 }
                 helper.foundBase = AIECore.FetchChargedChargers(tank, helper.JobSearchRange * 2.5f, out helper.lastBasePos, out helper.theBase, tank.Team);
                 if (!helper.foundBase)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Searching for nearest charger!");
-                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
+                    helper.EstTopSped = 1;
                     if (helper.theBase == null)
-                        return; // There's no base!
+                        return;
                     helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
                 }
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -69,13 +66,12 @@ namespace TAC_AI.AI.AlliedOperations
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Trying to unjam...");
                         helper.AvoidStuff = false;
                         helper.DriveVar = -1;
-                        //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                     }
                     else
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at nearest charger and recharging!");
                         helper.AvoidStuff = false;
-                        { /* actionPause self-counts via its AITimer now */ }
+                        {  }
                         helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                     }
@@ -114,8 +110,7 @@ namespace TAC_AI.AI.AlliedOperations
                     else
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                        { /* actionPause self-counts via its AITimer now */ }
-                        //helper.ThrottleState = AIThrottleState.Yield;
+                        {  }
                         helper.SettleDown();
                     }
                 }
@@ -131,15 +126,15 @@ namespace TAC_AI.AI.AlliedOperations
             else
             {
                 if (helper.ActionPause > 0)
-                {   // BRANCH - Reverse from Base
+                {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
-                    { /* actionPause self-counts via its AITimer now */ }
+                    {  }
                     return;
                 }
                 if (!helper.foundGoal)
                 {
-                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
+                    helper.EstTopSped = 1;
                     helper.foundGoal = AIECore.FindTarget(tank, helper, helper.theResource, out var tmpRes);
                     helper.theResource = tmpRes;
                     AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Scanning for enemies...");
@@ -147,10 +142,10 @@ namespace TAC_AI.AI.AlliedOperations
                     {
                         helper.foundBase = AIECore.FetchChargedChargers(tank, helper.JobSearchRange * 2.5f, out helper.lastBasePos, out helper.theBase, tank.Team);
                         if (helper.theBase == null)
-                            return; // There's no base!
+                            return;
                         helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
                     }
-                    return; // There's no enemies left!
+                    return;
                 }
                 else if (!helper.theResource?.tank?.visible || !helper.theResource.tank.visible.isActive || !ManBaseTeams.IsEnemy(tank.Team, helper.theResource.tank.Team))
                 {
@@ -159,7 +154,7 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.theResource = null;
                     helper.SettleDown();
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Target destroyed or disbanded.");
-                    return; // Enemy destroyed
+                    return;
                 }
                 direct.SetLastDest(helper.theResource.tank.boundsCentreWorldNoCheck);
 
@@ -180,12 +175,6 @@ namespace TAC_AI.AI.AlliedOperations
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Removing obstruction at " + tank.transform.position);
                     helper.TryHandleObstruction(hasMessaged, dist, false, true, ref direct);
                 }
-                /*
-                else if (dist < helper.lastTechExtents + 12)
-                {
-                    hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  In combat at " + helper.theResource.centrePosition);
-                    helper.SettleDown();
-                }*/
                 AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Moving out to fight at " + helper.theResource.centrePosition + " |Tech is at " + tank.boundsCentreWorldNoCheck);
                 direct.DriveDest = EDriveDest.ToBase;
                 helper.foundBase = false;
@@ -194,9 +183,7 @@ namespace TAC_AI.AI.AlliedOperations
 
         public static void ShootToDestroy(TankAIHelper helper, Tank tank)
         {
-            // Determines the weapons actions and aiming of the AI, this one is more fire-precise and used for turrets
             helper.WantsToFight = false;
-            //helper.lastEnemySet = tank.Vision.GetFirstVisibleTechIsEnemy(tank.Team);
 
             if (helper.theResource)
             {
@@ -211,8 +198,6 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.WeaponDelayClock += KickStart.AIClockPeriod;
                 if (helper.SideToThreat)
                 {
-                    // Deferred-9 fix: dropped the always-true `Mathf.Abs(...) > -0.15f` clause.
-                    // Mirrors the non-SideToThreat tolerance gate below.
                     if (Mathf.Abs((tank.rootBlockTrans.right - aimTo).magnitude) < 0.15f || helper.WeaponDelayClock >= 150)
                     {
                         helper.WantsToFight = true;

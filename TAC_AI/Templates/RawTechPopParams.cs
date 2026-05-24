@@ -30,7 +30,6 @@ namespace TAC_AI.Templates
             ForceAnchor = false;
             IsPopulation = true;
             SpawnCharged = true;
-            //AllowAutominers = AIGlobals.AllowInfAutominers,
             BlockConveyors = false;
             SearchAttract = AIGlobals.IsAttract;
             ExcludeErad = !KickStart.EnemyEradicators || SpecialAISpawner.Eradicators.Count >= AIGlobals.MaxEradicatorTechs;
@@ -71,7 +70,7 @@ namespace TAC_AI.Templates
             set
             {
                 if (value == null)
-                    throw new NullReferenceException("purposes cannot be null"); 
+                    throw new NullReferenceException("purposes cannot be null");
                 _purposes = value;
             }
         }
@@ -98,7 +97,7 @@ namespace TAC_AI.Templates
                     _purposes.Add(BasePurpose.NotStationary);
             }
         }
-        public bool SnapTerrain => Offset == RawTechOffset.OnGround || 
+        public bool SnapTerrain => Offset == RawTechOffset.OnGround ||
             Offset == RawTechOffset.RaycastTerrainAndScenery || ForceAnchor;
         public bool IsPopulation;
         public bool SpawnCharged;

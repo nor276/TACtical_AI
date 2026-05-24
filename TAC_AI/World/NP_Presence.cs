@@ -84,7 +84,6 @@ namespace TAC_AI.World
         }
         private Visible _lastTarget = null;
         private int lastTargetUpdateCount = 0;
-        // L1-9: expire lastTarget after OperatorTicksKeepTarget operator ticks (field was never decremented).
         protected void TickTargetExpiry() { if (lastTargetUpdateCount > 0) lastTargetUpdateCount--; }
 
         public NP_Presence(int Team)
@@ -110,7 +109,6 @@ namespace TAC_AI.World
         }
         public int GlobalMobileTechCount()
         {
-            //DebugTAC_AI.Assert("GlobalMobileTechCount " + (ETUs.Count + RBases.TeamActiveMobileTechCount(Team)));
             return EMUs.Count + RLoadedBases.TeamActiveMobileTechCount(Team);
         }
 
@@ -153,7 +151,6 @@ namespace TAC_AI.World
             attackStarted = false;
             TickTargetExpiry();
             HandleUnitRecon();
-            //PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Updating for team " + Team);
             HandleCombat(TUDestroyed);
             HandleUnitMoving();
             UpdateRevenue();
@@ -162,7 +159,7 @@ namespace TAC_AI.World
             HandleRecharge();
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
             if (MainBase != null)
-            {   // To make sure little bases are not totally stagnant - the AI is presumed to be mining aand doing missions
+            {
                 PresenceDebugDEV(KickStart.ModID + ": UpdateGrandCommandRTS - Team final funds " + MainBase.BuildBucks);
             }
             return AnyLeftStanding;
@@ -171,7 +168,6 @@ namespace TAC_AI.World
         {
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommand - Turn for Team " + Team);
             attackStarted = false;
-            //PresenceDebug(KickStart.ModID + ": UpdateGrandCommand - Updating for team " + Team);
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
 
             if (MainBase != null)
@@ -181,7 +177,6 @@ namespace TAC_AI.World
 
         public virtual void UpdateMaintainer(float timeDelta)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": ManEnemyWorld - UpdateMaintainer, num fighting " + Fighting.Count());
             foreach (var item in Fighting)
             {
                 item.MovementSceneDelta(timeDelta);
@@ -235,7 +230,6 @@ namespace TAC_AI.World
                 }
                 if (numHealed > 0)
                 {
-                    //PresenceDebug("HandleRepairs Team " + Team + " repaired " + numHealed + "Techs");
                 }
             }
         }
@@ -267,13 +261,6 @@ namespace TAC_AI.World
             scannedPositions.Clear();
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
 
-            // P15 BUG: rebuild the own-tech tile set every tick regardless of MainBase, because
-            // HandleCombat consumes tilesHasOwnTechs unconditionally. A team with zero unloaded
-            // bases (so MainBase == null) but an active *loaded* maker base still passes the
-            // GlobalMakerBaseCount() gate and reaches HandleCombat — leaving this rebuild gated on
-            // MainBase let it run unloaded combat against a stale tile set. ETU.tilePos has no
-            // MainBase dependency, so this is safe to run unconditionally; the rebuild does no
-            // scanning, so the "home defense first" ordering below is unaffected.
             tilesHasOwnTechs.Clear();
             foreach (NP_TechUnit ETU in EMUs)
             {
@@ -296,7 +283,7 @@ namespace TAC_AI.World
 
             if (MainBase != null)
             {
-                UnloadedBases.GetScannedTilesAroundTech(MainBase); // This happens first - home defense is more important
+                UnloadedBases.GetScannedTilesAroundTech(MainBase);
 
                 if (!attackStarted)
                 {
@@ -319,15 +306,12 @@ namespace TAC_AI.World
         {
             Fighting.Clear();
             float damageTime = (float)ManEnemyWorld.OperatorTickDelay / ManEnemyWorld.ExpectedDPSDelitime;
-            //PresenceDebug("HandleCombat found " + tilesHasTechs.Count + " tiles with Techs");
             foreach (IntVector2 TT in tilesHasOwnTechs)
             {
                 if (Singleton.Manager<ManWorld>.inst.CheckIsTileAtPositionLoaded(Singleton.Manager<ManWorld>.inst.TileManager.CalcTileCentreScene(TT)))
                 {
-                    //PresenceDebug("HandleCombat found the tile to be active!?");
-                    continue; // tile loaded
+                    continue;
                 }
-                //PresenceDebug("HandleCombat Trying to test for combat");
                 if (ManEnemyWorld.TryGetConflict(TT, Team, out List<NP_TechUnit> Allies, out List<NP_TechUnit> Enemies))
                 {
                     int damageTurn = DistributeDamageThisTurn(TT, Allies, damageTime, Enemies, TUDestroyed);
@@ -336,7 +320,6 @@ namespace TAC_AI.World
                 }
                 else
                 {
-                    //PresenceDebug(KickStart.ModID + ": EnemyPresence(ASSERT) - HandleCombat called the tile, but THERE'S NO TECHS IN THE TILE!");
                     continue;
                 }
             }
@@ -424,11 +407,11 @@ namespace TAC_AI.World
         {
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
             if (MainBase == null)
-            {   // Attack the player
+            {
                 MoveAllETUsNoMainBase();
             }
             else
-            {   // Manage Base operations
+            {
                 switch (teamMode)
                 {
                     case AITeamMode.Retreating:
@@ -467,7 +450,6 @@ namespace TAC_AI.World
         }
         protected void MoveAllETUsNoMainBase()
         {
-            //PresenceDebug("Team " + Team + " does not have a base allocated yet");
             int count = EMUs.Count;
             for (int step = 0; step < count; step++)
             {
@@ -482,8 +464,6 @@ namespace TAC_AI.World
                         ManEnemyWorld.StrategicMoveQueue(ETU, playerCoord, OnUnitReachDestinationNoBase, out bool fail);
                         if (fail)
                         {
-                            // Symmetric cleanup: StopManagingUnit clears trackedVis and
-                            // teamFounder (if applicable), not just the EMUs entry.
                             ManEnemyWorld.StopManagingUnit(ETU);
                             step--;
                             count--;
@@ -512,8 +492,6 @@ namespace TAC_AI.World
                             continue;
                         if (!ETU.isMoving)
                         {
-                            // (the orphan-cleanup signal). Evict here rather than letting the
-                            // orphan linger and trigger the same drift log every tick.
                             if (!MoveETU(ETU, ref techsMoving))
                             {
                                 ManEnemyWorld.StopManagingUnit(ETU);
@@ -554,8 +532,6 @@ namespace TAC_AI.World
                     {
                         if (!MoveETU(ETU, ref techsMoving))
                         {
-                            // Orphan: StrategicMoveQueue reported criticalFail. Evict
-                            // here rather than letting the same drift log repeat.
                             ManEnemyWorld.StopManagingUnit(ETU);
                             step--;
                             count--;
@@ -634,7 +610,7 @@ namespace TAC_AI.World
             NP_BaseUnit mainBase = UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
 
             if (mainBase != null)
-            {   // To make sure little bases are not totally stagnant - the AI is presumed to be mining aand doing missions
+            {
                 mainBase.AddBuildBucks(ManEnemyWorld.PassiveHQBonusIncome * ManEnemyWorld.OperatorTickDelay);
                 if (AIGlobals.TurboAICheat)
                 {
@@ -655,7 +631,6 @@ namespace TAC_AI.World
 
         internal void SetAttackMode(IntVector2 tilePos, Visible target = null)
         {
-            //PresenceDebug("Enemy team " + Team + " has found target");
             attackStarted = true;
             teamMode = AITeamMode.Attacking;
             lastAttackTile = tilePos;
@@ -663,7 +638,6 @@ namespace TAC_AI.World
         }
         internal void SetSiegeMode(IntVector2 tilePos)
         {
-            //PresenceDebug("Enemy team " + Team + " has found target");
             attackStarted = true;
             teamMode = AITeamMode.SiegingPlayer;
             lastAttackTile = tilePos;
@@ -671,7 +645,6 @@ namespace TAC_AI.World
         }
         internal void SetDefendMode(IntVector2 tilePos)
         {
-            //PresenceDebug("Enemy team " + Team + " has found target");
             teamMode = AITeamMode.Defending;
             lastAttackTile = tilePos;
         }
@@ -750,14 +723,13 @@ namespace TAC_AI.World
             if (GlobalMakerBaseCount() == 0)
             {
                 DebugTAC_AI.Info(KickStart.ModID + ": UpdateGrandCommandRTS - Team " + Team + " has no production bases");
-                return EBUs.Count > 0 || EMUs.Count > 0; // NO SUCH TEAM EXISTS (no base!!!)
+                return EBUs.Count > 0 || EMUs.Count > 0;
             }
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Turn for Team " + Team);
             attackStarted = false;
             TickTargetExpiry();
             if (lastFounderStopUpdateTicks > 0)
                 lastFounderStopUpdateTicks--;
-            //PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Updating for team " + Team);
             TryGetFounderUnloaded(out teamFounder);
             HandleUnitRecon();
             HandleCombat(TUDestroyed);
@@ -768,7 +740,7 @@ namespace TAC_AI.World
             HandleRecharge();
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
             if (MainBase != null)
-            {   // To make sure little bases are not totally stagnant - the AI is presumed to be mining aand doing missions
+            {
                 PresenceDebugDEV(KickStart.ModID + ": UpdateGrandCommandRTS - Team final funds " + MainBase.BuildBucks);
             }
             return AnyLeftStanding;
@@ -784,11 +756,10 @@ namespace TAC_AI.World
             if (GlobalMakerBaseCount() == 0)
             {
                 DebugTAC_AI.Info(KickStart.ModID + ": UpdateGrandCommand - Team " + Team + " has no production bases");
-                return false; // NO SUCH TEAM EXISTS (no base!!!)
+                return false;
             }
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommand - Turn for Team " + Team);
             attackStarted = false;
-            //PresenceDebug(KickStart.ModID + ": UpdateGrandCommand - Updating for team " + Team);
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
 
             if (MainBase != null)
@@ -879,12 +850,12 @@ namespace TAC_AI.World
                     techsMoving = true;
                 }
                 if (fail)
-                    return false;   // outer MoveETU loop sees this and evicts via StopManagingUnit
+                    return false;
             }
             else
-            {   // Do random things
+            {
                 if (!SetFounderDestination(ETU, ref techsMoving))
-                    return false;   // propagate orphan signal
+                    return false;
             }
             return true;
         }

@@ -87,22 +87,6 @@ namespace TAC_AI.World
         public abstract float GetEvasion();
         public abstract bool Exists();
 
-        /*
-        public bool SetPositionWorld(WorldPosition newPos)
-        {
-            try
-            {
-                if (ManEnemyWorld.TryMoveTechIntoTile(this, Singleton.Manager<ManSaveGame>.inst.GetStoredTile(newPos.TileCoord, false), false))
-                {
-                    tech.m_WorldPosition = newPos;
-                }
-            }
-            catch
-            {
-                DebugTAC_AI.LogError(KickStart.ModID + ": EnemyTechUnit - " + Name + " failed to update position!");
-            }
-            return false;
-        }*/
         internal void SetTracked(TrackedVisible TV)
         {
             trackedVis = TV;
@@ -126,19 +110,12 @@ namespace TAC_AI.World
         internal void RebindToTile(IntVector2 newTile, ManSaveGame.StoredVisible posHint = null)
         {
             WorldPosition newPos;
-            // tile it lives in. This is the canonical position vanilla TerraTech uses for the
-            // record, and centering would needlessly throw away precise XZ.
             if (posHint != null && posHint.m_WorldPosition.TileCoord == newTile)
             {
                 newPos = posHint.m_WorldPosition;
             }
             else
             {
-                // Either we don't have a hint, or the hint's own m_WorldPosition is *also* drifted
-                // (the storage tile holds a StoredVisible whose recorded position points elsewhere —
-                // the same desync, but on the StoredVisible rather than tech.m_WorldPosition). In
-                // that case the only safe fallback is tile-center. Preserve Y from the prior record
-                // so altitude info on flyers isn't lost.
                 float halfTile = ManWorld.inst.TileSize * 0.5f;
                 float yKeep = tech.m_WorldPosition.TileRelativePos.y;
                 newPos = new WorldPosition(newTile, new Vector3(halfTile, yKeep, halfTile));

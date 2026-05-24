@@ -23,12 +23,11 @@ namespace TAC_AI
         public static bool CommandTarget(this Tank tank, Tank grabbedTech)
         {
             var helper = tank.GetHelperInsured();
-            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectTargetTank.");
             bool success = false;
             if ((bool)grabbedTech)
             {
                 if (grabbedTech.IsEnemy(tank.Team))
-                {   // Attack Move
+                {
                     helper.RTSDestination = TankAIHelper.RTSDisabled;
                     helper.SetRTSState(true);
                     if (ManNetwork.IsNetworked)
@@ -38,7 +37,7 @@ namespace TAC_AI
                     success = true;
                 }
                 else if (grabbedTech.IsFriendly(tank.Team))
-                {// Protect/Defend
+                {
                     try
                     {
                         if (grabbedTech.IsAnchored)
@@ -55,7 +54,6 @@ namespace TAC_AI
                         }
                         else
                         {
-                            //bool LandAIAssigned = help.DediAI < AIType.MTTurret;
                             helper.RTSDestination = TankAIHelper.RTSDisabled;
                             helper.SetRTSState(false);
                             if (!ManNetwork.IsNetworked)
@@ -79,14 +77,13 @@ namespace TAC_AI
         }
         public static bool CommandMine(this Tank tank, ResourceDispenser node)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectScenery.");
 
             var helper = tank.GetHelperInsured();
             bool success = false;
             if ((bool)node)
             {
                 if (!node.GetComponent<Damageable>().Invulnerable)
-                {   // Mine Move
+                {
                     ManWorldRTS.inst.SetOptionAuto(helper, AIType.Prospector);
                     helper.RTSDestination = TankAIHelper.RTSDisabled;
                     helper.SetRTSState(false);
@@ -104,7 +101,6 @@ namespace TAC_AI
         }
         public static bool CommandCollect(this Tank tank, TankBlock block)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectBlock.");
             var helper = tank.GetHelperInsured();
 
             bool success = false;
@@ -204,12 +200,6 @@ namespace TAC_AI
             }
             return helper;
         }
-        /// <summary>
-        /// Detects duplicate components of type T on the given GameObject, logs an assert
-        /// with the supplied context, destroys all but the first (oldest) instance, and
-        /// returns the kept one. Use to recover from invariant violations rather than
-        /// throwing from an event handler (which can corrupt unrelated subscribers).
-        /// </summary>
         public static T EnforceSingleComponent<T>(this GameObject go, string ctx) where T : Component
         {
             var all = go.GetComponents<T>();
@@ -247,8 +237,7 @@ namespace TAC_AI
                 }
                 toSortCache = SortCorps(toSortCache);
                 FactionSubTypes final = toSortCache.FirstOrDefault();
-                //DebugTAC_AI.Log(KickStart.ModID + ": GetMainCorpExt - Selected " + final + " for main corp")
-                return final;//(FactionSubTypes)tank.GetMainCorporations().FirstOrDefault();
+                return final;
             }
             finally
             {
@@ -265,7 +254,7 @@ namespace TAC_AI
                 }
                 toSortCache = SortCorps(toSortCache);
                 var first = toSortCache.FirstOrDefault();
-                return first;//(FactionSubTypes)tank.GetMainCorporations().FirstOrDefault();
+                return first;
             }
             finally
             {

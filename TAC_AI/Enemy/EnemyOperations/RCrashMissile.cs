@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -17,7 +17,6 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             helper.AvoidStuff = false;
             helper.Attempt3DNavi = true;
 
-            // B7: null-target case centralized in EnemyOperationsController.Execute.
             RGeneral.Engadge(helper, tank, mind);
 
             helper.WantsToFight = true;

@@ -43,89 +43,28 @@ namespace TAC_AI
         [SSaveField]
         public string SavedTechBlueprint = null;
 
-        /*
-        // What can this new AI do? 
-        //   PRETTY MUCH ALL OF THE BELOW - except the ones with '>' by them for now.
-        Escort,     // Good ol' player defender                     (Classic player defense numbnut)
-        Assault,    // Run off and attack the enemies on your radar (Runs off (beyond radar range!) to attack enemies)
-        Aegis,      // Protects the nearest non-player allied Tech  (Follows nearest ally, will chase enemy some distance)
 
-        Prospector, // Harvest Chunks and return them to base       (Returns chunks when full to nearest receiver)
-        Scrapper,   // Grab loose blocks but avoid combat           (Return to nearest base when threatened)
-        Energizer,  // Charges up and/or heals other techs          (Return to nearest base when out of power)
-
-        // MULTECH  // Enabled for all                              (MultiTech) - BuildBeam disabled, will fire at any angle.
-        MTTurret,   // Only turns to aim at enemy                     Also will follow nearest tech that's Build Beaming
-        MTSlave,    // Does not move on own but does shoot back     
-        MTMimic,    // Copies the actions of the closest non-MT Tech in relation     
-
-        // ADVANCED    (REQUIRES TOUGHER ENEMIES TO USE!)           (can't just do the same without the enemies attacking these ways as well...)
-        Aviator,    // Flies aircraft, death from above, nuff said  (Flies above ground, by the player and keeps distance) [unload distance will break!]
-        Buccaneer,  // Sails ships amongst ye seas~                 (Avoids terrain above water level)
-        Astrotech,  // Flies hoverships and kicks Tech              (Follows player a certain distance above ground level and can follow into the sky)
-
-        "TAC_AI.ModuleAIExtension":{ // Add a special AI type to your AI Module
-            // -----COMBAT-----
-            // - Escort is enabled by default since you have to corral your minions somehow
-            "Assault": false,
-            "Aegis": false,
-
-            // -----RESOURCES-----
-            "Prospector": false,
-            "Scrapper": false,
-            "Energizer": false,
-
-            // ----TOUGHER ENEMIES----
-            "Aviator": false,
-            "Buccaneer": false,
-            "Astrotech": false,
-
-            // ----EXTRAS----
-            "AutoAnchor": false,    // Should the AI anchor and un-anchor automatically?
-            "MeleePreferred": false,// Should the AI ram the enemy?
-            "SidePreferred": false, // Should the AI orbit the enemy? (Partially overrides melee)
-            "AdvAvoidence": false,  // Should the AI avoid two allied techs at once?
-            "AdvancedAI": false,    // Should the AI take combat calculations and retreat if nesseary? (N/A atm)
-            "MTForAll": false,      // Should the AI listen to other Tech MT commands?
-            "AidAI": false,         // Should the AI be willing to sacrifice themselves for their owner's safety? - (N/A)
-            "SelfRepairAI": false,  // Can the AI self-repair?
-            "InventoryUser" = false;// Can the AI use the player Inventory?
-            "Builder" = false;      // Can the AI build new Techs?
-            "AnimeAI": false,       // Work with the AnimeAI mod and display a character for this AI? (And also allow interaction with other characters?)
-
-            "MinCombatRange": 50,   // Min range the AI will keep from an enemy
-            "MaxCombatRange": 100,  // Max range the AI will travel from it's priority defence target (or x2 assassin provoke radius from home)
-        }
-        */
-
-        //   note to self - make these flags because it's taking more RAM than it should
-        // -----COMBAT-----
-        // - Escort is enabled by default since you have to corral your minions somehow
         public bool Assault = false;
         public bool Aegis = false;
 
-        // -----RESOURCES-----
         public bool Prospector = false;
         public bool Scrapper = false;
         public bool Energizer = false;
 
-        // ----TOUGHER ENEMIES----
         public bool Aviator = false;
         public bool Buccaneer = false;
         public bool Astrotech = false;
 
-        // ----EXTRAS----
-        public bool AutoAnchor = false;     // Should the AI handle anchors automatically?
-        public bool MeleePreferred = false; // Should the AI ram the enemy?
-        public bool SidePreferred = false;  // Should the AI orbit the enemy?
-        public bool AdvancedAI = false;     // Should the AI take combat calculations and retreat if nesseary?
-        public bool AdvAvoidence = false;   // Should the AI avoid two allied techs at once?
-        public bool MTForAll = false;       // Should the AI listen to non-player Tech MT commands?
-        public bool AidAI = false;          // Should the AI be willing to sacrifice themselves for their owner's (or asset's) safety?
-        public bool SelfRepairAI = false;   // Can the AI self-repair?
-        public bool InventoryUser = false;  // Can the AI use the player Inventory?
-        public bool Builder = false;        // Can the AI build new Techs?
-        //public bool AnimeAI = false;      // Do we attempt a hookup to the AnimeAI mod and display a character for this AI?
+        public bool AutoAnchor = false;
+        public bool MeleePreferred = false;
+        public bool SidePreferred = false;
+        public bool AdvancedAI = false;
+        public bool AdvAvoidence = false;
+        public bool MTForAll = false;
+        public bool AidAI = false;
+        public bool SelfRepairAI = false;
+        public bool InventoryUser = false;
+        public bool Builder = false;
 
         public float MaxCombatRange = 100;
         public float MinCombatRange = 50;
@@ -135,25 +74,18 @@ namespace TAC_AI
         {
             if (block.IsAttached)
                 OnAttach();
-            //AIWiki.AllValidAIs.Add((BlockTypes)GetComponent<Visible>().m_ItemType.ItemType);
         }
-        /*
-        public void DelayedSub()
-        {
-            if (block.IsAttached)
-                LoadToTech();
-        }*/
 
         private static ExtUsageHint.UsageHint hintGSOa = new ExtUsageHint.UsageHint(KickStart.ModID, "ModuleAIExtension.hintGSOa",
             AltUI.ObjectiveString("GSO's") + " anchored A.I. has extended range and base capabilities.");
         private static ExtUsageHint.UsageHint hintGSOm = new ExtUsageHint.UsageHint(KickStart.ModID, "ModuleAIExtension.hintGSOm",
-            AltUI.ObjectiveString("GSO's") + " mobile A.I. can " + AltUI.HighlightString("Mine") + ", " + 
+            AltUI.ObjectiveString("GSO's") + " mobile A.I. can " + AltUI.HighlightString("Mine") + ", " +
             AltUI.HighlightString("Protect") + " vehicles, " + AltUI.HighlightString("Build") +
             " techs, and sail " + AltUI.HighlightString("Ships") + ".", 10);
 
         private static ExtUsageHint.UsageHint hintGCm = new ExtUsageHint.UsageHint(KickStart.ModID, "ModuleAIExtension.hintGCm",
-            AltUI.ObjectiveString("GeoCorp's") + " mobile A.I. can " + AltUI.HighlightString("Mine") + ", " + 
-            AltUI.HighlightString("Mimic") + " all, block " + AltUI.HighlightString("Repair") + 
+            AltUI.ObjectiveString("GeoCorp's") + " mobile A.I. can " + AltUI.HighlightString("Mine") + ", " +
+            AltUI.HighlightString("Mimic") + " all, block " + AltUI.HighlightString("Repair") +
             ", and " + AltUI.HighlightString("Fetch") + " blocks.", 10);
 
         private static ExtUsageHint.UsageHint hintVENm = new ExtUsageHint.UsageHint(KickStart.ModID, "ModuleAIExtension.hintVENm",
@@ -174,7 +106,7 @@ namespace TAC_AI
             ", and use the " + AltUI.HighlightString("Inventory") + ".", 10);
 
         private static ExtUsageHint.UsageHint hintSJm = new ExtUsageHint.UsageHint(KickStart.ModID, "ModuleAIExtension.hintSJm",
-            AltUI.ObjectiveString("Space Junkers'") + " mobile A.I. can " + AltUI.HighlightString("Plan") + " paths, " + 
+            AltUI.ObjectiveString("Space Junkers'") + " mobile A.I. can " + AltUI.HighlightString("Plan") + " paths, " +
             AltUI.HighlightString("Mine") + ", " + AltUI.HighlightString("Fetch") + " blocks, block "
             + AltUI.HighlightString("Repair") + ", and sail " + AltUI.HighlightString("Ships") + ".", 10);
 
@@ -228,9 +160,6 @@ namespace TAC_AI
                 return;
             }
             SavedAI = block.tank.GetHelperInsured().DediAI;
-            //var helper = block.tank.GetHelperInsured();
-            //helper.AIList.Add(this);
-            //helper.RefreshAI();
         }
         public override void OnDetach()
         {
@@ -244,9 +173,6 @@ namespace TAC_AI
                 return;
             }
             var helper = block.tank.GetHelperInsured();
-            //helper.AIList.Remove(this);
-            //if (!TankBlock.IsBeingRecycled())
-            //    helper.RefreshAI();
             SavedAI = AIType.Escort;
         }
         internal static bool CanAdd(ModuleAIBot AIBot)
@@ -272,7 +198,6 @@ namespace TAC_AI
             try
             {
                 BlockTypes BT = (BlockTypes)GetComponent<Visible>().m_ItemType.ItemType;
-                //DebugTAC_AI.Log(KickStart.ModID + ": Init new AI for " + name);
                 switch (BT)
                 {
                     case BlockTypes.GSOAIController_111:
@@ -283,7 +208,6 @@ namespace TAC_AI
                         Builder = true;
                         AidAI = true;
                         AdvAvoidence = true;
-                        //SelfRepairAI = true; // testing
                         break;
                     case BlockTypes.GSOAnchorAI_121:
                         Aegis = true;
@@ -298,7 +222,6 @@ namespace TAC_AI
                         Energizer = true;
                         Scrapper = true;
                         AutoAnchor = true;
-                        //SelfRepairAI = true; // EXTREMELY POWERFUL
                         MTForAll = true;
                         MeleePreferred = true;
                         AdvAvoidence = true;
@@ -330,7 +253,7 @@ namespace TAC_AI
                         break;
                     case BlockTypes.BF_AIModule_Guard_212:
                         Astrotech = true;
-                        SelfRepairAI = true; // EXTREMELY POWERFUL
+                        SelfRepairAI = true;
                         InventoryUser = true;
                         AdvAvoidence = true;
                         MinCombatRange = 60;
@@ -346,52 +269,6 @@ namespace TAC_AI
                         MaxCombatRange = 125;
                         AdvAvoidence = true;
                         break;
-                        /*
-                    case BlockTypes.EXP_ai:
-                        Energizer = true;
-                        AdvAvoidence = true;
-                        MinCombatRange = 160;
-                        MaxCombatRange = 220;
-                        break;
-                    case BlockTypes.TSN_AI:
-                        AutoAnchor = true;
-                        Buccaneer = true;
-                        AdvAvoidence = true;
-                        MinCombatRange = 150;
-                        MaxCombatRange = 250;
-                        break;
-                    case BlockTypes.LEG_AI:
-                        AutoAnchor = true;
-                        Assault = true;
-                        Aegis = true;
-                        Prospector = true;
-                        Scrapper = true;
-                        Energizer = true;
-                        Assault = true;
-                        Aviator = true;
-                        Buccaneer = true;
-                        Astrotech = true;
-                        AidAI = true;
-                        AdvancedAI = true;
-                        Builder = true;
-                        AdvAvoidence = true;
-                        SidePreferred = true;
-                        MeleePreferred = true;
-                        MaxCombatRange = 200;
-                        break;
-                    case BlockTypes.TAC_AI_PLEX:
-                        AutoAnchor = true;
-                        Aviator = true;
-                        Buccaneer = true;
-                        Astrotech = true;
-                        AidAI = true;
-                        AnimeAI = true;
-                        AdvancedAI = true;
-                        AdvAvoidence = true;
-                        MinCombatRange = 100;
-                        MaxCombatRange = 400;
-                        break;
-                        */
                 }
                 if (tank && tank.Team == ManPlayer.inst.PlayerTeam)
                     OnGrabbed();
@@ -409,7 +286,6 @@ namespace TAC_AI
             WorldPosition WP = WorldPosition.FromScenePosition(posInternal);
             RTSInTilePos = WP.TileRelativePos;
             RTSPosTile = WP.TileCoord;
-            //DebugTAC_AI.Log("GetRTSScenePos - " + RTSPosTile + " | " + RTSInTilePos);
         }
 
         [Serializable]
@@ -421,7 +297,6 @@ namespace TAC_AI
         }
         public Vector3 GetRTSScenePos()
         {
-            //DebugTAC_AI.Info("GetRTSScenePos - " + RTSPosTile + " | " + RTSInTilePos);
             return new WorldPosition(RTSPosTile, RTSInTilePos).ScenePosition;
         }
         private bool LoadToTech()
@@ -443,7 +318,7 @@ namespace TAC_AI
                         DebugTAC_AI.Info("AI State was saved as " + SavedAIDriver + " | " + SavedAI);
                         helper.dirtyAI = TankAIHelper.AIDirtyState.Dirty;
                         if (WasMobileAnchor)
-                        { 
+                        {
                         }
                     }
                     if (RTSActive)
@@ -475,8 +350,6 @@ namespace TAC_AI
             additionalEdits.ObjectiveRange = lastObjectiveRange;
             additionalEdits.ScanRange = lastScanRange;
             helper.AISetSettings = additionalEdits;
-            //DebugTAC_AI.Log("AI State was saved as " + SavedAIDriver + " | " + SavedAI + " | loaded " + deserial);
-            //DebugTAC_AI.Log("GetRTSScenePos - " + RTSPosTile + " | " + RTSInTilePos);
             return deserial;
         }
         private void OnSerializeWorldSave(bool saving, TankPreset.BlockSpec blockSpec)
@@ -484,29 +357,10 @@ namespace TAC_AI
             try
             {
                 if (saving)
-                {   //Save to snap
+                {
                     if (KickStart.EnableBetterAI && !Singleton.Manager<ManScreenshot>.inst.TakingSnapshot)
-                    {   //Allow resaving of Techs but not saving this to snapshot to prevent bugs
+                    {
                         var Helper = block.tank.GetHelperInsured();
-                        /*
-                        SerialData serialData;
-                        if (Helper.RTSControlled)
-                        {
-                            serialData = new SerialData()
-                            {
-                                savedMode = Helper.DediAI,
-                                wasRTS = Helper.RTSControlled,
-                                RTSPos = Helper.RTSDestination,
-                            };
-                        }
-                        else
-                        {
-                            serialData = new SerialData()
-                            {
-                                savedMode = Helper.DediAI,
-                            };
-                        }
-                        */
                         SavedAIDriver = Helper.DriverType;
                         SavedAI = Helper.DediAI;
                         AttackMode = Helper.AttackMode;
@@ -557,13 +411,10 @@ namespace TAC_AI
                         else
                             SavedTechBlueprint = null;
                         SerializeWorldSave(true);
-                        // OBSOLETE - CAN CAUSE CRASHES
-                        //serialData.Store(blockSpec.saveState);
-                        //DebugTAC_AI.Log(KickStart.ModID + ": Saved " + SavedAI.ToString() + " in gameObject " + gameObject.name);
                     }
                 }
                 else
-                {   //Load from save
+                {
                     try
                     {
                         if (!LoadToTech())
@@ -576,8 +427,6 @@ namespace TAC_AI
                                 {
                                     helper.DediAI = serialData2.savedMode;
                                     helper.RefreshAI();
-                                    //if (serialData2.savedMode == AIType.Aviator)
-                                    //    helper.RecalibrateMovementAIController();
                                 }
                                 SavedAI = serialData2.savedMode;
                                 if (serialData2.wasRTS)
@@ -650,7 +499,6 @@ namespace TAC_AI
                                         }
                                     }
                                 }
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Loaded " + SavedAI.ToString() + " from gameObject " + gameObject.name);
                                 TankAIManager.AILoadedEvent.Send(helper);
                             }
                         }
@@ -658,7 +506,7 @@ namespace TAC_AI
                     catch { }
                 }
             }
-            catch { } // MP caused error - cannot resolve
+            catch { }
         }
 
         internal void OnSerializeSnapshot(bool saving, TankPreset.BlockSpec blockSpec, bool tankPresent)

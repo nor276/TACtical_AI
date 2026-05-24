@@ -41,7 +41,6 @@ namespace TAC_AI.World
         {
             if (!ETU.Exists())
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": IsValid(ETU) " + ETU.tech.m_TechData.Name + " is INVALID!");
                 return false;
             }
             return true;
@@ -56,7 +55,7 @@ namespace TAC_AI.World
         public Vector3 PosSceneCurTime()
         {
             if (ManWorld.inst.CheckIsTileAtPositionLoaded(new WorldPosition(TargetTileCoord, posInTile).ScenePosition))
-                return ManWorld.inst.TileManager.CalcTileOriginScene(PrevTileCoord) + posInTile;// don't move
+                return ManWorld.inst.TileManager.CalcTileOriginScene(PrevTileCoord) + posInTile;
 
             float percent = (float)CurrentTurn / ExpectedMoveTurns;
             Vector3 TargetPosWorld = ManWorld.inst.TileManager.CalcTileOriginScene(TargetTileCoord) + posInTile;

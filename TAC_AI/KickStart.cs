@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-//using Harmony;
 using HarmonyLib;
 using UnityEngine;
 using TAC_AI.AI;
@@ -21,9 +20,6 @@ using ModHelper.Config;
 
 namespace TAC_AI
 {
-    // Previously an extension to RandomAdditions, TACtical AI is the AI branch of the mod.
-    //   Featuring a simple to use, fully-fledged AI which adapts to its vehicle nearly instantly
-    //   based on the parts attached to it, with minimal manual intervention.
     public class KickStart
     {
         internal const string ModID = "Advanced AI";
@@ -35,13 +31,13 @@ namespace TAC_AI
         public static bool DoPopSpawnCostCheck = false;
 
 #if STEAM
-        public static bool ShouldBeActive = false;//
-        public static bool UseClassicRTSControls = true;//
+        public static bool ShouldBeActive = false;
+        public static bool UseClassicRTSControls = true;
 #else
-        public static bool ShouldBeActive = true;//
-        public static bool UseClassicRTSControls = false;//
+        public static bool ShouldBeActive = true;
+        public static bool UseClassicRTSControls = false;
 #endif
-        public static bool UseNumpadForGrouping = false;//
+        public static bool UseNumpadForGrouping = false;
         internal static KeyCode RetreatHotkey = KeyCode.I;
         public static int RetreatHotkeySav = (int)RetreatHotkey;
         internal static KeyCode CommandHotkey = KeyCode.K;
@@ -58,7 +54,7 @@ namespace TAC_AI
         public static float TerrainHeight => ManWorldGeneratorExt.CurrentTotalHeight;
         public static float TerrainHeightOffset => ManWorldGeneratorExt.CurrentMinHeight;
 
-        internal static int EnemyTeamTechLimit = 6;// Allow the bases plus 6 additional capacity of the AIs' choosing
+        internal static int EnemyTeamTechLimit = 6;
 
         public static float SavedDefaultEnemyFragility;
         public static float SavedDefaultBlockSurvivalChance = -1f;
@@ -70,8 +66,7 @@ namespace TAC_AI
         private static bool healthPulseScheduled = false;
         internal static void EmitHealthPulse()
         {
-            // Spawn-attempt summary always emits when there's activity (it self-gates on dAttempt==0).
-            try { World.ManEnemyWorld.EmitSpawnAttemptSummary(); } catch { /* never let pulse crash the InvokeRepeat */ }
+            try { World.ManEnemyWorld.EmitSpawnAttemptSummary(); } catch {  }
             if (!DoLogHealthPulse) return;
             try
             {
@@ -96,22 +91,22 @@ namespace TAC_AI
             {
                 return AIPopMaxLimit;
             }
-        }// How many techs that can exist before giving up tech splitting?
-        internal static int MaxEnemyBaseLimit = 3;  // How many different enemy team bases are allowed to exist in one instance
-        internal static int MaxEnemyHQLimit = 24;   // How many HQs are allowed to exist in one instance
-        internal static int MaxBasesPerTeam = 6;    // How many base expansions can a single team perform?
+        }
+        internal static int MaxEnemyBaseLimit = 3;
+        internal static int MaxEnemyHQLimit = 24;
+        internal static int MaxBasesPerTeam = 6;
 
-        internal static short AIClockPeriod // How frequently we update
+        internal static short AIClockPeriod
         {
             get
             {
                 return ManNetwork.IsNetworked ? AIGlobals.NetAIClockPeriod : AIClockPeriodSet;
             }
         }
-        public static short AIClockPeriodSet = 10;        // How frequently we update
+        public static short AIClockPeriodSet = 10;
 
 #if STEAM
-        public static bool EnableBetterAI = false;  // This is toggled based on if the mod is "enabled" by official
+        public static bool EnableBetterAI = false;
 #else
         public static bool EnableBetterAI = true;
 #endif
@@ -154,13 +149,13 @@ namespace TAC_AI
         }
 
         public static int AIDodgeCheapness = 20;
-        public static float CombatFacingCyclePeriod = 4f;   // Seconds for one full circle+face combat cycle (turret-fraction duty cycle). Higher = slower alternation between broadside and facing.
+        public static float CombatFacingCyclePeriod = 4f;
         public static int AIPopMaxLimit = 8;
         public static bool MuteNonPlayerRacket = true;
         public static bool DisplayEnemyEvents = true;
-        public static bool AllowOverleveledBlockDrops { get { return EnemyBlockDropChance == 100; } } // Obsolete - true when 
+        public static bool AllowOverleveledBlockDrops { get { return EnemyBlockDropChance == 100; } }
         public static bool enablePainMode = true;
-        public static bool EnemyEradicators = false;    // Insanely large or powerful Techs
+        public static bool EnemyEradicators = false;
         public static bool EnemiesHaveCreativeInventory = false;
 
         public static bool AISelfRepair => ManNetwork.IsNetworked ? AllowAISelfRepairInMP : AllowAISelfRepair;
@@ -169,7 +164,7 @@ namespace TAC_AI
 
         public static int ForceRemoveOverEnemyMaxCap = 4;
         public static bool ActiveSpawnFoundersOffScene = false;
-        public static float SpawnFoundersPositional = 0.05f;//0.2f;
+        public static float SpawnFoundersPositional = 0.05f;
         internal static bool AllowEnemiesToStartBases { get { return MaxEnemyBaseLimit != 0; } }
         internal static bool AllowEnemyBaseExpand { get { return MaxBasesPerTeam != 0; } }
         public static int LandEnemyOverrideChance {
@@ -234,22 +229,16 @@ namespace TAC_AI
                     throw new NotImplementedException("Unknown EnemyMaxDistLimit mode: " + CullFarEnemyBasesMode);
             }
         }
-        public static int CullFarEnemyBasesDistance = 8;// How far from the player should enemy bases be removed 
+        public static int CullFarEnemyBasesDistance = 8;
         public static int EnemyBaseUpdateMode = 2;
-        // from the world? IN TILES
-        public static float EnemySellGainModifier = 1; // multiply enemy sell gains by this value
+        public static float EnemySellGainModifier = 1;
 
-        //public static bool DestroyTreesInWater = false;
 
         internal static bool IsRandomAdditionsPresent = false;
         internal static bool isWaterModPresent = false;
         internal static bool isControlBlocksPresent = false;
         internal static bool isTweakTechPresent = false;
         internal static bool isWeaponAimModPresent = false;
-        // T9: combat-FSM Circle mode forces continuous strafe when either mod is present.
-        // Both mods reshape aim such that stationary firing is no longer optimal.
-        // Single named predicate for the RWheeled.cs:113 mod-presence OR; do NOT generalize to
-        // sibling sites (EWeapSetup / AIECore / BAviator / ModulePatches use distinct semantics).
         internal static bool ShouldForceContinuousStrafe() => isTweakTechPresent || isWeaponAimModPresent;
         internal static bool isBlockInjectorPresent = false;
         internal static bool isPopInjectorPresent = false;
@@ -270,14 +259,12 @@ namespace TAC_AI
         }
 
 #if STEAM
-        public static int difficulty = 85; // insure that only smart enemies spawn for STEAM release for now
+        public static int difficulty = 85;
 #else
         public static int difficulty = 50;
 #endif
         public const int DifficultyMin = -50;
         public const int DifficultyMax = 1500;
-        // values > 150 spawn only the smartest enemies
-        // -50 means only the simpleton AI spawns
 
         public static int EnemyBlockDropChance = 40;
 
@@ -306,13 +293,12 @@ namespace TAC_AI
             get
             {
                 if (CommitDeathMode)
-                    return int.MaxValue; // allow EVERYTHING
+                    return int.MaxValue;
                 if (Singleton.playerTank.IsNotNull())
                 {
                     lastPlayerTechPrice = RawTechBase.GetBBCost(Singleton.playerTank);
                 }
                 int priceMax = (int)((((float)(Difficulty + 50) / 100) + 0.5f) * lastPlayerTechPrice);
-                // Easiest results in 50% max player cost spawns, Hardest results in 250% max player cost spawns, Regular is is 150% max player cost spawns.
                 return Mathf.Max(lastPlayerTechPrice / 2, priceMax);
             }
         }
@@ -362,7 +348,6 @@ namespace TAC_AI
                 }
                 catch (Exception)
                 {
-                    //outValue = -100;
                 }
                 return outValue;
             }
@@ -466,13 +451,10 @@ namespace TAC_AI
             }
             else isAnimeAIPresent = false;
 
-            SafeSaves.ManSafeSaves.DisableExternalBackupSaving = true;// Speed it up
+            SafeSaves.ManSafeSaves.DisableExternalBackupSaving = true;
             return true;
         }
 
-        // Per-batch patch tracking — if any batch succeeded on a prior call, don't retry it.
-        // Prevents double-patch when PatchAll throws (which leaves hasPatched=false) but individual
-        // MassPatcher batches already succeeded.
         private static HashSet<Type> patchedBatches = new HashSet<Type>();
         private static void PatchBatchOnce(Type batch)
         {
@@ -519,9 +501,6 @@ namespace TAC_AI
             }
             catch (Exception e)
             {
-                // Fatal-class: no SafeSaves hook means OnSaveManagers / OnLoadManagers never fire,
-                // so ManBaseTeams / ManWorldRTS / ManEnemyWorld state never persists or restores.
-                // Continuing past this would silently corrupt saves. Surface as popup.
                 DebugTAC_AI.Log(KickStart.ModID + ": Error on RegisterSaveSystem: " + e);
                 DebugTAC_AI.FatalError(KickStart.ModID + ": Error on hooking to SafeSaves — save/load of mod state will NOT work this session.");
             }
@@ -548,10 +527,10 @@ namespace TAC_AI
                 yield return item;
             }
         }
-        
+
         public static void MainOfficialInit()
         {
-            
+
 #if STEAM
             DebugTAC_AI.Log(KickStart.ModID + ": MAIN (Steam Workshop Version) startup");
             if (!VALIDATE_MODS())
@@ -574,9 +553,6 @@ namespace TAC_AI
             SpecialAISpawner.Initiate();
             GUINPTInteraction.Initiate();
 
-            // PatchMod call sites: line 574 (MainOfficialInit, here), line 653 (iterator path,
-            // MainOfficialInitIterate), line 910 (pure-TTMM branch of Main). All guarded by
-            // hasPatched + per-batch patchedBatches so duplication is safe.
             PatchMod();
 
             AIERepair.RefreshDelays();
@@ -653,9 +629,6 @@ namespace TAC_AI
             GUINPTInteraction.Initiate();
             yield return 0.68f;
 
-            // Patch BEFORE InitSettings — matches MainOfficialInit order (PatchMod@574, InitSettings@580).
-            // The previous iterator inverted these, which caused config/options-init to run before
-            // Harmony patches were installed (BUG-3).
             PatchMod();
             yield return 0.76f;
 
@@ -665,9 +638,6 @@ namespace TAC_AI
             InitSettings();
             yield return 0.86f;
 
-            // Bring iterator in sync with MainOfficialInit (lines 582-597) — these were silently
-            // missing from the iterator path, leaving Steam-iterator boots with vanilla population
-            // cap, no AIWiki, and no BlocksPostChangeEvent subscription (BUG-3).
             if (!isPopInjectorPresent)
                 OverrideEnemyMax();
             _ = AIWiki.hintADV;
@@ -872,7 +842,6 @@ namespace TAC_AI
                 }
             }
 
-            // DE-INIT ALL
             GUINPTInteraction.DeInit();
             SpecialAISpawner.DeInit();
             ManEnemyWorld.DeInit();
@@ -909,7 +878,7 @@ namespace TAC_AI
             try
             {
                 if (isSteamManaged)
-                {   // Since TTSMM launches this instead LATE when +managettmm is active, we need to compensate by initing ALL on init in this case.
+                {
                     MainOfficialInit();
                     return;
                 }
@@ -960,17 +929,6 @@ namespace TAC_AI
             firedAfterBlockInjector = true;
         }
 
-        /// <summary>
-        /// Pipeline 03 (World Load/Save) — SAVE dispatch.
-        ///
-        /// SafeSaves invokes this twice per save cycle:
-        ///   Doing=true   -> pre-snapshot phase  (OnWorldSave on each manager)
-        ///   Doing=false  -> post-write phase    (OnWorldFinishSave on each manager)
-        ///
-        /// Manager call order (intentional, matches OnLoadManagers):
-        ///   1. ManBaseTeams (team roster, HiddenVisibles, TradingSellOffers, etc.)
-        ///   2. ManWorldRTS  (UnitGroups via UnitGroupsSerial shadow)
-        /// </summary>
         public static void OnSaveManagers(bool Doing)
         {
             if (Doing)
@@ -984,51 +942,6 @@ namespace TAC_AI
                 ManWorldRTS.OnWorldFinishSave();
             }
         }
-        /// <summary>
-        /// Pipeline 03 (World Load/Save) — LOAD dispatch and canonical phase sequence.
-        ///
-        /// Full ordered sequence for a disk-load (single source of truth — handlers
-        /// elsewhere depend on this ordering and must NOT be re-ordered casually):
-        ///
-        ///   Phase 1 (OnLoadManagers, Doing=true) — PRE-DESERIALIZATION RESET:
-        ///     - ManBaseTeams.OnWorldPreLoad()  -> ResetSessionState + null teams sentinel
-        ///     - ManWorldRTS.OnWorldPreLoad()   -> clears live UnitGroups buckets
-        ///
-        ///   Phase 2 (SafeSaves) — DESERIALIZATION:
-        ///     SafeSaves populates [SSaveField] members on ManBaseTeams.inst and
-        ///     ManWorldRTS.inst from disk. Manager bodies do NOT run during this phase.
-        ///
-        ///   Phase 3 (OnLoadManagers, Doing=false) — POST-DESERIALIZATION FIX-UP:
-        ///     - ManBaseTeams.OnWorldLoad()  -> initializes any [SSaveField] still null
-        ///                                     (treats teams==null as "fresh world" sentinel,
-        ///                                      runs MigrateTeamsToNewSaveFormat if so);
-        ///                                     post-load PurgeOrphanedSellOffers.
-        ///     - ManWorldRTS.OnWorldLoad()   -> rebuilds UnitGroups from UnitGroupsSerial;
-        ///                                     normalizes bucket count.
-        ///
-        ///   Phase 4 (ModeStartEvent) — MODE ACTIVATION:
-        ///     - ManEnemyWorld.OnWorldLoad(mode) -> clears NPTTeams/RegisteredByID/
-        ///                                         QueuedUnitMoves; mode-gate; subscribes
-        ///                                         OnTileTechsBeforeLoad + OnWorldLoadEnd.
-        ///                                         Flips enabledThis=true, draining any
-        ///                                         Harmony-postfix events buffered during
-        ///                                         deserialization (B-05).
-        ///     - ManBaseTeams.OnModeStart(mode)  -> InsureDefaultTeams + network hooks.
-        ///
-        ///   Phase 5 (ModeStartEvent, second subscriber) — POST-TILE FIX-UP:
-        ///     - ManEnemyWorld.OnWorldLoadEnd(mode) -> purges m_VisiblesFailedToRestore;
-        ///                                            registers unloaded stored techs from
-        ///                                            AllTrackedVisibles via TryRegister-
-        ///                                            TechUnloaded; sets WorldWasTouchedBy-
-        ///                                            TAC_AI; conditionally taints
-        ///                                            m_FileHasBeenTamperedWith (T-04).
-        ///
-        /// Phases 4 and 5 still subscribe to raw ModeStartEvent (not OnLoadManagers)
-        /// because they must fire on mode transitions even when no disk-load occurred
-        /// (e.g. starting a fresh world). The implicit assumption is that SafeSaves
-        /// load (Phases 1-3) completes before ModeStartEvent dispatches Phase 4 —
-        /// verified by call-order in vanilla's save/load path.
-        /// </summary>
         public static void OnLoadManagers(bool Doing)
         {
             DebugTAC_AI.Log("OnLoadManagers");
@@ -1049,9 +962,6 @@ namespace TAC_AI
         {
             if (limitBreak == null)
             {
-                // Fatal-class: downstream code (spawn pipelines, NP_Presence) assumes the pop cap
-                // was raised. Silently leaving vanilla cap in place causes mass spawn-suppression
-                // bugs that look unrelated. Surface as popup so the user sees it.
                 DebugTAC_AI.FatalError(ModID + ": OverrideEnemyMax - ManPop.m_PopulationLimit field not found (vanilla API change?). Pop cap NOT overridden; enemy spawns will be capped at vanilla limit.");
                 return;
             }

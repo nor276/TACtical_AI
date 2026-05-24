@@ -23,16 +23,6 @@ namespace TAC_AI
         internal static void InsureAllValidAIs()
         {
             AllValidAIs.Clear();
-            /*
-            AllValidAIs.Add(BlockTypes.GSOAIGuardController_111);
-            AllValidAIs.Add(BlockTypes.GSOAnchorAI_121);
-            AllValidAIs.Add(BlockTypes.GCAIModuleGuard_222);
-            AllValidAIs.Add(BlockTypes.BF_AIModule_Guard_212);
-            AllValidAIs.Add(BlockTypes.HE_AIModule_Guard_112);
-            AllValidAIs.Add(BlockTypes.HE_AITurret_112);
-            AllValidAIs.Add(BlockTypes.SJ_Cab_AI_122);
-            AllValidAIs.Add(BlockTypes.VENAIGuardModule_111);
-            */
             foreach (var item in ManSpawn.inst.GetLoadedTankBlockNames())
             {
                 var prefab = ManSpawn.inst.GetBlockPrefab(item);
@@ -48,13 +38,6 @@ namespace TAC_AI
             }
             DebugTAC_AI.Log("Advanced AI: Found [" + AllValidAIs.Count + "] blocks with ModuleAIExtension in [" +
                  ManSpawn.inst.GetLoadedTankBlockNames().Length + "] blocks");
-            /*
-            foreach (var item in ManMods.inst.IterateModdedBlocks())
-            {
-                var prefab = ManSpawn.inst.GetBlockPrefab(item);
-                if (prefab && prefab.GetComponent<ModuleAIExtension>())
-                    AllValidAIs.Add(item);
-            }*/
         }
 
         internal static void InitWiki()
@@ -117,7 +100,7 @@ namespace TAC_AI
             else
             {
                 if (GUILayout.Button("Population Exporter(Only In Creative/R&D)", AltUI.ButtonGreyLarge))
-                { 
+                {
                 }
             }
             if (GUILayout.Button("Reload ALL Raw Techs", AltUI.ButtonBlueLarge))
@@ -254,7 +237,7 @@ namespace TAC_AI
             GUILayout.Space(8);
 
             GUILayout.BeginVertical(AltUI.TextfieldBlackHuge);
-            GUILayout.Label(AltUI.ObjectiveString("Photo Mode") + " has been converted to work as " + 
+            GUILayout.Label(AltUI.ObjectiveString("Photo Mode") + " has been converted to work as " +
                 AltUI.BlueStringMsg("RTS Mode") + ".", AltUI.LabelWhiteWrap);
             GUILayout.Label("You can also toggle " + AltUI.ObjectiveString("Photo Mode") + " by pressing the " +
                 AltUI.HighlightString("[" + KeyCode.F3.ToString() + "]") + " key while in-game.", AltUI.LabelWhiteWrap);
@@ -291,7 +274,7 @@ namespace TAC_AI
                 GUILayout.Label("Non-Classic RTS Controls have no desc yet!", AltUI.LabelWhiteWrap);
             }
             GUILayout.Label(AltUI.ObjectiveString("[Right-Mouse]") +
-                " is used to command selected " + AltUI.BlueStringMsg("Techs") + 
+                " is used to command selected " + AltUI.BlueStringMsg("Techs") +
                 ", and the action depends on the target.  The cursor icon shows what it shall do.", AltUI.LabelWhiteWrap);
 
             GUILayout.Label(AltUI.ObjectiveString("[Right-Mouse]") + " while holding " + AltUI.ObjectiveString("[" + KickStart.MultiSelect.ToString() + "]") +
@@ -348,8 +331,6 @@ namespace TAC_AI
             GUILayout.EndHorizontal();
 
             GUILayout.EndVertical();
-            //GUILayout.Label("Go Here", AltUI.LabelBlackTitle);
-            //PageRTSGoHere();
         }
 
         private static void PageBases()
@@ -677,7 +658,7 @@ namespace TAC_AI
             GUILayout.Label(AltUI.ObjectiveString("Protectors") +
                 " defend your " + AltUI.BlueStringMsg(
                 "Techs") + " and distract " + AltUI.BlueStringMsg(
-                "Enemies") + " from attacking your more valuable " + 
+                "Enemies") + " from attacking your more valuable " +
                 AltUI.ObjectiveString("Bases") + ", " +
                 AltUI.ObjectiveString("Harvesters") + ", " +
                 AltUI.ObjectiveString("Fetchers") + ", and " +
@@ -701,7 +682,7 @@ namespace TAC_AI
 
             GUILayout.BeginVertical(AltUI.TextfieldBlackHuge);
             GUILayout.Label(AltUI.ObjectiveString("Scouts") +
-                " automatically ward off " + AltUI.EnemyString("Enemies") + 
+                " automatically ward off " + AltUI.EnemyString("Enemies") +
                 " to prevent them from building " + AltUI.ObjectiveString(
                 "Bases") + " on your turf.", AltUI.LabelWhiteWrap);
             GUILayout.FlexibleSpace();
@@ -760,13 +741,13 @@ namespace TAC_AI
             GUILayout.Label("The universal " + AltUI.ObjectiveString("Attach Point System") +
                 " has a 64 length-width-height limit due to structual issues.\n\n  " + AltUI.ObjectiveString(
                 "Multi-Techs") + " are the solution to this issue.   " +
-                "\n  A " + AltUI.ObjectiveString("Multi-Tech") + 
-                " is composed of two or more " + AltUI.BlueStringMsg( "Techs") + 
+                "\n  A " + AltUI.ObjectiveString("Multi-Tech") +
+                " is composed of two or more " + AltUI.BlueStringMsg( "Techs") +
                 " that work as one.\n\nMaking two loops out of blocks on two seperate Techs to entangle them " +
                 "together is a good way to start.  Later on it can involve entangling various parts like wings, " +
-                "wheels, boosters, " + AltUI.ObjectiveString("Circuits & Systems") + 
+                "wheels, boosters, " + AltUI.ObjectiveString("Circuits & Systems") +
                 " and much, much more.  The possibilities really become endless with two Techs working together!\n" +
-                 AltUI.ObjectiveString("Multi-Techs") + " are the future of bigger Techs. ", 
+                 AltUI.ObjectiveString("Multi-Techs") + " are the future of bigger Techs. ",
                  AltUI.LabelWhiteWrap);
             var wikiLink = new ManIngameWiki.WikiLink(ManIngameWiki.GetPage("Part"));
             if (wikiLink.OnGUI(AltUI.LabelBlue))
@@ -870,7 +851,7 @@ namespace TAC_AI
             AltUI.HighlightString("[<b>=</b>]") + " instead to see local and other mod Enemy Techs.");
 
         internal static LoadingHintsExt.LoadingHint loadHint5 = new LoadingHintsExt.LoadingHint(KickStart.ModID, "ADVANCED AI HINT",
-            "The "+ AltUI.EnemyString("Missile") + " knows where it is at all times.  It knows this because it  " + AltUI.ObjectiveString("knows where it isn't") + 
+            "The "+ AltUI.EnemyString("Missile") + " knows where it is at all times.  It knows this because it  " + AltUI.ObjectiveString("knows where it isn't") +
             ".\n" + AltUI.EnemyString("Huge Enemy Missiles") + " very rarely appear distant late-game, and will always take the most direct arc to their target." +
             "\nThe best means of defense is to stay mobile or small, because these rammers deal pain against " + AltUI.BlueStringMsg("Big Techs") + ".");
 
@@ -884,30 +865,30 @@ namespace TAC_AI
             "them and maybe you might find " + AltUI.HighlightString("their base") + " as well as some goodies.");
 
         internal static LoadingHintsExt.LoadingHint loadHint8 = new LoadingHintsExt.LoadingHint(KickStart.ModID, "ADVANCED AI HINT",
-             AltUI.EnemyString("Intepid Prospectors") + " or " + AltUI.HighlightString("Spaceships") + 
-            " appear more often the higher you are.  Shooting down from above " + 
+             AltUI.EnemyString("Intepid Prospectors") + " or " + AltUI.HighlightString("Spaceships") +
+            " appear more often the higher you are.  Shooting down from above " +
             AltUI.HintString("will attract unwanted attention!"));
 
         internal static LoadingHintsExt.LoadingHint loadHint9 = new LoadingHintsExt.LoadingHint(KickStart.ModID, "ADVANCED AI HINT",
             "Your " + AltUI.HighlightString("Airborne A.I.") + " can harvest resources and pickup blocks!");
         internal static LoadingHintsExt.LoadingHint loadHint10 = new LoadingHintsExt.LoadingHint(KickStart.ModID, "ADVANCED AI HINT",
-            "You can control fleets of AI with " + AltUI.HighlightString(KickStart.CommandHotkey.ToString()) + 
+            "You can control fleets of AI with " + AltUI.HighlightString(KickStart.CommandHotkey.ToString()) +
             " or through Camera mode, just drag a box around them!");
         internal static LoadingHintsExt.LoadingHint loadHint11 = new LoadingHintsExt.LoadingHint(KickStart.ModID, "ADVANCED AI HINT",
-            "When the fight gets dicey you can order your minions to your side by pressing " + 
+            "When the fight gets dicey you can order your minions to your side by pressing " +
             AltUI.HighlightString(KickStart.RetreatHotkey.ToString()));
         internal static LoadingHintsExt.LoadingHint loadHint12 = new LoadingHintsExt.LoadingHint(KickStart.ModID, "ADVANCED AI HINT",
             "You can also open the AI Controls by pressing " +
             AltUI.HighlightString(KickStart.ModeSelect.ToString()));
 
         internal static ExtUsageHint.UsageHint hintUpgrades = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintUpgrades",
-            new LocExtStringMod("Your A.I. can also be mouse-controlled through " + AltUI.ObjectiveString("RTS Mode") + " by toggling key " + 
+            new LocExtStringMod("Your A.I. can also be mouse-controlled through " + AltUI.ObjectiveString("RTS Mode") + " by toggling key " +
             AltUI.HighlightString(KickStart.CommandHotkey.ToString()) + " or through Camera Mode.  To command, press " +
              AltUI.HighlightString(KickStart.ModeSelect.ToString())), 14);
         internal static ExtUsageHint.UsageHint hintADV = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintADV",
             new LocExtStringMod(AltUI.HighlightString("Other Prospectors") + " have done their research, and are much more " +
-            AltUI.EnemyString("scary") + " this time.  Be careful as they may also " + AltUI.ObjectiveString("gang up") + 
-            " on you, or maybe they might be " +  AIGlobals.FriendlyColor.ToRGBA255().ColorString("Friendly") + "?  " + 
+            AltUI.EnemyString("scary") + " this time.  Be careful as they may also " + AltUI.ObjectiveString("gang up") +
+            " on you, or maybe they might be " +  AIGlobals.FriendlyColor.ToRGBA255().ColorString("Friendly") + "?  " +
             AltUI.ThinkString("Who knows?")), 14);
 
         internal static ExtUsageHint.UsageHint hintAir = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintAir",
@@ -931,7 +912,7 @@ namespace TAC_AI
             " may appear from time to time to give budding prospectors a rough time."), 14);
 
         internal static bool TooHighed = false;
-        internal static ExtUsageHint.UsageHint hintSpaceTooHigh = new ExtUsageHint.UsageHint(KickStart.ModID, 
+        internal static ExtUsageHint.UsageHint hintSpaceTooHigh = new ExtUsageHint.UsageHint(KickStart.ModID,
             "AIGlobals.hintSpaceTooHigh",
             new LocExtStringMod("You have flown so high, you can almost see space!  " + AltUI.WhisperString("Wait a minute...") +
             "  There's more " + AltUI.EnemyString("Spaceships") + " up here!"), 14);

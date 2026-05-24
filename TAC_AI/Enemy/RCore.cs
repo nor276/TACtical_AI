@@ -18,10 +18,8 @@ namespace TAC_AI.AI.Enemy
         internal static FieldInfo charge3 = typeof(ModuleShieldGenerator).GetField("m_Shield", BindingFlags.NonPublic | BindingFlags.Instance);
         internal static FieldInfo generator = typeof(ModuleEnergy).GetField("m_OutputConditions", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        // ----------------------------  New Enemy  ---------------------------- 
         public static void GenerateEnemyAI(this TankAIHelper helper, Tank tank)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": offset " + tank.boundsCentreWorldNoCheck);
             DebugTAC_AI.BeginAICalculationTimer(tank);
             var newMind = tank.gameObject.GetComponent<EnemyMind>();
             if (!newMind)
@@ -31,27 +29,17 @@ namespace TAC_AI.AI.Enemy
             }
             helper.lastPlayer = null;
 
-            // D4: ensure the movement controller re-syncs to the new alignment / handling.
-            // ResetOnSwitchAlignments / Mind population don't set this flag directly, so without
-            // it the next tick may run with a stale controller from the prior alignment.
             helper.RequestMovementControllerSwap(TankAIHelper.MovementSwapReason.EnemyGenerate);
 
             newMind.sceneStationaryPos = tank.boundsCentreWorldNoCheck;
             newMind.Refresh();
 
-            // T2: only skip the AutoSet/Handling/SmartStats chain when the mission setup fully
-            // populated all four canonical fields. PartialMind branches (Ω, ⦲, Specific,
-            // FacePlayer) still need the chain to fill in EvilCommander / CommanderSmarts /
-            // CommanderAttack — the old `bool` lost this distinction and silently left those
-            // fields at construction defaults.
             var missionResult = RMission.SetupBaseOrMissionAI(helper, tank, newMind);
             if (!(bool)tank)
                 return;
 
             if ((missionResult & MissionSetupResult.FullyConfigured) == 0)
             {
-                // PartialMind branches already set CommanderSmarts when relevant — skip AutoSet
-                // only if Mission already filled it. Otherwise run the full chain.
                 if ((missionResult & MissionSetupResult.PartialMind) == 0)
                     AutoSetIntelligence(newMind);
                 GetOrCalculateEnemyHandling(tank, newMind);
@@ -66,12 +54,10 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
-        // ----------------------------  Setup  ---------------------------- 
         internal static void AutoSetIntelligence(this EnemyMind newMind)
         {
             if (!KickStart.enablePainMode)
-                newMind.CommanderSmarts = EnemySmarts.Default; // Use defaults
-            //add Smartness
+                newMind.CommanderSmarts = EnemySmarts.Default;
             int randomNum = UnityEngine.Random.Range(KickStart.LowerDifficulty, KickStart.UpperDifficulty);
             if (randomNum < 35)
                 newMind.CommanderSmarts = EnemySmarts.Default;
@@ -113,18 +99,18 @@ namespace TAC_AI.AI.Enemy
                 playerIsSmall = Singleton.playerTank.blockman.blockCount < BM.blockCount + 5;
             if (!playerIsSmall && BM.blockCount + BM.IterateBlockComponents<ModuleMeleeWeapon>().Count() <=
                 BM.IterateBlockComponents<ModuleTechController>().Count())
-            {   // Unarmed - Runner
+            {
                 newMind.CommanderMind = EnemyAttitude.Default;
                 newMind.CommanderAttack = EAttackMode.Safety;
             }
             else if (BM.blockCount > AIGlobals.BossTechSize && KickStart.MaxEnemyHQLimit > RLoadedBases.GetAllTeamsEnemyHQCount())
-            {   // Boss
+            {
                 newMind.InvertBullyPriority = true;
                 newMind.CommanderMind = EnemyAttitude.Boss;
                 newMind.CommanderAttack = EAttackMode.Strong;
             }
             else if (EWeapSetup.HasArtilleryWeapon(BM))
-            {   // Artillery
+            {
                 newMind.CommanderMind = EnemyAttitude.Homing;
                 newMind.CommanderAttack = EAttackMode.Ranged;
                 fired = true;
@@ -132,13 +118,13 @@ namespace TAC_AI.AI.Enemy
             else if (IsCollector(BM, out bool chunkHarvester) || newMind.MainFaction == FactionSubTypes.GC)
             {
                 if (tank.IsPopulation && AIGlobals.EnemyBaseMakerChance >= UnityEngine.Random.Range(0, 100))
-                {   // Base-Building Rival
+                {
                     newMind.CommanderMind = EnemyAttitude.NPCBaseHost;
                     newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
                     newMind.InvertBullyPriority = true;
                 }
                 else
-                {   // Miner
+                {
                     if (chunkHarvester)
                         newMind.CommanderMind = EnemyAttitude.Miner;
                     else
@@ -148,44 +134,38 @@ namespace TAC_AI.AI.Enemy
                 fired = true;
             }
             else if (BM.IterateBlockComponents<ModuleWeapon>().Count() > AIGlobals.HomingWeaponCount)
-            {   // Over-armed
+            {
                 newMind.CommanderMind = EnemyAttitude.Homing;
-                //toSet.CommanderAttack = EnemyAttack.Bully;
                 newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
                 fired = true;
             }
             else if (BM.IterateBlockComponents<ModuleWeapon>().Count() >= AIGlobals.DefenderWeaponCount)
-            {   // Can defend
+            {
                 newMind.CommanderMind = EnemyAttitude.Guardian;
-                //toSet.CommanderAttack = EnemyAttack.Bully;
                 newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
                 fired = true;
             }
             else if (newMind.MainFaction == FactionSubTypes.VEN)
-            {   // Ven
-                //toSet.CommanderMind = EnemyAttitude.Default; 
+            {
                 newMind.CommanderAttack = EAttackMode.Circle;
                 newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
                 fired = true;
             }
             else if (newMind.MainFaction == FactionSubTypes.HE)
-            {   // Assault
+            {
                 newMind.CommanderMind = EnemyAttitude.Homing;
-                //toSet.CommanderAttack = EnemyAttack.Grudge;
                 newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
                 fired = true;
             }
             if (BM.blockCount >= AIGlobals.LethalTechSize)
-            {   // DEATH TO ALL
+            {
                 if (!SpecialAISpawner.Eradicators.Contains(tank))
                     SpecialAISpawner.Eradicators.Add(tank);
             }
             return fired;
         }
-        //private static List<ModuleBooster> engineGetCache = new List<ModuleBooster>();
         private static List<FanJet> jetGetCache = new List<FanJet>();
         private static List<BoosterJet> boosterGetCache = new List<BoosterJet>();
-        //private static FieldInfo spinDat = typeof(FanJet).GetField("spinDelta", BindingFlags.Instance | BindingFlags.NonPublic);
         internal static void GetOrCalculateEnemyHandling(Tank tank, EnemyMind newMind, bool ForceAllBubblesUp = false)
         {
             if (RawTechLoader.TryGetRawTechFromName(tank.name, out RawTech RTT))
@@ -222,22 +202,15 @@ namespace TAC_AI.AI.Enemy
                     (BM.IterateBlockComponents<ModuleWeaponTeslaCoil>().Count() * 25) > BM.IterateBlockComponents<ModuleWeaponGun>().Count()))
                     newMind.LikelyMelee = true;
                 if (RTT.purposes.Contains(BasePurpose.NANI) || RTT.blockCount >= RawTechUtil.FrameImpactingTechBlockCount)
-                {   // DEATH TO ALL
+                {
                     if (!SpecialAISpawner.Eradicators.Contains(tank))
                         SpecialAISpawner.Eradicators.Add(tank);
                 }
                 return;
             }
             BlockSetEnemyHandling(tank, newMind, ForceAllBubblesUp);
-            // Deferred-3 fix: authored ControlSchemeCategory is more authoritative than block-shape
-            // heuristics when present. Call AFTER BlockSetEnemyHandling so heuristics are the default
-            // and the authored scheme overrides. Population techs from RawTechLoader (above) bypass
-            // this entirely. SetFromScheme silently no-ops on techs without a valid ActiveScheme.
             SetFromScheme(newMind, tank);
         }
-        // P08 G.8: visibility raised so TankAIHelper.RecalMoveAIControllerNPT can re-run the
-        // classifier on Grounded-demote (picks best surviving-block fallback instead of
-        // hardcoding Wheeled).
         internal static void BlockSetEnemyHandling(Tank tank, EnemyMind newMind, bool ForceAllBubblesUp)
         {
             var BM = tank.blockman;
@@ -282,7 +255,7 @@ namespace TAC_AI.AI.Enemy
 #endif
                                 if ((float)RawTechBase.spinDat.GetValue(jet) <= 10)
                                 {
-                                    biasDirection -= tank.rootBlockTrans.InverseTransformDirection(jet.EffectorForward) * 
+                                    biasDirection -= tank.rootBlockTrans.InverseTransformDirection(jet.EffectorForward) *
                                         (float)RawTechBase.thrustRate.GetValue(jet);
                                 }
                             }
@@ -343,8 +316,6 @@ namespace TAC_AI.AI.Enemy
                 if (BD.IsGenerator)
                 {
 #if DEV
-                    //if (bloc.GetComponent<ModuleEnergy>() == null)
-                    //    throw new Exception("BlockDetails SAID there was a ModuleEnergy in this block but that was incorrect!  We should not be checking for this!");
 #endif
                     var modE = bloc.GetComponent<ModuleEnergy>();
                     if (modE)
@@ -456,10 +427,6 @@ namespace TAC_AI.AI.Enemy
             {
                 newMind.EvilCommander = EnemyHandling.SuicideMissile;
             }
-            // P08 hover-routing fix (replaces P07 Deferred-2): hover-only techs route through
-            // Wheeled (LandAICore) which handles ground-hugging vehicles. The earlier P07 route to
-            // Starship (SpaceAICore) was wrong because SpaceAICore assumes vertical thrust which
-            // hover modules don't provide. LandAICore + ground offset is the correct surface.
             else if (modHoverCount > 2 && modWheelCount == 0)
             {
                 newMind.EvilCommander = EnemyHandling.Wheeled;
@@ -471,14 +438,13 @@ namespace TAC_AI.AI.Enemy
                 newMind.LikelyMelee = true;
 
             if (BM.blockCount >= RawTechUtil.FrameImpactingTechBlockCount)
-            {   // DEATH TO ALL
+            {
                 if (!SpecialAISpawner.Eradicators.Contains(tank))
                     SpecialAISpawner.Eradicators.Add(tank);
             }
         }
         internal static void RandomSetMindAttack(EnemyMind newMind, Tank tank)
         {
-            //add Attitude
             if (IsUnarmedAndCanRunAway(tank))
             {
                 newMind.CommanderAttack = EAttackMode.Safety;
@@ -514,14 +480,11 @@ namespace TAC_AI.AI.Enemy
                         break;
                 }
             }
-            //add Attack
             newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
         }
 
-        // ----------------------------  Operations  ---------------------------- 
         internal static void ScarePlayer(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": enemy AI active!");
             try
             {
                 if (ManBaseTeams.IsEnemy(ManPlayer.inst.PlayerTeam, tank.Team))
@@ -556,18 +519,18 @@ namespace TAC_AI.AI.Enemy
                         else if (ManWorldRTS.PlayerIsInRTS)
                         {
                             if (target.Team == ManPlayer.inst.PlayerTeam)
-                                weInDanger = true;  // Player unit under attack
+                                weInDanger = true;
                         }
 
                         if (weInDanger)
                         {
-                            if (targetIsPlayer && Mode<ModeMain>.inst != null) // Updates the campaign emergency snapshot handler
+                            if (targetIsPlayer && Mode<ModeMain>.inst != null)
                                 Mode<ModeMain>.inst.SetPlayerInDanger(true, true);
-                            
+
                             ManMusic.inst.SetDanger(ManMusic.DangerContext.Circumstance.Enemy, tank, target);
                         }
                         else if (target != Singleton.playerTank && target.IsEnemy(tank.Team) && target.netTech?.NetPlayer != null)
-                        {   // Send it to the non-host client that they are under attack
+                        {
                             ManMusic.inst.SetDangerClient(ManMusic.DangerContext.Circumstance.Enemy, tank, target);
                         }
                     }
@@ -576,15 +539,8 @@ namespace TAC_AI.AI.Enemy
             catch (Exception e) { DebugTAC_AI.Log("ScarePlayer(): error - " + e); }
         }
 
-        // B4 + B7 + D5: shared helper extracted from BeEvil/BeEvilLight. Validates the tank is
-        // alive, attempts one bounded recovery via GenerateEnemyAI when EnemyMind is missing,
-        // logs and returns null on continued failure (never throws — a tick-loop NRE corrupts
-        // every other tank's tick that frame). The one-shot latch lives on the helper to prevent
-        // infinite recursion if Mind creation keeps failing (e.g., mid-recycle).
         private static EnemyMind EnsureEnemyMind(TankAIHelper helper, Tank tank)
         {
-            // Pre-flight: tank may be torn down mid-tick, or MovementController may not yet exist
-            // (RecalibrateMovementAIController in progress, or first-frame race before Subscribe).
             if (!tank || !tank.visible || tank.blockman == null || helper.MovementController == null)
                 return null;
 
@@ -599,9 +555,6 @@ namespace TAC_AI.AI.Enemy
             {
                 if (helper.beEvilRegenAttempted)
                 {
-                    // B10: latch-burned path was previously silent — tech ticks invisibly
-                    // with no music cue and no diagnostic. Per-tank dedup makes the failure
-                    // observable exactly once.
                     DebugTAC_AI.LogWarnPlayerOncePerKey(
                         "EnsureEnemyMind:latched:" + tank.name,
                         KickStart.ModID + ": " + tank.name +
@@ -620,7 +573,6 @@ namespace TAC_AI.AI.Enemy
                 mind = tank.GetComponent<EnemyMind>();
                 if (mind == null)
                 {
-                    // B10: post-regen still-null was previously silent.
                     DebugTAC_AI.LogWarnPlayerOncePerKey(
                         "EnsureEnemyMind:postRegen:" + tank.name,
                         KickStart.ModID + ": GenerateEnemyAI did not attach EnemyMind to " + tank.name, null);
@@ -634,7 +586,6 @@ namespace TAC_AI.AI.Enemy
         }
         internal static void BeEvil(TankAIHelper helper, Tank tank)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": enemy AI active!");
             var Mind = EnsureEnemyMind(helper, tank);
             if (Mind == null) return;
             RunEvilOperations(Mind, helper, tank);
@@ -642,32 +593,21 @@ namespace TAC_AI.AI.Enemy
         }
         internal static void BeEvilLight(TankAIHelper helper, Tank tank)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": enemy AI active!");
             var Mind = EnsureEnemyMind(helper, tank);
             if (Mind == null) return;
             RunLightEvilOp(Mind, helper, tank);
             ScarePlayer(Mind, helper, tank);
         }
-        // B5: extracted housekeeping shared by both Light (Default RunState) and Full
-        // (Advanced RunState) tick paths. Contains everything that should run regardless
-        // of who is driving (vanilla AI vs. mod). Light path was previously missing
-        // ManageBolts, TestShouldCommitDie, and Provoked decay — undocumented oversight
-        // that left Default-state minions immortal and stuck-aggroed indefinitely.
-        // The Light/Full delta lives in their callers only:
-        //   - Full appends OpsController.Execute / RunRTSNaviEnemy + dynamic-team retreat.
-        //   - Light yields motion to vanilla AI via ControlTech_Prefix (per the D1 design
-        //     note at FinalInitialization).
         private static void CommonEvilOp(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
             if (mind.StartedAnchored)
             {
                 if (mind.EvilCommander != EnemyHandling.Stationary)
-                    mind.EvilCommander = EnemyHandling.Stationary;// NO MOVE FOOL
+                    mind.EvilCommander = EnemyHandling.Stationary;
                 if (!tank.IsAnchored && !mind.Hurt)
                 {
                     if (helper.CanAttemptAnchor)
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ": Trying to anchor " + tank.name);
                         helper.AnchorIgnoreChecks();
                     }
                 }
@@ -681,7 +621,7 @@ namespace TAC_AI.AI.Enemy
                 {
                     bool venPower = false;
                     if (mind.MainFaction == FactionSubTypes.VEN) venPower = true;
-                    RRepair.EnemyRepairStepper(helper, tank, mind, venPower);// longer while fighting
+                    RRepair.EnemyRepairStepper(helper, tank, mind, venPower);
                 }
             }
             if (mind.AIControl.Provoked <= 0)
@@ -719,8 +659,6 @@ namespace TAC_AI.AI.Enemy
 
         private static void RunLightEvilOp(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
-            // B5: shared housekeeping. Light path yields motion to vanilla AI; the Full
-            // path additionally runs OpsController.Execute + dynamic-team retreat below.
             CommonEvilOp(mind, helper, tank);
         }
         private static void RunEvilOperations(EnemyMind mind, TankAIHelper helper, Tank tank)
@@ -729,9 +667,6 @@ namespace TAC_AI.AI.Enemy
 
             if (helper.RTSControlled && !helper.IsMultiTech)
             {
-                // T6: enemy-side RTS detour. Per-tank LogWarnPlayerOncePerKey surfaces
-                // the mode-switch once for field debugging of stuck NonPlayer RTS units
-                // without ongoing spam.
                 DebugTAC_AI.LogWarnPlayerOncePerKey(
                     "EnemyRTSDetour:" + tank.name,
                     "AI " + tank.name + ": RTSControlled enemy tech routed through RunRTSNaviEnemy instead of EnemyOpsController.Execute.", null);
@@ -753,7 +688,7 @@ namespace TAC_AI.AI.Enemy
 
         public static Vector3 GetTargetCoordinates(TankAIHelper helper, Visible target, EnemyMind mind)
         {
-            if (mind.CommanderSmarts >= EnemySmarts.Smrt)   // Rough Target leading
+            if (mind.CommanderSmarts >= EnemySmarts.Smrt)
             {
                 return helper.RoughPredictTarget(target.tank);
             }
@@ -806,9 +741,9 @@ namespace TAC_AI.AI.Enemy
             {
                 BGeneral.ResetValues(helper, ref direct);
                 if (funds.tank?.visible != null)
-                    BGeneral.StopByPosition(helper, tank, funds.WorldPos.ScenePosition, 
+                    BGeneral.StopByPosition(helper, tank, funds.WorldPos.ScenePosition,
                         funds.tank.visible.GetCheapBounds(), ref direct);
-                else // It's not loaded, we space based on a fallback scale assumption
+                else
                     BGeneral.StopByPosition(helper, tank, funds.WorldPos.ScenePosition, 32, ref direct);
                 return true;
             }
@@ -836,7 +771,6 @@ namespace TAC_AI.AI.Enemy
                             BGeneral.ResetValues(helper, ref direct);
                             direct.DriveToFacingTowards();
                             direct.SetLastDest(EBU.PosScene);
-                            // yes we will drive off-scene to retreat home
                             return true;
                         }
                     }
@@ -859,7 +793,7 @@ namespace TAC_AI.AI.Enemy
         private static void BeNeutral(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
             if (mind.Hurt && helper.PendingDamageCheck && mind.AIControl.Provoked > 0)
-            {   // If we were hit & lost blocks, then we fight back the attacker
+            {
                 if (helper.lastEnemyGet?.tank)
                 {
                     int teamAttacker = helper.lastEnemyGet.tank.Team;
@@ -878,7 +812,6 @@ namespace TAC_AI.AI.Enemy
             CombatChecking(helper, tank, mind);
         }
 
-        // ----------------------------  Checks  ---------------------------- 
         public static bool IsCollector(BlockManager BM, out bool chunkHarvester)
         {
             ModuleItemHolder.AcceptFlags flag = ModuleItemHolder.AcceptFlags.Chunks;
@@ -897,8 +830,8 @@ namespace TAC_AI.AI.Enemy
         }
         public static bool IsUnarmedAndCanRunAway(Tank tank)
         {
-            return !tank.IsAnchored && tank.blockman.IterateBlockComponents<ModuleTechController>().Count() >= 
-                tank.blockman.IterateBlockComponents<ModuleWeapon>().Count() + 
+            return !tank.IsAnchored && tank.blockman.IterateBlockComponents<ModuleTechController>().Count() >=
+                tank.blockman.IterateBlockComponents<ModuleWeapon>().Count() +
                 tank.blockman.IterateBlockComponents<ModuleMeleeWeapon>().Count();
         }
         private static void TestShouldCommitDie(Tank tank, EnemyMind mind)
@@ -1038,7 +971,7 @@ namespace TAC_AI.AI.Enemy
                         DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " is a normal invader looking to take over your world!  " + newMind.EvilCommander.ToString() + " based " + newMind.CommanderAlignment.ToString() + " with attitude " + newMind.CommanderAttack.ToString() + " | Mind " + newMind.CommanderMind.ToString() + " | Smarts " + newMind.CommanderSmarts.ToString() + " inbound!");
                     break;
                 case EnemyAttitude.Miner:
-                    if (newMind.CommanderAttack == EAttackMode.Circle)// Circle breaks the harvester AI in some attack cases
+                    if (newMind.CommanderAttack == EAttackMode.Circle)
                     {
                         switch (newMind.EvilCommander)
                         {
@@ -1085,10 +1018,6 @@ namespace TAC_AI.AI.Enemy
                         newMind.EvilCommander = EnemyHandling.Starship;
                         break;
                     case ControlSchemeCategory.Hovercraft:
-                        // P08 hover-routing fix: was Starship→SpaceAICore which assumes vertical
-                        // thrust (m_InputMovement.y, GroundOffsetH altitude envelope). Hovercraft
-                        // use ground-hugging hover physics, not thrust—route through Wheeled→
-                        // LandAICore which handles wheelless ground vehicles correctly.
                         newMind.EvilCommander = EnemyHandling.Wheeled;
                         break;
                     default:
@@ -1100,19 +1029,9 @@ namespace TAC_AI.AI.Enemy
                         break;
                 }
             }
-            catch { }//some population techs are devoid of schemes
+            catch { }
         }
 
-        // ----------------------------  Conclusion  ----------------------------
-        /// <summary>Finalises an enemy Mind/helper after scheme + intelligence rolls.</summary>
-        /// <remarks>
-        /// Design note: no low-smarts demotion for wheeled enemies. A prior branch demoted ~35%
-        /// (EnemySmarts.Default rolls from AutoSetIntelligence) to AIRunState.Default, but that
-        /// state's tick (BeEvilLight) skips EnemyOpsController.Execute and the ControlTech_Prefix
-        /// Harmony hook yields to vanilla AI — which has no driver for population techs, so
-        /// demoted enemies stood inert until shot. Do not reintroduce demotion without first
-        /// fixing that path.
-        /// </remarks>
         private static void FinalInitialization(TankAIHelper helper, EnemyMind newMind, Tank tank)
         {
             if (tank.Anchors.NumAnchored > 0 || tank.GetComponent<RequestAnchored>())
@@ -1125,9 +1044,8 @@ namespace TAC_AI.AI.Enemy
             if (newMind.CommanderSmarts > EnemySmarts.Meh)
             {
                 helper.InsureTechMemor("FinalInitialization", true);
-                newMind.CommanderBolts = EnemyBolts.AtFullOnAggro;// allow base function
+                newMind.CommanderBolts = EnemyBolts.AtFullOnAggro;
             }
-            // D1: no wheeled-enemy demotion here — see method <remarks> for rationale.
 
             if (AIGlobals.IsAttract)
             {
@@ -1232,8 +1150,6 @@ namespace TAC_AI.AI.Enemy
             else
                 newMind.MinCombatRange = AIGlobals.MinCombatRangeDefault;
 
-            // D4: re-flag dirty in case the just-set CommanderMind/AttackMode/range changed
-            // anything that picks the movement controller (e.g. Stationary -> AIControllerStatic).
             helper.RequestMovementControllerSwap(TankAIHelper.MovementSwapReason.EnemyMindSetup);
             DebugTAC_AI.FinishAICalculationTimer(tank);
         }

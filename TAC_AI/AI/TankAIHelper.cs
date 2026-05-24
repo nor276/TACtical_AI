@@ -15,15 +15,9 @@ namespace TAC_AI.AI
 {
     public class TankAIHelper : MonoBehaviour, IWorldTreadmill
     {
-        // B8: removed `internal static bool updateErrored` — was a scene-wide latch that
-        // suppressed every subsequent tank's first failure. Replaced with per-tank-per-site
-        // LogWarnPlayerOncePerKey at each former callsite (UpdateLastTechExtentsIfNeeded,
-        // OnUpdateHostAIDirectors, OnUpdateHostAIOperations, CheckRebuildAlignment,
-        // TankAIManager.FixedUpdate).
 
         public Tank tank;
         public AITreeType.AITypes lastAIType;
-        //Tweaks (controlled by Module)
         public AIDriverType DriverType
         {
             get => driveType;
@@ -31,31 +25,19 @@ namespace TAC_AI.AI
             {
                 if (driveType != value)
                 {
-                    //DebugTAC_AI.Assert("Driver Type change " + driveType + " -> " + value);
                     driveType = value;
                 }
             }
         }
         private AIDriverType driveType = AIDriverType.AutoSet;
-        /// <summary>
-        /// T5: chokepoint for DriverType writes. Resolves AutoSet inline when the tank is
-        /// ready (blockman populated); otherwise stores AutoSet to be resolved later by
-        /// Subscribe/DelayedSubscribe. This prevents AutoSet from reaching dispatch in
-        /// AlliedOperationsController.Execute, where the silent fallback to Tank would
-        /// hide every upstream caller that forgot to resolve.
-        /// </summary>
         public void SetDriverType(AIDriverType driverType)
         {
             if (driverType == AIDriverType.AutoSet && tank != null && tank.blockman != null && tank.blockman.blockCount > 0)
-                ExecuteAutoSetNoCalibrate();   // resolves AutoSet -> concrete type
+                ExecuteAutoSetNoCalibrate();
             else
-                DriverType = driverType;       // may store AutoSet if tank not ready; Subscribe resolves
+                DriverType = driverType;
             RequestMovementControllerSwap(MovementSwapReason.SetDriverType);
         }
-        // J: every requester of a deferred movement-controller swap names itself, so a swap storm can
-        // be attributed via the swap log / state-history ring. The raw flag's setter is private - all
-        // writers (including KickStart / RCore) request through RequestMovementControllerSwap; only the
-        // consumer (RecalibrateMovementAIController) clears it.
         internal enum MovementSwapReason
         {
             SetDriverType, Subscribe, Recycled, RemoteAIType, ReValidate, AlignmentReset,
@@ -72,14 +54,14 @@ namespace TAC_AI.AI
         internal void RequestMovementControllerSwap(MovementSwapReason reason)
         {
             if (!MCD)
-                AppendHistory("SwapReq " + reason);   // record the request that flips clean -> dirty
+                AppendHistory("SwapReq " + reason);
             lastSwapRequest = reason;
             MovementAIControllerDirty = true;
         }
         public AIType DediAI = AIType.Escort;
-        public EAttackMode AttackMode = EAttackMode.Circle; // How to attack the enemy
-        public float TurretFraction = 0f;   // 0 = all front-fixed weapons, 1 = all wide-gimbal turrets; drives the combat circle/face duty cycle (set in [R/E]WeapSetup.GetAttackStrat)
-        private float combatCyclePhase01 = -1f;   // per-tech random phase offset for that duty cycle, lazily seeded on first use so neighbouring techs desync
+        public EAttackMode AttackMode = EAttackMode.Circle;
+        public float TurretFraction = 0f;
+        private float combatCyclePhase01 = -1f;
         private AlliedOperationsController _OpsController;
         internal AlliedOperationsController OpsController
         {
@@ -126,24 +108,11 @@ namespace TAC_AI.AI
         public bool Allied => AIAlign == AIAlignment.Player;
         public bool IsPlayerControlled => AIAlign == AIAlignment.PlayerNoAI || AIAlign == AIAlignment.Player;
         public bool ActuallyWorks => hasAI || tank.PlayerFocused;
-        // B7: distinguish "user chose Idle" from "TryGetCurrentAIType failed".
-        // Resolution success is tracked separately so a failed resolve doesn't masquerade
-        // as a legitimate Idle and silently freeze ControlTech / UpdateTechControl.
         internal bool lastAITypeResolved = false;
         public bool SetToActive => lastAITypeResolved && lastAIType != AITreeType.AITypes.Idle;
         public bool AITypeUnresolved => !lastAITypeResolved;
-        // B6: MT slaves (MTTurret/MTStatic/MTMimic) cannot receive RTS commands directly —
-        // they slave to their host's transform via BMultiTech.MimicAllClosestAlly / beam-lock.
-        // The non-MT host receives the waypoint and drags affiliated MTs via lastTechExtents.
         public bool IsRTSReceivable => !IsMultiTech;
-        // B12: tracks consecutive UpdateTechControl ticks with null MovementController;
-        // escalates from "warn once" to "persistent invariant violation" at N=30.
         private int consecutiveNullMovementControllerTicks;
-        // B3: tick-stable AIAlign snapshot. Captured at end of OnPreUpdate (after
-        // CheckRebuildAlignment), released in OnPostUpdate. Directors and Operations are
-        // independently staggered across MULTIPLE frames per helper, so without this snapshot
-        // a dirtyAI flip between phases let Directors configure pathing as Player while
-        // Operations dispatched enemy behavior with allied-pathing setup intact.
         private AIAlignment tickAIAlign = AIAlignment.Static;
         private bool tickAlignmentLatched = false;
         internal AIAlignment TickAIAlign => tickAlignmentLatched ? tickAIAlign : AIAlign;
@@ -161,7 +130,6 @@ namespace TAC_AI.AI
             (DriveDirDirected > EDriveFacing.Neutral && (ThrottleState == AIThrottleState.ForceSpeed || DoSteerCore));
         public bool UsingPathfinding => ControlCore.DrivePathing >= EDrivePathing.Path;
 
-        // Settables in ModuleAIExtension - "turns on" functionality on the host Tech, none of these force it off
         private bool _isMultiTech = false;
         public bool IsMultiTech
         {
@@ -181,13 +149,6 @@ namespace TAC_AI.AI
         public bool FullMelee => Allied ? (AISetSettings.FullMelee && AILimitSettings.FullMelee) : AISetSettings.FullMelee;
         public bool SideToThreat => Allied ? (AISetSettings.SideToThreat && AILimitSettings.SideToThreat) : AISetSettings.SideToThreat;
 
-        /// <summary>
-        /// Combat-facing duty cycle. Returns true when the tech should CIRCLE (broadside) this instant, false to
-        /// FACE the target. Circles for ~<see cref="TurretFraction"/> of each <see cref="KickStart.CombatFacingCyclePeriod"/>
-        /// and faces the rest, so a tech with half its weapons on wide-gimbal turrets strafes ~half the time and faces
-        /// ~half (giving front-fixed guns their firing windows). TurretFraction 0 always faces, 1 always circles.
-        /// Meant to be sampled at Director/Operations cadence; the per-tech phase offset desyncs neighbouring techs.
-        /// </summary>
         public bool CombatWantsCircleNow()
         {
             float frac = Mathf.Clamp01(TurretFraction);
@@ -210,7 +171,6 @@ namespace TAC_AI.AI
         public bool AutoAnchor = false;
         public bool SecondAvoidence = false;
 
-        // Distance operations - Automatically accounts for tech sizes
         public AISettingsSet AISetSettings = AISettingsSet.DefaultSettable;
         public AISettingsLimit AILimitSettings = default;
         public float MinCombatRange => AISetSettings.CombatSpacing;
@@ -222,30 +182,28 @@ namespace TAC_AI.AI
             set => AISetSettings.ScanRange = value;
         }
 
-        // Allied AI Operating Allowed types (self-filling)
-        // WARNING - These values are set to TRUE when called.
         private AIEnabledModes AIWorkingModes = AIEnabledModes.None;
-        public bool isAssassinAvail //Is there an Assassin-enabled AI on this tech?
+        public bool isAssassinAvail
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Assassin); }
             set { AIWorkingModes |= AIEnabledModes.Assassin; }
         }
-        public bool isAegisAvail    //Is there an Aegis-enabled AI on this tech?
+        public bool isAegisAvail
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Aegis); }
             set { AIWorkingModes |= AIEnabledModes.Aegis; }
         }
-        public bool isProspectorAvail  //Is there a Prospector-enabled AI on this tech?
+        public bool isProspectorAvail
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Prospector); }
             set { AIWorkingModes |= AIEnabledModes.Prospector; }
         }
-        public bool isScrapperAvail   //Is there a Scrapper-enabled AI on this tech?
+        public bool isScrapperAvail
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Scrapper); }
             set { AIWorkingModes |= AIEnabledModes.Scrapper; }
         }
-        public bool isEnergizerAvail   //Is there a Energizer-enabled AI on this tech?
+        public bool isEnergizerAvail
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Energizer); }
             set { AIWorkingModes |= AIEnabledModes.Energizer; }
@@ -265,18 +223,6 @@ namespace TAC_AI.AI
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Buccaneer); }
             set { AIWorkingModes |= AIEnabledModes.Buccaneer; }
         }
-        /*
-        public bool isAssassinAvail = false;    //Is there an Assassin-enabled AI on this tech?
-        public bool isAegisAvail = false;       //Is there an Aegis-enabled AI on this tech?
-
-        public bool isProspectorAvail = false;  //Is there a Prospector-enabled AI on this tech?
-        public bool isScrapperAvail = false;    //Is there a Scrapper-enabled AI on this tech?
-        public bool isEnergizerAvail = false;   //Is there a Energizer-enabled AI on this tech?
-
-        public bool isAviatorAvail = false;
-        public bool isAstrotechAvail = false;
-        public bool isBuccaneerAvail = false;
-        */
 
         public AIRunState RunState {
             get => _RunState;
@@ -297,7 +243,7 @@ namespace TAC_AI.AI
                 }
             }
         }
-        private AIRunState _RunState = AIRunState.Advanced;      // Disable the AI to make way for Default AI
+        private AIRunState _RunState = AIRunState.Advanced;
 
         public AIWeaponState ActiveAimState = AIWeaponState.Normal;
         public AIWeaponType WeaponAimType = AIWeaponType.Unknown;
@@ -309,72 +255,41 @@ namespace TAC_AI.AI
         }
         public bool NeedsLineOfSight => WeaponAimType == AIWeaponType.Direct;
         public bool BlockedLineOfSight = false;
-        // Hysteresis counter for BlockedLineOfSight. LOS checks run every 0.6s; a single intermittent
-        // hit (terrain bump, ally passing through) shouldn't flip the public flag and trigger combat-FSM
-        // mode changes (MoveSideways <-> stand-and-shoot). Require N=2 consecutive blocked checks
-        // before declaring blocked; clear on any unblocked check.
         private int _losBlockedStreak = 0;
-        // Combat-bucket hysteresis flag. Set by RWheeled.AttackVroom when the tech was in the
-        // retreat (close-range) bucket on the previous tick, used to require extra clearance
-        // before flipping to the advance bucket. Prevents oscillation at the spacer+range edge.
         public bool WasRetreatingInCombat = false;
-        // One-shot latch for RCore.EnsureEnemyMind regen recovery. Prevents infinite-recursion /
-        // log-spam if GenerateEnemyAI keeps failing for this tech (e.g. mid-recycle race).
-        // Cleared on successful Mind resolution and on Recycled.
         internal bool beEvilRegenAttempted = false;
 
-        public AIAlignment AIAlign = AIAlignment.Static;             // 0 is static, 1 is ally, 2 is enemy
-        public AIWeaponState WeaponState = AIWeaponState.Normal;    // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic
-        public bool UpdateDirectorsAndPathing = false;       // Collision avoidence active this FixedUpdate frame?
-        public bool UsingAirControls = false; // true => AIControllerAir; false => AIControllerDefault/Static
-        internal int FrustrationMeter = 0;  // tardiness buildup before we use our guns to remove obsticles
-        internal float Urgency = 0;         // tardiness buildup before we just ignore obstructions
-        internal float UrgencyOverload = 0; // builds up too much if our max speed was set too high
+        public AIAlignment AIAlign = AIAlignment.Static;
+        public AIWeaponState WeaponState = AIWeaponState.Normal;
+        public bool UpdateDirectorsAndPathing = false;
+        public bool UsingAirControls = false;
+        internal int FrustrationMeter = 0;
+        internal float Urgency = 0;
+        internal float UrgencyOverload = 0;
 
-        /*
-        private bool damageCheck = true;
-        public bool PendingDamageCheck
-        {
-            get { return damageCheck; }
-            set
-            {
-                DebugTAC_AI.Log("PendingDamageCheck set by: " + StackTraceUtility.ExtractStackTrace());
-                damageCheck = value;
-            }
-        }
-        // */ public bool PendingDamageCheck = true;
+ public bool PendingDamageCheck = true;
 
-        public float DamageThreshold = 0;   // How much damage have we taken? (100 is total destruction)
+        public float DamageThreshold = 0;
 
-        internal Vector3 lastDestinationOp => ControlOperator.lastDestination; // Where we drive to in the world
-        internal Vector3 lastDestinationCore => ControlCore.lastDestination;// Vector3.zero;    // Where we drive to in the world
+        internal Vector3 lastDestinationOp => ControlOperator.lastDestination;
+        internal Vector3 lastDestinationCore => ControlCore.lastDestination;
 
-        /*
-        internal Vector3 lastDestination {
-            get { return lastDestinationBugTest; }
-            set {
-                DebugTAC_AI.Log("lastDestination set by: " + StackTraceUtility.ExtractStackTrace());
-                lastDestinationBugTest = value; 
-            }
-        }
-        internal Vector3 lastDestinationBugTest = Vector3.zero;    // Where we drive to in the world
-        */
         internal float lastOperatorRange { get { return _lastOperatorRange; } private set { _lastOperatorRange = value; } }
         private float _lastOperatorRange = 0;
         internal float lastCombatRange => _lastCombatRange;
         private float _lastCombatRange = 0;
         internal float lastPathPointRange = 0;
-        public float NextFindTargetTime = 0;      // Updates to wait before target swatching
+        public float NextFindTargetTime = 0;
 
-        internal bool hasAI = false;    // Has an active AI module
-        internal AIDirtyState dirtyAI = AIDirtyState.Not;  // Update Player AI state if needed
+        internal bool hasAI = false;
+        internal AIDirtyState dirtyAI = AIDirtyState.Not;
         public enum AIDirtyState
         {
             Not,
             Dirty,
             DirtyAndReboot,
         }
-        internal bool dirtyExtents = false;    // The Tech has new blocks attached recently
+        internal bool dirtyExtents = false;
 
         internal float EstTopSped = 0;
         internal float recentSpeed = 1;
@@ -395,27 +310,15 @@ namespace TAC_AI.AI
                         _lastEnemy != null ? _lastEnemy.name : null,
                         value != null ? value.name : null);
                 _lastEnemy = value;
-                // B1: enforce the pair-invariant. A null target cannot be "locked";
-                // any site that nulls lastEnemy directly (RGeneral.Monitor, PlayerRTSUI,
-                // network handlers) must also drop KeepEnemyFocus or future
-                // SetPursuit(newTarget) calls silently no-op against a phantom lock.
                 if (value == null && KeepEnemyFocus)
                     KeepEnemyFocus = false;
             }
         }
-        // B5: RTS "hold-position-attack" mode — commander manually painted a target with no
-        // move order. Strong intent signal, deserves the broadest retention tolerance (subject
-        // to B6's hard cap below).
         public bool RTSManualTargetLock => RTSControlled && RTSDestInternal == RTSDisabled;
-        // B5: generic sticky-pursuit. Covers BOTH RTS manual locks AND OnHit/focus-fire/revenge
-        // pursuits set via SetPursuit(force:true). Without this, a tech hit at long range loses
-        // its attacker on the very next validation tick — defeating the explicit B7 grace intent.
-        // B6 hard-cap still applies via the range purges checking RTSLockMaxRangeMultiplier.
         public bool PreserveEnemyTarget => RTSManualTargetLock || KeepEnemyFocus;
         public Visible lastLockOnTarget;
         public Transform Obst;
         internal Tank lastCloseAlly;
-        // Non-Tech specific objective AI Handling
         internal float lastBaseExtremes = 10;
         internal Tank theBase = null;
         private Visible _theResource = null;
@@ -445,37 +348,28 @@ namespace TAC_AI.AI
         internal Vector3 MTOffsetRot = Vector3.forward;
         internal Vector3 MTOffsetRotUp = Vector3.up;
 
-        //  !!ADVANCED!!
         internal bool Attempt3DNavi = false;
-        internal Vector3 Navi3DDirect = Vector3.zero;   // Forwards facing for 3D
-        internal Vector3 Navi3DUp = Vector3.zero;       // Upwards direction for 3D
-        public float GroundOffsetHeight = AIGlobals.GroundOffsetGeneralAir;           // flote above ground this dist
+        internal Vector3 Navi3DDirect = Vector3.zero;
+        internal Vector3 Navi3DUp = Vector3.zero;
+        public float GroundOffsetHeight = AIGlobals.GroundOffsetGeneralAir;
         internal Snapshot lastBuiltTech = null;
         internal Vector3 PathPoint => MovementController.PathPoint;
 
-        // DelayedAnchorClock shim — continuous rest-duration via a Time.time start-stamp (was a per-pass
-        // count-up: role/MP-dependent ~4-8s SP, up to 12s MP). Now uniform & seconds-based: ++ keeps timing,
-        // =0 interrupts. settle seconds = BaseAnchorMinimumTimeDelay / AnchorTicksPerSecond. SOURCE OF TRUTH: docs/21.
-        internal const float AnchorTicksPerSecond = 5f;   // legacy ~5 ticks/s; threshold 20 ticks => 4.0s anchor settle
+        internal const float AnchorTicksPerSecond = 5f;
         private float anchorRestStart = -1f;
         internal int DelayedAnchorClock
         {
             get { return anchorRestStart < 0f ? 0 : Mathf.Min((int)AIGlobals.BaseAnchorMinimumTimeDelay, Mathf.CeilToInt((Time.time - anchorRestStart) * AnchorTicksPerSecond)); }
             set { if (value <= 0) anchorRestStart = -1f; else if (anchorRestStart < 0f) anchorRestStart = Time.time; }
         }
-        internal AITimer lightBoostFeatherTimer;   // feathers LightBoost ~every 0.5s (was a framerate-coupled frame counter)
+        internal AITimer lightBoostFeatherTimer;
         internal float RepairStepperClock = 0;
         internal short BeamTimeoutClock = 0;
         internal int WeaponDelayClock = 0;
-        // actionPause shim: backed by a seconds-based AITimer. The old field was a frame counter drained
-        // by AIClockPeriod every Pre tick (= 500/s at the SP canonical rate AIClockPeriodSet 10 / fixedDeltaTime 0.02).
-        // Backing it with an AITimer makes every pause hold framerate- and SP/MP-invariant while the ~40 call
-        // sites keep their legacy tick values and value comparisons. Effective seconds are the SOURCE-OF-TRUTH
-        // table in docs/21_timing-cadence.md — update there whenever a hold value changes.
         private AITimer actionPauseTimer;
-        internal AITimer beamFlipTimer;                          // AIEBeam tipped-over flip-beam timer (own field; revived)
-        internal const float ActionPauseTicksPerSecond = 500f;   // AIClockPeriodSet(10) / fixedDeltaTime(0.02)
-        internal int actionPause                                 // when [val > 0], used to halt other actions
+        internal AITimer beamFlipTimer;
+        internal const float ActionPauseTicksPerSecond = 500f;
+        internal int actionPause
         {
             get { return actionPauseTimer.Running ? Mathf.CeilToInt(actionPauseTimer.Remaining * ActionPauseTicksPerSecond) : 0; }
             set { if (value <= 0) actionPauseTimer.Clear(); else actionPauseTimer.Set(value / ActionPauseTicksPerSecond); }
@@ -485,35 +379,14 @@ namespace TAC_AI.AI
             get => actionPause;
             private set => actionPause = value;
         }
-        // unanchorCountdown shim — countdown warn timer (was a per-pass tick countdown from 15; the --
-        // decrements were removed, it self-counts). =15 arms ~3s. SOURCE OF TRUTH: docs/21.
         private AITimer unanchorTimer;
-        internal int unanchorCountdown                 // aux warning timer for unanchor
+        internal int unanchorCountdown
         {
             get { return unanchorTimer.Running ? Mathf.CeilToInt(unanchorTimer.Remaining * AnchorTicksPerSecond) : 0; }
             set { if (value <= 0) unanchorTimer.Clear(); else unanchorTimer.Set(value / AnchorTicksPerSecond); }
         }
 
-        // Hierachy System:
-        //   Operations --[ControlPre]-> Maintainer --[ControlPost]-> Core
-        // We need to tell the AI some important information:
-        /// <summary>
-        /// T3: Goal-state for the "set goal (slow tick), drive towards goal (per-frame)" loop.
-        /// PRODUCER: RunAlliedOperations / RunRTSNavi / RunEnemyOperations, staggered by
-        ///   TankAIManager.OperationsToUpdateThisFrame (~every KickStart.AIClockPeriod frames).
-        /// CONSUMER: UpdateTechControl -> MovementController.DriveDirector, every vanilla
-        ///   physics tick.
-        /// STALENESS CONTRACT: this value WILL lag the world by up to AIClockPeriod frames
-        /// in nominal conditions, and may lag arbitrarily if ops ticks are skipped. Movement
-        /// code (DriveDirector / DriveMaintainer) MUST remain safe when reading a stale goal
-        /// (e.g. dest already passed). Stale-age > AIClockPeriod*3 logs a diagnostic.
-        /// Callers mutating via `ref ControlOperator` (TryHandleObstruction, SetLastDest)
-        /// must call MarkOperatorDirty() to keep age tracking honest.
-        /// </summary>
         private EControlOperatorSet ControlOperator = EControlOperatorSet.Default;
-        // Baseline frame for staleness. Primed to "now" on every (re)activation in OnEnable so a
-        // pooled helper returning to service isn't measured against a tick from a previous life
-        // (or the 0 default), then refreshed by SetDirectedControl / MarkOperatorDirty.
         private int controlOperatorSetTick = 0;
         internal int ControlOperatorAgeFrames => Time.frameCount - controlOperatorSetTick;
         internal bool IsControlOperatorStale =>
@@ -546,9 +419,6 @@ namespace TAC_AI.AI
         }
         public void SetCoreControl(EControlCoreSet cont)
         {
-            // P08 B-NEW8-2: NaN-guard the persisted struct. EControlCoreSet.lastDestination has
-            // a NaN guard in its property setter, but bulk struct-copy bypasses it. Check before
-            // assignment so a tainted destination becomes Default rather than poisoning Maintainer.
             if (cont.lastDestination.IsNaN())
             {
                 DebugTAC_AI.Exception("SetCoreControl - cont.lastDestination was NaN; falling back to Default");
@@ -562,8 +432,8 @@ namespace TAC_AI.AI
 
         internal bool AdviseAwayCore => ControlCore.DriveDest == EDriveDest.FromLastDestination;
 
-        public float AutoSpacing = 0;              // Minimum radial spacing distance from destination
-        public float DriveVar { get; set; } = 0; // Forwards drive (-1, 1)
+        public float AutoSpacing = 0;
+        public float DriveVar { get; set; } = 0;
         public float GetDrive => MovementController.GetDrive;
 
         public AIThrottleState ThrottleState { get; set; } = AIThrottleState.FullSpeed;
@@ -593,32 +463,23 @@ namespace TAC_AI.AI
             if (stateHistoryRing.Count == 0) return "(empty)";
             return string.Join("\n  ", stateHistoryRing.ToArray());
         }
-        public bool AvoidStuff { get; internal set; } = true;            // Try avoiding allies and obsticles
-        /*
-        internal bool AvoidStuff {
-            get { return _AvoidStuff; }
-            set {
-                if (!value)
-                    DebugTAC_AI.Log("AvoidStuff disabled by: " + StackTraceUtility.ExtractStackTrace().ToString());
-                _AvoidStuff = value;
-            }
-        }*/
+        public bool AvoidStuff { get; internal set; } = true;
 
         internal AIAnchorState AnchorState = AIAnchorState.None;
         internal bool AnchorStateAIInsure = false;
 
-        public bool FIRE_ALL { get; internal set; } = false;   // hold down tech's spacebar
-        internal bool FullBoost = false;            // hold down boost button
-        internal bool LightBoost = false;           // moderated booster pressing
-        internal bool FirePROPS = false;            // hold down prop button
-        internal bool ForceSetBeam = false;         // activate build beam
-        public bool CollectedTarget = false;      // this Tech's storage objective status (resources, blocks, energy)
-        public bool Retreat { get; internal set; } = false;              // ignore enemy position and follow intended destination (but still return fire)
+        public bool FIRE_ALL { get; internal set; } = false;
+        internal bool FullBoost = false;
+        internal bool LightBoost = false;
+        internal bool FirePROPS = false;
+        internal bool ForceSetBeam = false;
+        public bool CollectedTarget = false;
+        public bool Retreat { get; internal set; } = false;
 
-        public bool Avoiding { get; internal set; } = false;             // We are currently avoiding something
-        public bool IsTryingToUnjam { get; internal set; } = false;      // Is this tech unjamming?
+        public bool Avoiding { get; internal set; } = false;
+        public bool IsTryingToUnjam { get; internal set; } = false;
         public bool PendingHeightCheck
-        {// Queue a driving depth check for a naval tech - or any tech that really needs this lol
+        {
 
             get => _LowestPointOnTech == -1;
             set
@@ -630,7 +491,7 @@ namespace TAC_AI.AI
             }
         }
         public float LowestPointOnTech
-        {// The lowest point in relation to the tech's block-based center
+        {
             get
             {
                 if (_LowestPointOnTech == -1)
@@ -639,7 +500,7 @@ namespace TAC_AI.AI
             }
             set => _LowestPointOnTech = value;
         }
-        private float _LowestPointOnTech = 0;       // the lowest point in relation to the tech's block-based center
+        private float _LowestPointOnTech = 0;
         internal bool BoltsFired = false;
 
         public bool isRTSControlled { get; internal set; } = false;
@@ -652,7 +513,6 @@ namespace TAC_AI.AI
                 {
                     if (ManNetwork.IsNetworked)
                         NetworkHandler.TryBroadcastRTSControl(tank.netTech.netId.Value, value);
-                    //DebugTAC_AI.Assert(true, "RTSControlled set to " + value);
                     isRTSControlled = value;
                     foreach (ModuleAIExtension AIEx in AIList)
                     {
@@ -660,7 +520,7 @@ namespace TAC_AI.AI
                     }
                 }
             }
-        } // force the tech to be controlled by RTS
+        }
         public bool IsGoingToPositionalRTSDest => RTSDestInternal != RTSDisabled;
         public static IntVector3 RTSDisabled => AIGlobals.RTSDisabled;
         public ManWorldRTS.CommandLink RTSCommand = default;
@@ -680,8 +540,6 @@ namespace TAC_AI.AI
             }
             set
             {
-                // Risk-1 fix: compute the new RTSDestInternal BEFORE broadcasting. Previously the
-                // broadcast read the stale value, so MP clients received the prior waypoint on every set.
                 if (value == RTSDisabled)
                     RTSDestInternal = RTSDisabled;
                 else if (DriverType == AIDriverType.Astronaut || DriverType == AIDriverType.Pilot)
@@ -724,9 +582,6 @@ namespace TAC_AI.AI
 
         internal void DirectRTSDest(Vector3 Pos)
         {
-            // B6: MT slaves have no autonomous nav — their pose is driven by their mimic-host
-            // every tick. Forward the waypoint to the host so clicking any sub-piece in RTS
-            // mode works as the player expects.
             if (IsMultiTech && theHostTech != null && theHostTech.tank != null)
             {
                 theHostTech.tank.GetHelperInsured().DirectRTSDest(Pos);
@@ -763,15 +618,12 @@ namespace TAC_AI.AI
             Recycle,
         }
         public Func<TankAIHelper, ExtControlStatus, bool> AIControlOverride = null;
-        public bool PlayerAllowAutoAnchoring = false;   // Allow auto-anchor
+        public bool PlayerAllowAutoAnchoring = false;
         public bool ExpectAITampering = false;
 
-        // ----------------------------  AI Cores  ---------------------------- 
         public IMovementAIController MovementController;
         public AIEAutoPather autoPather => (MovementController is AIControllerDefault def) ? def.Pathfinder : null;
 
-        // ----------------------------  Awareness Subscriptions  ----------------------------
-        // B5: bounded-retry counter for DelayedSubscribe self-recovery. Cleared on success or in Recycled.
         private int delayedSubscribeRetries = 0;
         private const int MaxDelayedSubscribeRetries = 5;
 
@@ -783,9 +635,6 @@ namespace TAC_AI.AI
                 return this;
             }
             tank = GetComponent<Tank>();
-            // B6: defensive null guard. If GetHelperInsured was ever called on a GameObject without
-            // a Tank component, the original code NRE'd on the next line with no context. Now we
-            // log loud and destroy the orphan helper so it can't poison downstream consumers.
             if (tank == null)
             {
                 DebugTAC_AI.LogError(KickStart.ModID + ": TankAIHelper.Subscribe - attached to GameObject '"
@@ -793,7 +642,6 @@ namespace TAC_AI.AI
                 Destroy(this);
                 return null;
             }
-            // Intentional: force lazy init of cached bounds before downstream code reads them.
             Vector3 _ = tank.boundsCentreWorld;
             AILimitSettings = new AISettingsLimit(this);
             AIList = new List<ModuleAIExtension>();
@@ -805,15 +653,11 @@ namespace TAC_AI.AI
             RequestMovementControllerSwap(MovementSwapReason.Subscribe);
             AIECore.AddHelper(this);
             ResetAISettings();
-            // T6: nameof gives compile-time rename safety; AISubscribeDelay names the magic 0.1f
-            // (documents why the delay exists — lets blockBounds/blockCount settle).
             Invoke(nameof(DelayedSubscribe), AIGlobals.AISubscribeDelay);
             return this;
         }
         public void DelayedSubscribe()
         {
-            // B5: precondition guard — tank may have been recycled/pooled during the 0.1s window,
-            // or blockman may not yet have finished building.
             if (this == null || tank == null || tank.blockman == null)
             {
                 if (++delayedSubscribeRetries <= MaxDelayedSubscribeRetries && tank != null && enabled)
@@ -821,7 +665,6 @@ namespace TAC_AI.AI
                     Invoke(nameof(DelayedSubscribe), AIGlobals.AISubscribeDelay);
                     return;
                 }
-                // Risk-4 fix: distinct key from the partial-init catch below so the popups don't dedup each other.
                 DebugTAC_AI.LogWarnPlayerOncePerKey("DelayedSubscribe.abort:" + (tank ? tank.name : "<recycled>"),
                     "DelayedSubscribe aborted: tank recycled or blockman never ready", null);
                 delayedSubscribeRetries = 0;
@@ -842,8 +685,6 @@ namespace TAC_AI.AI
                     SetDriverType(DriverType);
                 delayedSubscribeRetries = 0;
             }
-            // B5: narrowed catch — only the realistic exceptions (component lifecycle races) are
-            // swallowed. Logic bugs in ExecuteAutoSetNoCalibrate/SetDriverType now surface.
             catch (Exception e) when (e is NullReferenceException || e is MissingReferenceException)
             {
                 DebugTAC_AI.LogWarnPlayerOncePerKey("DelayedSubscribe.partial:" + tank.name,
@@ -851,7 +692,6 @@ namespace TAC_AI.AI
             }
             finally
             {
-                // ALWAYS mark dirty so UpdateLastTechExtentsIfNeeded recovers next frame.
                 dirtyAI = AIDirtyState.Dirty;
                 dirtyExtents = true;
             }
@@ -864,27 +704,18 @@ namespace TAC_AI.AI
         }
         private void OnBlockAttached(TankBlock newBlock, Tank tank)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": On Attach " + tank.name);
             EstTopSped = 1;
-            //LastBuildClock = 0;
             PendingHeightCheck = true;
             dirtyExtents = true;
-            // BUG-8: the weapon-loadout LOS classification is computed lazily once and cached. A
-            // composition change can flip the tech between needing LOS (direct fire) and not
-            // (indirect/artillery). For NonPlayer the DirtyAndReboot path below clears it via
-            // ResetOnSwitchAlignments, but for Player techs ApplyPlayerAlignment early-returns and
-            // never resets it. Null it here so the next SyncLineOfSight (gated to TargetValidationDelay,
-            // ~0.6s) re-derives from the surviving blocks. No per-tick cost.
             WeaponAimType = AIWeaponType.Unknown;
             dirtyAI = AIAlign == AIAlignment.NonPlayer ? AIDirtyState.DirtyAndReboot : AIDirtyState.Dirty;
             if (AIAlign == AIAlignment.Player)
             {
-                PendingPlayerRecompose = true;   // P11: re-pick movement class/core on composition change
+                PendingPlayerRecompose = true;
                 try
                 {
                     if (!tank.FirstUpdateAfterSpawn && !PendingDamageCheck && TechMemor)
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ": Saved TechMemor for " + tank.name);
                         TechMemor.SaveTech();
                     }
                 }
@@ -903,20 +734,12 @@ namespace TAC_AI.AI
             PendingHeightCheck = true;
             PendingDamageCheck = true;
             dirtyExtents = true;
-            // BUG-8: re-derive weapon LOS classification on block loss. Losing all direct-fire
-            // weapons (turret shot off) and being left with only indirect artillery must drop the
-            // cached Direct classification, or the tech keeps requiring LOS it no longer needs and
-            // CheckEnemyAndAiming keeps raycasting/blacklisting targets artillery could arc onto.
-            // Lazy: next SyncLineOfSight recomputes (gated to TargetValidationDelay). No per-tick cost.
             WeaponAimType = AIWeaponType.Unknown;
-            // Risk-3 fix: mirror OnBlockAttached. Losing key blocks mid-combat (wings shot off,
-            // last hover module destroyed) needs to re-classify NonPlayer techs so AICore reflects
-            // the surviving block configuration instead of the original EvilCommander assignment.
             if (AIAlign == AIAlignment.NonPlayer)
                 dirtyAI = AIDirtyState.DirtyAndReboot;
             if (AIAlign == AIAlignment.Player)
             {
-                PendingPlayerRecompose = true;   // P11: re-pick movement class/core on composition change
+                PendingPlayerRecompose = true;
                 try
                 {
                     removedBlock.visible.EnableOutlineGlow(false, cakeslice.Outline.OutlineEnableReason.ScriptHighlight);
@@ -927,10 +750,8 @@ namespace TAC_AI.AI
         }
         internal void Recycled()
         {
-            // B5: cancel any pending DelayedSubscribe so it doesn't fire on a torn-down helper.
             CancelInvoke(nameof(DelayedSubscribe));
             delayedSubscribeRetries = 0;
-            // B4/B7: clear the one-shot regen latch so recovery can fire again on next spawn.
             beEvilRegenAttempted = false;
             try { if (ManWorldTreadmill.inst != null) ManWorldTreadmill.inst.RemoveListener(this); } catch { }
             try { if (tank != null) tank.DamageEvent.Unsubscribe(OnHit); } catch { }
@@ -957,19 +778,6 @@ namespace TAC_AI.AI
             enabled = false;
         }
 
-        // T3: re-prime the ControlOperator staleness baseline on (re)activation. The helper
-        // component is pooled with its Tank GameObject, so a recycled-then-respawned tech
-        // re-enters service via `enabled = true` (OnTankAddition / OnTankChange) WITHOUT
-        // re-running Subscribe(). Without this, controlOperatorSetTick still held its value
-        // from a previous life (or the 0 default on first spawn), and the per-frame consumer
-        // (RunMovementBridge -> UpdateTechControl) computed ControlOperatorAgeFrames =
-        // Time.frameCount - <ancient tick> = the whole scene's frame count, tripping the
-        // "ControlOperator stale by N frames" warning once per spawn before the first staggered
-        // Operations pass (~AIClockPeriod frames out) could set it honestly. Unity fires OnEnable
-        // synchronously at the `enabled = true` assignment, i.e. during spawn-event dispatch and
-        // before the control loop runs this tech, so the baseline is fresh by the time any
-        // consumer reads it. Genuine ops-starvation (no Operations pass within AIClockPeriod*3
-        // of activation) still trips the warning correctly.
         private void OnEnable() => MarkOperatorDirty();
 
         public void SetRTSState(bool RTSEnabled)
@@ -988,7 +796,7 @@ namespace TAC_AI.AI
             if (RTSDestInternal != RTSDisabled)
                 RTSDestInternal += move;
             ControlOperator.SetLastDest(ControlOperator.lastDestination + move);
-            MarkOperatorDirty();  // T3: keep age tracking honest on in-place mutation
+            MarkOperatorDirty();
 
             if (MovementController != null)
                 MovementController.OnMoveWorldOrigin(move);
@@ -1000,8 +808,6 @@ namespace TAC_AI.AI
                 if (sender == null)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": Host changed AI");
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Anonymous sender error");
-                    //return;
                 }
                 if (sender.CurTech?.Team == tank.Team)
                 {
@@ -1023,12 +829,10 @@ namespace TAC_AI.AI
                             TryInsureManualAnchor();
                             PlayerAllowAutoAnchoring = false;
                         }
-                        SetDriverType(driver);  // T5: route through chokepoint so AutoSet resolves
+                        SetDriverType(driver);
                     }
                     RequestMovementControllerSwap(MovementSwapReason.RemoteAIType);
 
-                    //TankDescriptionOverlay overlay = (TankDescriptionOverlay)GUIAIManager.bubble.GetValue(tank);
-                    //overlay.Update();
                 }
                 else
                     DebugTAC_AI.Log(KickStart.ModID + ": TrySetAITypeRemote - Invalid request received - player tried to change AI of Tech that wasn't theirs");
@@ -1050,29 +854,17 @@ namespace TAC_AI.AI
         private void ReValidateAI()
         {
             AutoAnchor = false;
-            SecondAvoidence = false;// Should the AI avoid two techs at once?
+            SecondAvoidence = false;
             ChaseThreat = true;
             ActionPause = 0;
 
             if (tank.PlayerFocused)
-            {   // player gets full control
+            {
                 AIWorkingModes = AIEnabledModes.All;
             }
             else
             {
                 AIWorkingModes = AIEnabledModes.None;
-                /*
-                isAegisAvail = false;
-                isAssassinAvail = false;
-
-                isProspectorAvail = false;
-                isScrapperAvail = false;
-                isEnergizerAvail = false;
-
-                isAstrotechAvail = false;
-                isAviatorAvail = false;
-                isBuccaneerAvail = false;
-                */
             }
 
             AIList.Clear();
@@ -1115,7 +907,6 @@ namespace TAC_AI.AI
                 }
             }
             AILimitSettings.Recalibrate();
-            // REMOVE any AI states that have been removed!!!
             switch (DediAI)
             {
                 case AIType.Aegis:
@@ -1206,10 +997,6 @@ namespace TAC_AI.AI
             }
             catch (Exception eEvtSub) { DebugTAC_AI.LogWarnPlayerOnce("[TAC_AI:catch:Player] block-event subscribe", eEvtSub); }
             AIEBases.SetupTechAutoConstruction(this);
-            // D2: removed dead `if (hasAnchorableAI)` block — both `hasAnchorableAI` and
-            // `TryAnchor()` no longer exist. Auto-anchor is now handled per-frame by
-            // TryInsureAutoAnchor() driven from AIControllerStatic.DriveDirector + behavior
-            // modules, with proper CanAutoAnchor / CanAnchorSafely guards.
         }
         private static bool NeutralTechHasOwnVanillaAI(Tank t)
         {
@@ -1223,8 +1010,8 @@ namespace TAC_AI.AI
         {
             if (RunState != AIRunState.Default)
             {
-                RunState = AIRunState.Default;   // ControlTech_Prefix returns true → vanilla runs
-                AIAlign = AIAlignment.Static;    // still ignore him for combat targeting
+                RunState = AIRunState.Default;
+                AIAlign = AIAlignment.Static;
                 t.AI.TryGetCurrentAIType(out AITreeType.AITypes curTree);
                 DebugTAC_AI.Log(KickStart.ModID + ": Neutral Tech " + t.name
                     + " has vanilla AI tree " + curTree + " — handing control to vanilla.");
@@ -1233,19 +1020,12 @@ namespace TAC_AI.AI
 
         public void ResetOnSwitchAlignments(Tank unused)
         {
-            // Invariant: a live alignment switch should already own a MovementController (created in
-            // Subscribe -> SetupDefaultMovementAIController). DebugTAC_AI.Assert logs only when the
-            // condition is true, so this fires precisely when the controller IS null - which is
-            // expected during teardown (Recycled calls this) and otherwise means an alignment switch
-            // ran before Subscribe set the controller up. Either case is recovered lazily by
-            // OnPreUpdate / RecalibrateMovementAIController; this is a diagnostic, not a guard.
             DebugTAC_AI.Assert(MovementController == null,
                 "ResetOnSwitchAlignments: MovementController null on " + (tank.IsNotNull() ? tank.name : "<recycled>")
                 + " - expected during teardown, otherwise an alignment switch ran before Subscribe set it up.");
-            //DebugTAC_AI.Log(KickStart.ModID + ": Resetting all for " + tank.name);
             maxBlockCount = tank.blockman.blockCount;
             WantsToFight = false;            lastAIType = AITreeType.AITypes.Idle;
-            lastAITypeResolved = true;  // B7: genuine reset to Idle (not resolution failure)
+            lastAITypeResolved = true;
             AttackMode = EAttackMode.AutoSet;
             dirtyExtents = true;
             dirtyAI = AIDirtyState.Dirty;
@@ -1255,8 +1035,8 @@ namespace TAC_AI.AI
             Provoked = 0;
             ActionPause = 0;
             KeepEnemyFocus = false;
-            _losLostGraceTimer = 0f;        // B7: clear LOS-grace on alignment swap
-            ResetDamageAccumulator();       // B2/T2: clear per-attacker damage buckets
+            _losLostGraceTimer = 0f;
+            ResetDamageAccumulator();
             MultiTechsAffiliated.Clear();
 
             AIAlign = AIAlignment.Static;
@@ -1282,8 +1062,6 @@ namespace TAC_AI.AI
             lastCloseAlly = null;
             theBase = null;
             theResource = null;
-            // P08 B-NEW10-2 + P09 T-9-1: SettleDown() already resets ControlCore (SetCoreControlStop)
-            // and clears IsTryingToUnjam — the previously-explicit calls here were redundant.
             SettleDown();
             DropBlock();
             isRTSControlled = false;
@@ -1318,19 +1096,9 @@ namespace TAC_AI.AI
 
             ResetToNormalAimState();
 
-            //enabled = false; // why the heck did I put this here? this is WHY EVERYTHING WAS BROKEN
 
-            //TankDescriptionOverlay overlay = (TankDescriptionOverlay)GUIAIManager.bubble.GetValue(tank);
-            //overlay.Update();
         }
 
-        // Re-entrancy-safe controller swap (build-then-publish). The new controller is fully
-        // constructed and Initiate()d into a local before MovementController is reassigned, and the
-        // old controller is recycled only AFTER the field points at the new one. Recycle() ->
-        // DestroyImmediate can synchronously re-enter via engine callbacks (e.g. OnMoveWorldOrigin)
-        // that read MovementController, so this guarantees the field is never observably null and
-        // never points at a half-Initiated controller (AICore == null) mid-swap. Same-type swaps
-        // reuse the existing component (re-Initiate in place), matching prior GetOrAddComponent behavior.
         private T SwapMovementController<T>(EnemyMind mind) where T : Component, IMovementAIController
         {
             if (MovementController is T existing)
@@ -1340,10 +1108,10 @@ namespace TAC_AI.AI
             }
             IMovementAIController previous = MovementController;
             T built = gameObject.AddComponent<T>();
-            built.Initiate(tank, this, mind);   // fully wired (Tank/Helper/AICore) before publish
-            MovementController = built;          // atomic single publish
+            built.Initiate(tank, this, mind);
+            MovementController = built;
             if (previous != null)
-                previous.Recycle();              // teardown AFTER the field already points at the new one
+                previous.Recycle();
             return built;
         }
 
@@ -1366,26 +1134,14 @@ namespace TAC_AI.AI
                 }
                 if (MovementDispatch.ContainerForEnemy(enemy.EvilCommander) == MovementContainerKind.Air)
                 {
-                    // P08 G.7 escape hatch: if the existing AIControllerAir has flagged the tech
-                    // Grounded (= TestForMayday verdict: damaged beyond flight), demote to ground
-                    // class instead of re-installing Air. Next CheckRebuildAlignment cycle reads
-                    // the new EvilCommander and routes through AIControllerDefault. Prevents the
-                    // "rotorless airplane flailing forever on AIControllerAir" trap.
-                    // P08 G.8: instead of hardcoding Wheeled, re-run BlockSetEnemyHandling so the
-                    // demoted tech gets the best surviving-block class (Naval if floaters,
-                    // Stationary if anchored, Wheeled as final fallback).
                     if (MovementController is AIControllerAir existingAir && existingAir.Grounded)
                     {
                         var oldClass = enemy.EvilCommander;
                         Enemy.RCore.BlockSetEnemyHandling(tank, enemy, false);
-                        // Defensive guard: if the classifier still picks an air class (shouldn't
-                        // happen for a Grounded tech, but guard against pathological cases),
-                        // force Wheeled to avoid an infinite demote-and-recompute loop.
                         if (MovementDispatch.ContainerForEnemy(enemy.EvilCommander) == MovementContainerKind.Air)
                             enemy.EvilCommander = EnemyHandling.Wheeled;
                         DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " demoting from "
                             + oldClass + " → " + enemy.EvilCommander + " (Grounded — no longer flightworthy)");
-                        // fall through to default branch below
                     }
                     else
                     {
@@ -1398,12 +1154,6 @@ namespace TAC_AI.AI
             }
             else
             {
-                // B2: was `throw new Exception`. Throwing from inside RecalibrateMovementAIController
-                // poisons the OnUpdateHostAIDirectors / OnUpdateClientAIDirectors loop for every
-                // other tank that frame. Caller (RecalibrateMovementAIController) now self-heals
-                // the invariant; if it gets here with null enemy despite that, log loud and fall
-                // through to default movement so the tech becomes a non-combat dummy until next
-                // CheckRebuildAlignment cycle restores state.
                 DebugTAC_AI.LogError(KickStart.ModID + ": RecalMoveAIControllerNPT for " + tank.name
                     + " reached with null EnemyMind despite caller guard — falling back to default.");
                 return true;
@@ -1418,16 +1168,10 @@ namespace TAC_AI.AI
             }
             else if (MovementDispatch.ContainerForPlayer(DriverType) == MovementContainerKind.Air)
             {
-                // P08 G.8: mirror the NPT Grounded-demote escape hatch for player-allied air techs.
-                // Player path is keyed on DriverType (not EvilCommander); on demote we switch to
-                // Tank so the next recal installs AIControllerDefault → LandAICore. Without this,
-                // an allied airplane that loses wings would glide-crash and become a permanent
-                // dead tech still attached to AIControllerAir.
                 if (MovementController is AIControllerAir existingAir && existingAir.Grounded)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " (player) demoting from Pilot (Grounded — no longer flightworthy)");
                     DriverType = AIDriverType.Tank;
-                    // fall through to default branch
                 }
                 else
                 {
@@ -1455,13 +1199,8 @@ namespace TAC_AI.AI
         {
             try
             {
-                //DebugTAC_AI.Assert("RecalibrateMovementAIController for " + tank.name + ", type " + DriverType);
                 UsingAirControls = false;
                 var enemy = gameObject.GetComponent<EnemyMind>();
-                // B2: self-heal the AIAlign==NonPlayer && no-EnemyMind invariant violation. Common
-                // causes: OnPreUpdate firing before CheckRebuildAlignment on a respawn, or external
-                // EnemyMind destruction. MP-aware: client must not author EnemyMind (host owns
-                // enemy state), so downgrade to Static and re-dirty for host sync.
                 if (AIAlign == AIAlignment.NonPlayer && enemy.IsNull())
                 {
                     DebugTAC_AI.LogWarnPlayerOnce(KickStart.ModID +
@@ -1482,7 +1221,6 @@ namespace TAC_AI.AI
                 {
                     if (!RecalMoveAIControllerNPT(enemy))
                         return;
-                    // Re-fetch in case the self-heal or NPT branch installed a new Mind.
                     enemy = gameObject.GetComponent<EnemyMind>();
                 }
                 else
@@ -1535,17 +1273,6 @@ namespace TAC_AI.AI
             DebugTAC_AI.Log(KickStart.ModID + ": ExecuteAutoSetNoCalibrate() " + tank.name + " guessing driver is " + DriverType);
         }
 
-        // P11 HIGH-fix: a player tech that gains/loses locomotion blocks while ALREADY classified
-        // Player never re-picked its movement controller or AICore. OnBlockAttached/OnBlockDetaching
-        // only set dirtyAI=Dirty (not DirtyAndReboot) for Player, and ApplyPlayerAlignment early-returns
-        // for an already-Player tech, so DriverType was never re-derived and MovementAIControllerDirty
-        // was never raised. This re-derives DriverType from the current blocks (the same auto-detect
-        // path used at Subscribe) and requests a controller swap only when the class actually changed -
-        // or when on AIControllerAir, where the inner FlyStyle/core (Heli/VTOL/Airplane) can change
-        // without DriverType changing. Debounced via PendingPlayerRecompose so a multi-block build edit
-        // collapses to a single evaluation, and a swap is requested only on a real change (no thrash).
-        // NOTE: DriverType is treated here as auto-derived-from-blocks (the contract used at Subscribe
-        // and by the Grounded-demote hatch). If a manual "driver pin" is ever added, gate this on it.
         private bool PendingPlayerRecompose = false;
         private void ReevaluatePlayerMovementIfNeeded()
         {
@@ -1555,12 +1282,12 @@ namespace TAC_AI.AI
             if (AIAlign != AIAlignment.Player)
                 return;
             AIDriverType before = DriverType;
-            ExecuteAutoSetNoCalibrate();   // re-derive DriverType from current blocks + availability gates
+            ExecuteAutoSetNoCalibrate();
             if (DriverType != before || MovementController is AIControllerAir)
-                RequestMovementControllerSwap(MovementSwapReason.PlayerRecompose);   // deferred swap (consumed in OnUpdate*AIDirectors)
+                RequestMovementControllerSwap(MovementSwapReason.PlayerRecompose);
         }
 
-        public static ExtUsageHint.UsageHint UnitAttacked = 
+        public static ExtUsageHint.UsageHint UnitAttacked =
             new ExtUsageHint.UsageHint(KickStart.ModID, "TankAIHelper.UnitBesieged", new LocExtStringMod(
             new Dictionary<LocalisationEnums.Languages, string>()
             {
@@ -1583,8 +1310,6 @@ namespace TAC_AI.AI
 
         internal void OnHit(ManDamage.DamageInfo dingus)
         {
-            // B2/T2: trip on EITHER a single big hit OR a sustained sub-threshold series
-            // from the same attacker. Big-hit fast path preserves original semantics.
             bool tripped = dingus.Damage > AIGlobals.DamageAlertThreshold;
             Tank src = dingus.SourceTank;
             bool srcAlive = (bool)src;
@@ -1595,12 +1320,8 @@ namespace TAC_AI.AI
             }
             if (!tripped) return;
 
-            // B3: target-independent reactions (Provoked / FIRE_ALL / UI banner / cache
-            // invalidation) fire whether or not the attacker is still alive. A kamikaze
-            // or self-destruct-on-impact destroys SourceTank in the same frame, but the
-            // defender absolutely should still react.
             Provoked = AIGlobals.ProvokeTime;
-            InvalidateTargetCache();  // T5: damage source may be a new fast threat
+            InvalidateTargetCache();
             FIRE_ALL = true;
             if (ManWorldRTS.PlayerIsInRTS && tank.Team == ManPlayer.inst.PlayerTeam)
             {
@@ -1621,12 +1342,10 @@ namespace TAC_AI.AI
                 }
             }
 
-            // Target-dependent reactions: only when SourceTank is still alive.
             if (srcAlive && SetPursuit(src.visible, force: true))
             {
                 if (tank.IsAnchored)
                 {
-                    // Execute remote orders to allied units - Attack that threat!
                     AIECore.RequestFocusFirePlayer(tank, lastEnemyGet, RequestSeverity.AllHandsOnDeck);
                 }
                 else
@@ -1683,13 +1402,10 @@ namespace TAC_AI.AI
             MTOffsetRotUp = Vector3.up;
             MTLockedToTechBeam = false;
             MTMimicHostAvail = false;
-            //World.PlayerRTSControl.ReleaseControl(this);
         }
         public void SetAIControl(AITreeType.AITypes type)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": ForceAllAIsToEscort() - Setting AIType to " + type);
             tank.AI.SetBehaviorType(type);
-            //DebugTAC_AI.Log(KickStart.ModID + ": ForceAllAIsToEscort() - Set AIType");
         }
         private AITreeType.AITypes ChooseAppropriateVanillaAIType()
         {
@@ -1702,7 +1418,6 @@ namespace TAC_AI.AI
 
         public void ForceAllAIsToEscort(bool Do)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": ForceAllAIsToEscort()");
             try
             {
                 if (Do)
@@ -1722,10 +1437,8 @@ namespace TAC_AI.AI
                         SetAIControl(chosen);
                         lastAIType = chosen;
                     }
-                    //DebugTAC_AI.Log(KickStart.ModID + ": ForceAllAIsToEscort() - Getting AIType");
                     if (tank.AI.TryGetCurrentAIType(out AITreeType.AITypes type))
                         DebugTAC_AI.Info(KickStart.ModID + ": AI type is " + type.ToString());
-                    //DebugTAC_AI.Log(KickStart.ModID + ": ForceAllAIsToEscort() - Got AIType");
                 }
                 else
                 {
@@ -1740,7 +1453,7 @@ namespace TAC_AI.AI
                     {
                         SetAIControl(AITreeType.AITypes.Idle);
                         lastAIType = AITreeType.AITypes.Idle;
-                        lastAITypeResolved = true;  // B7: explicit Idle assignment, not resolution failure
+                        lastAITypeResolved = true;
                     }
                 }
                 dirtyAI = AIDirtyState.Dirty;
@@ -1772,7 +1485,6 @@ namespace TAC_AI.AI
             }
         }
 
-        // ----------------------------  GUI Formatter  ---------------------------- 
         internal string GetActionStatus(out bool cantDo)
         {
             cantDo = false;
@@ -1837,7 +1549,7 @@ namespace TAC_AI.AI
             if (tank.IsAnchored)
             {
                 if (IsAutoAnchored)
-                {   // Show auto-anchor debug
+                {
                 }
                 else
                 {
@@ -2318,16 +2030,14 @@ namespace TAC_AI.AI
                                 if (!CT.Any())
                                     output = AILOC.Gen_MoveTo + "rock";
                                 else
-                                    output = AILOC.Gen_MoveTo + StringLookup.GetItemName(theResource.m_ItemType); //theResource.name;
-                                                                                                                 //StringLookup.GetItemName(new ItemTypeInfo(ObjectTypes.Chunk, (int)CT));
+                                    output = AILOC.Gen_MoveTo + StringLookup.GetItemName(theResource.m_ItemType);
                             }
                             else
                             {
                                 if (!CT.Any())
                                     output = AILOC.Collect + "rock";
                                 else
-                                    output = AILOC.Collect + StringLookup.GetItemName(theResource.m_ItemType);//theResource.name;
-                                                                                                          //output = "Mining " + StringLookup.GetItemName(new ItemTypeInfo(ObjectTypes.Chunk, (int)CT));
+                                    output = AILOC.Collect + StringLookup.GetItemName(theResource.m_ItemType);
                             }
                         }
                         else
@@ -2383,7 +2093,7 @@ namespace TAC_AI.AI
                             }
                         }
                         else
-                            output = GUIAIManager.LOC_Miner_desc.ToString().Replace("#", (JobSearchRange + AIGlobals.FindItemScanRangeExtension).ToString()) 
+                            output = GUIAIManager.LOC_Miner_desc.ToString().Replace("#", (JobSearchRange + AIGlobals.FindItemScanRangeExtension).ToString())
                                 +"\nNo blocks in " + (JobSearchRange + AIGlobals.FindItemScanRangeExtension) + "m";
                     }
                     break;
@@ -2392,12 +2102,6 @@ namespace TAC_AI.AI
         private void GetActionOperatorsNonPlayer(ref string output, ref bool cantDo)
         {
             var mind = GetComponent<EnemyMind>();
-            /*
-            if (PursuingTarget)
-            {
-                output = "Getting revenge for comrade";
-                return;
-            }*/
             switch (mind.CommanderMind)
             {
                 case EnemyAttitude.Homing:
@@ -2440,16 +2144,14 @@ namespace TAC_AI.AI
                                     if (CT.Any())
                                         output = AILOC.Gen_MoveTo + "rock";
                                     else
-                                        output = AILOC.Gen_MoveTo + StringLookup.GetItemName(theResource.m_ItemType);//theResource.name;
-                                                                                                                    //StringLookup.GetItemName(new ItemTypeInfo(ObjectTypes.Chunk, (int)CT));
+                                        output = AILOC.Gen_MoveTo + StringLookup.GetItemName(theResource.m_ItemType);
                                 }
                                 else
                                 {
                                     if (CT.Any())
                                         output = AILOC.Collect + "rock";
                                     else
-                                        output = AILOC.Collect + StringLookup.GetItemName(theResource.m_ItemType);//theResource.name;
-                                                                                                              //output = "Mining " + StringLookup.GetItemName(new ItemTypeInfo(ObjectTypes.Chunk, (int)CT));
+                                        output = AILOC.Collect + StringLookup.GetItemName(theResource.m_ItemType);
                                 }
                             }
                             else
@@ -2581,12 +2283,11 @@ namespace TAC_AI.AI
             }
         }
 
-        // ----------------------------  Information Handling  ---------------------------- 
         private int maxBlockCount = 1;
         private int lastBlockCount = 1;
         public bool CanDetectHealth()
         {
-            return true;//TechMemor || AdvancedAI; 
+            return true;
         }
         public float GetHealth()
         {
@@ -2611,7 +2312,7 @@ namespace TAC_AI.AI
         public float GetSpeed()
         {
             if (tank.rbody.IsNull())
-                return 0; // Slow/Stopped
+                return 0;
             if (IsTryingToUnjam)
                 return 0;
             if (Attempt3DNavi || MovementController is AIControllerAir)
@@ -2621,7 +2322,7 @@ namespace TAC_AI.AI
             else
             {
                 if (!(bool)tank.rootBlockTrans)
-                    return 0; // There's some sort of error in play
+                    return 0;
                 return LocalSafeVelocity.z;
             }
         }
@@ -2657,7 +2358,7 @@ namespace TAC_AI.AI
         public bool IsTechMovingAbs(float minSpeed)
         {
             if (tank.rbody.IsNull())
-                return true; // Stationary techs do not get the panic message
+                return true;
             if (IsTryingToUnjam)
                 return false;
             if (Attempt3DNavi || MovementController is AIControllerAir)
@@ -2670,18 +2371,13 @@ namespace TAC_AI.AI
                     return false;
                 if (Mathf.Abs(LocalSafeVelocity.z) > minSpeed || Mathf.Abs(GetDrive) < 0.5f)
                     return true;
-                // A tech pivoting in place to face its goal is making progress, not stuck. Counts the
-                // bad-turn-radius "twitch" pattern as motion so it doesn't feed the unjam FSM.
                 return Mathf.Abs(tank.rbody.angularVelocity.y) > AIGlobals.AngularProgressThreshold;
             }
         }
-        // P09 B-1-4: IsTechMovingSigned had zero callers and a dead negative-minSpeed branch.
-        // Removed. IsTechMovingAbs (unsigned magnitude) and IsTechMovingActual (no throttle bypass)
-        // cover all current consumers.
         public bool IsTechMovingActual(float minSpeed)
         {
             if (tank.rbody.IsNull())
-                return true; // Stationary techs do not get the panic message
+                return true;
             if (IsTryingToUnjam)
                 return false;
             if (Attempt3DNavi || MovementController is AIControllerAir)
@@ -2712,10 +2408,6 @@ namespace TAC_AI.AI
         }
         public Visible GetPlayerTech()
         {
-            // B10: null-guard the failing operations explicitly; on exception, invalidate
-            // lastPlayer (returning null) so callers' IsNotNull() guards short-circuit
-            // instead of acting on stale state. Allied tanks no longer chase a torn-down
-            // player tank for ticks after the player disconnects/respawns.
             if (tank == null)
             {
                 lastPlayer = null;
@@ -2749,7 +2441,6 @@ namespace TAC_AI.AI
                     lastPlayer = null;
                     return null;
                 }
-                // Teammate not found this tick — stale lastPlayer is unsafe; invalidate.
                 lastPlayer = null;
                 return null;
             }
@@ -2800,13 +2491,6 @@ namespace TAC_AI.AI
             return isTrue;
         }
 
-        // ----------------------------  Primary Operations  ---------------------------- 
-        /// <summary>
-        /// T4: per-frame movement bridge from ModuleTechController.ExecuteControl_Prefix.
-        /// Returns true if mod AI took over (suppressing vanilla); false to let vanilla run.
-        /// Distinct from GlobalPatches.TechAIPatches.ControlTech_Prefix (the Harmony prefix
-        /// on vanilla TechAI.ControlTech, which Harmony's name convention locks to that name).
-        /// </summary>
         public bool RunMovementBridge(TankControl thisControl)
         {
             if (ManNetwork.IsNetworked)
@@ -2833,27 +2517,21 @@ namespace TAC_AI.AI
                             }
                         }
                         else if (AIControlOverride != null && !AIControlOverride(this, ExtControlStatus.MaintainersAndDirectors))
-                        {   // override EVERYTHING
+                        {
                             return true;
-                            //return false;
                         }
                         else if (RunState == AIRunState.Advanced)
                         {
                             if (AIAlign == AIAlignment.Player)
                             {
-                                //DebugTAC_AI.Log(KickStart.ModID + ": AI Valid!");
-                                //DebugTAC_AI.Log(KickStart.ModID + ": (TankAIHelper) is " + tank.gameObject.GetComponent<AIEnhancedCore.TankAIHelper>().wasEscort);
-                                //tankAIHelp.AIState &&
                                 if (SetToActive)
                                 {
-                                    //DebugTAC_AI.Log(KickStart.ModID + ": Running BetterAI");
-                                    //DebugTAC_AI.Log(KickStart.ModID + ": Patched Tank ExecuteControl(TankAIHelper)");
                                     UpdateTechControl(thisControl);
                                     return true;
                                 }
                             }
-                            else if (AIAlign == AIAlignment.NonPlayer)// && KickStart.enablePainMode)
-                            {   // This should turn off ONLY for land enemy AI!
+                            else if (AIAlign == AIAlignment.NonPlayer)
+                            {
                                 UpdateTechControl(thisControl);
                                 return true;
                             }
@@ -2888,31 +2566,26 @@ namespace TAC_AI.AI
                         }
                     }
                     else if (AIControlOverride != null && !AIControlOverride(this, ExtControlStatus.MaintainersAndDirectors))
-                    {   // override EVERYTHING
+                    {
                         return true;
                     }
                     else if (RunState == AIRunState.Advanced)
                     {
                         if (AIAlign == AIAlignment.Player)
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI Valid!");
-                            //DebugTAC_AI.Log(KickStart.ModID + ": (TankAIHelper) is " + tank.gameObject.GetComponent<AIEnhancedCore.TankAIHelper>().wasEscort);
                             if (tank.PlayerFocused)
                             {
-                                //SetRTSState(true);
                                 UpdateTechControl(thisControl);
                                 return true;
                             }
                             else if (SetToActive)
                             {
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Running BetterAI");
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Patched Tank ExecuteControl(TankAIHelper)");
                                 UpdateTechControl(thisControl);
                                 return true;
                             }
                         }
-                        else if (AIAlign == AIAlignment.NonPlayer)//KickStart.enablePainMode 
-                        {   // This should turn off ONLY for land enemy AI!
+                        else if (AIAlign == AIAlignment.NonPlayer)
+                        {
                             UpdateTechControl(thisControl);
                             return true;
                         }
@@ -2923,14 +2596,11 @@ namespace TAC_AI.AI
             return false;
         }
         private void UpdateTechControl(TankControl thisControl)
-        {   // The interface method for actually handling the tank - note that this fires at a different rate
+        {
             if (AIControlOverride != null && !AIControlOverride(this, ExtControlStatus.MaintainersAndDirectors))
                 return;
             CurHeight = -500;
 
-            // B12: actively self-heal instead of waiting for next OnPreUpdate, dedup the
-            // log per-tank, and escalate after N consecutive failures so a persistent
-            // invariant violation is observable instead of silent.
             if (MovementController is null)
             {
                 RecalibrateMovementAIController();
@@ -2952,10 +2622,6 @@ namespace TAC_AI.AI
             if (consecutiveNullMovementControllerTicks != 0)
                 consecutiveNullMovementControllerTicks = 0;
 
-            // T3: surface dangerously-stale ControlOperator so over-budget AI populations
-            // (helpersActive.Count >> AIClockPeriod) become observable instead of silently
-            // producing torn movement decisions. Routed to the log file (no popup) - this is routine
-            // under heavy load / slow tile loads and shouldn't interrupt the player every time.
             if (IsControlOperatorStale)
                 DebugTAC_AI.LogWarnFileOnly(
                     "ControlOperatorStale:" + (tank ? tank.name : "<recycled>"),
@@ -2965,9 +2631,6 @@ namespace TAC_AI.AI
             AIEBeam.BeamMaintainer(thisControl, this, tank);
             if (UpdateDirectorsAndPathing)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  Fired CollisionAvoidUpdate!");
-                // B11: per-site, per-tank dedup so 4 distinct failure modes stay distinguishable
-                // and one scene-wide first-failure doesn't mute every subsequent site.
                 try
                 {
                     AIEWeapons.WeaponDirector(thisControl, this, tank);
@@ -2999,7 +2662,7 @@ namespace TAC_AI.AI
                         "AI " + tank.name + ": DriveDirector error", e);
                 }
 
-                UpdateDirectorsAndPathing = false; // incase they fall out of sync
+                UpdateDirectorsAndPathing = false;
             }
             if (NotInBeam)
             {
@@ -3039,16 +2702,11 @@ namespace TAC_AI.AI
 
             BoltsFired = false;
             Attempt3DNavi = false;
-            // B9: ActionPause decrement moved to OnPreUpdate (runs every tick, not staggered).
 
-            // B4: target-focus bookkeeping is an invariant of every allied tick, regardless
-            // of who is driving — a manually-driven tank must not hold a stale lock on a
-            // vanished enemy, and the player should be able to "un-provoke" by disengaging.
             UpdateTargetCombatFocus();
 
             if (tank.PlayerFocused)
             {
-                //updateCA = true;
                 if (KickStart.AllowPlayerRTSHUD)
                 {
 #if DEBUG
@@ -3063,10 +2721,9 @@ namespace TAC_AI.AI
 #endif
                     if (KickStart.AutopilotPlayer)
                     {
-                        Retreat = DetermineRetreatPosture();  // B5: single assignment, no compounding mutation
+                        Retreat = DetermineRetreatPosture();
                         if (RTSControlled)
                         {
-                            // T6 (symmetric): player-side RTS detour. One log per tank per session.
                             DebugTAC_AI.LogWarnPlayerOncePerKey(
                                 "PlayerRTSDetour:" + tank.name,
                                 "AI " + tank.name + ": player-side RTS detour active (RunRTSNavi(true) instead of OpsController.Execute).", null);
@@ -3078,7 +2735,6 @@ namespace TAC_AI.AI
                 }
                 return;
             }
-            // B7: distinguish resolution failure from genuine Idle. Log on transition only.
             if (!aI.TryGetCurrentAIType(out lastAIType))
             {
                 if (lastAITypeResolved)
@@ -3091,18 +2747,12 @@ namespace TAC_AI.AI
             lastAITypeResolved = true;
             if (SetToActive)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  Fired DelayedUpdate!");
 
-                //updateCA = true;
-                //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  current mode " + DediAI.ToString());
 
-                Retreat = DetermineRetreatPosture();  // B5: single assignment, no compounding mutation
+                Retreat = DetermineRetreatPosture();
 
-                // B6: MT slaves can't receive RTS directly — non-MT host gets the waypoint
-                // and drags affiliated MTs via MultiTechsAffiliated/lastTechExtents.
                 if (RTSControlled && IsRTSReceivable)
-                {   //Overrides the Allied Operations for RTS Use
-                    // T6 (symmetric): allied-side RTS detour. One log per tank per session.
+                {
                     DebugTAC_AI.LogWarnPlayerOncePerKey(
                         "AlliedRTSDetour:" + tank.name,
                         "AI " + tank.name + ": allied-side RTS detour active (RunRTSNavi instead of OpsController.Execute).", null);
@@ -3114,9 +2764,6 @@ namespace TAC_AI.AI
         }
         private void RunEnemyOperations(bool light = false)
         {
-            //BEGIN THE PAIN!
-            //updateCA = true;
-            // B9: ActionPause decrement moved to OnPreUpdate (runs every tick, not staggered).
             DetermineRetreatPostureEnemy();
             if (light)
                 RCore.BeEvilLight(this, tank);
@@ -3127,18 +2774,16 @@ namespace TAC_AI.AI
         }
 
         private void RunRTSNavi(bool isPlayerTech = false)
-        {   // Alternative Operator for RTS
+        {
 
-            //ProceedToObjective = true;
             EControlOperatorSet direct = GetDirectedControl();
             if (DriverType == AIDriverType.Pilot)
             {
-                if (DediAI == AIType.Escort && !IsGoingToPositionalRTSDest && 
+                if (DediAI == AIType.Escort && !IsGoingToPositionalRTSDest &&
                     (lastEnemyGet == null || !lastEnemyGet.isActive))
                     RTSDestination = tank.boundsCentreWorldNoCheck;
 
                 GetDistanceFromTask2D(lastDestinationCore, 0);
-                //lastOperatorRange = (DodgeSphereCenter - lastDestinationCore).magnitude;
                 Attempt3DNavi = true;
                 BGeneral.ResetValues(this, ref direct);
                 AvoidStuff = true;
@@ -3165,8 +2810,8 @@ namespace TAC_AI.AI
 
                     }
                     else if (lastOperatorRange > range)
-                    {   // Far behind, must catch up
-                        FullBoost = true; // boost in forwards direction towards objective
+                    {
+                        FullBoost = true;
                     }
                     else
                     {
@@ -3200,10 +2845,8 @@ namespace TAC_AI.AI
                 {
                     SettleDown();
                     ThrottleState = AIThrottleState.PivotOnly;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  RTS - resting");
                     if (DelayedAnchorClock < AIGlobals.BaseAnchorMinimumTimeDelay)
                         DelayedAnchorClock++;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": " + AutoAnchor + " | " + PlayerAllowAnchoring + " | " + (tank.Anchors.NumPossibleAnchors >= 1) + " | " + (DelayedAnchorClock >= AIGlobals.BaseAnchorMinimumTimeDelay) + " | " + !DANGER);
                     if (CanAutoAnchor)
                     {
                         if (!tank.IsAnchored)
@@ -3214,12 +2857,11 @@ namespace TAC_AI.AI
                     }
                 }
                 else
-                {   // Time to go!
+                {
                     anchorAttempts = 0;
                     DelayedAnchorClock = 0;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  RTS - Moving");
                     if (unanchorCountdown > 0)
-                        { /* unanchorCountdown self-counts via its AITimer now */ }
+                        {  }
                     if (AutoAnchor && PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)
                     {
                         if (tank.Anchors.NumIsAnchored > 0)
@@ -3234,25 +2876,12 @@ namespace TAC_AI.AI
                         SetDirectedControl(direct);
                         return;
                     }
-                    // P09 B-10-2: Player RTS uses IsTechMovingAbs (treats `Abs(GetDrive) < 0.5f`
-                    // as moving — lenient, allows idle throttle to count as motion). Enemy RTS
-                    // counterpart at TankAIHelper.cs ~3282 uses IsTechMovingActual (strict, no
-                    // throttle bypass) and EnemyAISpeedPanicDividend. Asymmetry is intentional:
-                    // enemies shouldn't bypass unjam-checks via idle throttle (they have no
-                    // operator to recover them), while player RTS is more forgiving.
                     if (!IsTechMovingAbs(EstTopSped / AIGlobals.PlayerAISpeedPanicDividend))
-                    {   //OBSTRUCTION MANAGEMENT
+                    {
                         TryHandleObstruction(true, lastOperatorRange, false, true, ref direct);
                     }
                     else
                     {
-                        //var val = LocalSafeVelocity.z;
-                        //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  Output " + val + " | TopSpeed/2 " + (EstTopSped / 2) + " | TopSpeed/4 " + (EstTopSped / 4));
-                        /*
-                        ThrottleState = AIThrottleState.ForceSpeed;
-                        float driveVal = Mathf.Min(1, lastOperatorRange / 10);
-                        DriveVar = driveVal;
-                        */
                         if (MoveQueue)
                             AutoSpacing = 0;
                         else
@@ -3265,14 +2894,7 @@ namespace TAC_AI.AI
             BGeneral.RTSCombat(this, tank);
         }
         internal void RunRTSNaviEnemy(EnemyMind mind)
-        {   // Alternative Operator for RTS
-            //DebugTAC_AI.Log("RunRTSNaviEnemy - " + tank.name);
-            /*
-            if (!KickStart.AllowStrategicAI)
-            {
-                RTSControlled = false;
-                return;
-            }*/
+        {
             switch (DediAI)
             {
                 case AIType.MTTurret:
@@ -3311,8 +2933,8 @@ namespace TAC_AI.AI
 
                     }
                     else if (lastOperatorRange > range)
-                    {   // Far behind, must catch up
-                        FullBoost = true; // boost in forwards direction towards objective
+                    {
+                        FullBoost = true;
                     }
                     else
                     {
@@ -3337,10 +2959,8 @@ namespace TAC_AI.AI
                 {
                     SettleDown();
                     ThrottleState = AIThrottleState.PivotOnly;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  RTS - resting");
                     if (DelayedAnchorClock < AIGlobals.BaseAnchorMinimumTimeDelay)
                         DelayedAnchorClock++;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": " + AutoAnchor + " | " + PlayerAllowAnchoring + " | " + (tank.Anchors.NumPossibleAnchors >= 1) + " | " + (DelayedAnchorClock >= 15) + " | " + !DANGER);
                     if (AutoAnchor && !WantsToFight && tank.Anchors.NumPossibleAnchors >= 1
                         && DelayedAnchorClock >= AIGlobals.BaseAnchorMinimumTimeDelay && CanAnchorNow)
                     {
@@ -3353,12 +2973,11 @@ namespace TAC_AI.AI
                     }
                 }
                 else
-                {   // Time to go!
+                {
                     anchorAttempts = 0;
                     DelayedAnchorClock = 0;
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  RTS - Moving");
                     if (unanchorCountdown > 0)
-                        { /* unanchorCountdown self-counts via its AITimer now */ }
+                        {  }
                     if (AutoAnchor && tank.Anchors.NumPossibleAnchors >= 1)
                     {
                         if (tank.Anchors.NumIsAnchored > 0)
@@ -3374,13 +2993,11 @@ namespace TAC_AI.AI
                         return;
                     }
                     if (!IsTechMovingActual(EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
-                    {   //OBSTRUCTION MANAGEMENT
+                    {
                         TryHandleObstruction(true, lastOperatorRange, false, true, ref direct);
                     }
                     else
                     {
-                        //var val = LocalSafeVelocity.z;
-                        //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  Output " + val + " | TopSpeed/2 " + (EstTopSped / 2) + " | TopSpeed/4 " + (EstTopSped / 4));
                         if (MoveQueue)
                             AutoSpacing = 0;
                         else
@@ -3393,36 +3010,27 @@ namespace TAC_AI.AI
             RGeneral.RTSCombat(this, tank, mind);
         }
 
-        // OnPreUpdate -> Directors -> Operations -> OnPostUpdate
         internal void OnPreUpdate()
         {
             if (MovementController == null)
             {
                 DebugTAC_AI.Assert(MovementController == null, "MOVEMENT CONTROLLER IS NULL");
-                //SetupDefaultMovementAIController();
                 RecalibrateMovementAIController();
             }
             recentSpeedSigned = GetSpeed();
             recentSpeed = recentSpeedSigned;
             if (recentSpeed < 1)
                 recentSpeed = 1;
-            // B2: EstTopSped tracking moved here from HostAIOperations and ClientAIOperations.
-            // Runs every Pre tick (not staggered) so the high-water mark is never under-sampled.
             if (EstTopSped < recentSpeed)
                 EstTopSped = recentSpeed;
-            // actionPause now self-counts via its backing AITimer (seconds-based) — no manual decrement needed.
             UpdateLastTechExtentsIfNeeded();
             CheckRebuildAlignment();
-            // B3: latch the alignment for this tick AFTER CheckRebuildAlignment so any pending
-            // dirtyAI mutation has been consumed. Directors + Operations (which may be staggered
-            // across many frames) both read TickAIAlign and see a consistent value.
             tickAIAlign = AIAlign;
             tickAlignmentLatched = true;
             UpdateCollectors();
         }
         internal void OnPostUpdate()
         {
-            // B3: release the latch; next OnPreUpdate re-latches after CheckRebuildAlignment.
             tickAlignmentLatched = false;
             ManageAILockOn();
             UpdateBlockHold();
@@ -3431,7 +3039,7 @@ namespace TAC_AI.AI
         }
         private static List<Tank> TempMultiTechRecalibrate = new List<Tank>();
         private void UpdateLastTechExtentsIfNeeded()
-        {//Handler for the improved AI, gets the job done.
+        {
             try
             {
                 if (dirtyExtents)
@@ -3439,7 +3047,6 @@ namespace TAC_AI.AI
                     dirtyExtents = false;
                     tank.blockman.CheckRecalcBlockBounds();
                     lastTechExtents = (tank.blockBounds.size.magnitude / 2) + 2;
-                    // Insure we are STILL the tracking target!
                     TempMultiTechRecalibrate.AddRange(MultiTechsAffiliated);
                     MultiTechsAffiliated.Clear();
                     foreach (var item in TempMultiTechRecalibrate)
@@ -3471,7 +3078,6 @@ namespace TAC_AI.AI
             }
         }
 
-        // if (!OverrideAllControls), then { Directors -> Operations }
         internal void OnUpdateHostAIDirectors()
         {
             try
@@ -3480,16 +3086,16 @@ namespace TAC_AI.AI
                     RecalibrateMovementAIController();
                 if (RunState == AIRunState.Advanced)
                 {
-                    switch (TickAIAlign)  // B3: tick-stable snapshot
+                    switch (TickAIAlign)
                     {
-                        case AIAlignment.Player: // Player-Controlled techs
+                        case AIAlignment.Player:
                             UpdateDirectorsAndPathing = true;
                             break;
-                        case AIAlignment.NonPlayer: // Enemy / Enemy Base Team
+                        case AIAlignment.NonPlayer:
                             if (KickStart.enablePainMode)
                                 UpdateDirectorsAndPathing = true;
                             break;
-                        default:// Static tech
+                        default:
                             DriveVar = 0;
                             break;
                     }
@@ -3525,20 +3131,20 @@ namespace TAC_AI.AI
                         IsMultiTech = false;
                         break;
                 }
-                switch (TickAIAlign)  // B3: tick-stable snapshot
+                switch (TickAIAlign)
                 {
-                    case AIAlignment.Player: // Player-Controlled techs
+                    case AIAlignment.Player:
                         if (!OverrideControl)
                             CheckEnemyAndAiming();
                         if (IsTryingToUnjam)
                         {
                             TryHandleObstruction(true, lastOperatorRange, false, true, ref ControlOperator);
-                            MarkOperatorDirty();  // T3
+                            MarkOperatorDirty();
                         }
                         else
                             RunAlliedOperations();
                         break;
-                    case AIAlignment.NonPlayer: // Enemy / Enemy Base Team
+                    case AIAlignment.NonPlayer:
                         if (KickStart.enablePainMode)
                         {
                             switch (RunState)
@@ -3551,7 +3157,7 @@ namespace TAC_AI.AI
                                     if (IsTryingToUnjam)
                                     {
                                         TryHandleObstruction(true, lastOperatorRange, false, true, ref ControlOperator);
-                                        MarkOperatorDirty();  // T3
+                                        MarkOperatorDirty();
                                         var mind = GetComponent<EnemyMind>();
                                         if (mind)
                                             RCore.ScarePlayer(mind, this, tank);
@@ -3565,7 +3171,7 @@ namespace TAC_AI.AI
                                     if (IsTryingToUnjam)
                                     {
                                         TryHandleObstruction(true, lastOperatorRange, false, true, ref ControlOperator);
-                                        MarkOperatorDirty();  // T3
+                                        MarkOperatorDirty();
                                         var mind = GetComponent<EnemyMind>();
                                         if (mind)
                                             RCore.ScarePlayer(mind, this, tank);
@@ -3576,7 +3182,7 @@ namespace TAC_AI.AI
                             }
                         }
                         break;
-                    default:// Static tech
+                    default:
                         DriveVar = 0;
                         RunStaticOperations();
                         break;
@@ -3584,11 +3190,6 @@ namespace TAC_AI.AI
             }
             catch (Exception e)
             {
-                // B1: REVIVED original LogWarnPlayerOnce (uncommented). The throw added during
-                // debugging was killing the entire scheduler pass (kept latching B8's static
-                // updateErrored permanently). Per-key dedup lets distinct techs each surface
-                // their first failure; subsequent identical failures stop popups but keep
-                // the Debug.Log line firing for post-mortem.
                 DebugTAC_AI.LogWarnPlayerOncePerKey(
                     "OnUpdateHostAIOperations:" + (tank ? tank.name : "<recycled>"),
                     "OnUpdateHostAIOperations() Critical error on " + (tank ? tank.name : "<recycled>"), e);
@@ -3599,32 +3200,27 @@ namespace TAC_AI.AI
         {
             if (MovementAIControllerDirty)
                 RecalibrateMovementAIController();
-            switch (TickAIAlign)  // B3: tick-stable snapshot
+            switch (TickAIAlign)
             {
-                case AIAlignment.Static:// Static tech
+                case AIAlignment.Static:
                     DriveVar = 0;
                     break;
-                case AIAlignment.Player: // Player-Controlled techs
+                case AIAlignment.Player:
                     UpdateDirectorsAndPathing = true;
                     break;
-                case AIAlignment.NonPlayer: // Enemy / Enemy Base Team
+                case AIAlignment.NonPlayer:
                     UpdateDirectorsAndPathing = true;
                     break;
             }
         }
         internal void OnUpdateClientAIOperations()
         {
-            // B2: wrapped in try/catch so a single client-ops exception can't cascade
-            // through TankAIManager's outer try and kill all subsequent helpers' client ops
-            // that frame. Behavior dispatch is intentionally absent — client is host-
-            // authoritative for control state via networking. EstTopSped tracking moved to
-            // OnPreUpdate (runs every tick, not staggered, so the high-water mark is accurate).
             try
             {
-                if (TickAIAlign == AIAlignment.Static)  // B3: tick-stable snapshot (parity with other phases)
+                if (TickAIAlign == AIAlignment.Static)
                 {
                     DriveVar = 0;
-                    RunStaticOperations();  // local-only ops parity with host path
+                    RunStaticOperations();
                 }
             }
             catch (Exception e)
@@ -3646,23 +3242,17 @@ namespace TAC_AI.AI
             dirtyAI = rebootSameAIAlign ? AIDirtyState.DirtyAndReboot : AIDirtyState.Dirty;
             CheckRebuildAlignment();
         }
-        // T1: alignment-dispatch context. The original CheckRebuildAlignment had three near-
-        // identical 60-line blocks (MP-client / MP-host / SP). The real per-context deltas are
-        // narrow — see the per-Apply* methods below. Roles dispatch via this enum.
         private enum MpRole { SpHost, MpHost, MpClient }
 
         private void CheckRebuildAlignment()
         {
             if (tank.blockman.blockCount == 0)
-                return; // IT'S NOT READY YET
+                return;
             if (dirtyAI == AIDirtyState.Not)
                 return;
 
             bool rebootSameAIAlign = dirtyAI == AIDirtyState.DirtyAndReboot;
             dirtyAI = AIDirtyState.Not;
-            // B1: RunState is derived state owned by the rebuild dispatcher. Reset stale Default
-            // (from a prior HandOffToVanillaForNeutral) before dispatch — the neutral-vanilla
-            // branch below re-asserts Default if still applicable. Self-healing transitions.
             if (RunState == AIRunState.Default)
                 RunState = AIRunState.Advanced;
             hasAI = tank.AI.CheckAIAvailable();
@@ -3676,7 +3266,6 @@ namespace TAC_AI.AI
             {
                 TankAIManager.UpdateTechTeam(tank);
 
-                // Host-only preamble: flush extents to network before any alignment switch.
                 if (role == MpRole.MpHost && dirtyExtents)
                 {
                     dirtyExtents = false;
@@ -3684,7 +3273,7 @@ namespace TAC_AI.AI
                 }
 
                 DispatchAlignment(rebootSameAIAlign, role);
-                ReevaluatePlayerMovementIfNeeded();   // P11: re-pick movement class after a player composition change
+                ReevaluatePlayerMovementIfNeeded();
             }
             catch (Exception e)
             {
@@ -3706,8 +3295,6 @@ namespace TAC_AI.AI
             {
                 ApplyNonPlayerAlignment(rebootSame, role);
             }
-            // T1: the neutral-vanilla handoff is host-side only. Client never enters this branch
-            // (matches the original code, which omitted it from the client block entirely).
             else if (role != MpRole.MpClient && NeutralTechHasOwnVanillaAI(tank))
             {
                 HandOffToVanillaForNeutral(tank);
@@ -3727,7 +3314,6 @@ namespace TAC_AI.AI
             RemoveEnemyMatters();
             AIAlign = AIAlignment.Player;
             RefreshAI();
-            // Host/SP only: persist memorised tech blueprint. Client doesn't author this.
             if (role != MpRole.MpClient && (bool)TechMemor && !BookmarkBuilder.Exists(tank))
                 TechMemor.SaveTech();
             DebugTAC_AI.Log(KickStart.ModID + ": Allied AI " + tank.name + ":  Checked up and good to go!" + LogSuffixFor(role));
@@ -3740,7 +3326,6 @@ namespace TAC_AI.AI
             DebugTAC_AI.Log(KickStart.ModID + ": PlayerNoAI Tech " + tank.name + ": reset" + LogSuffixFor(role));
             ResetOnSwitchAlignments(tank);
             RemoveEnemyMatters();
-            // Host/SP only: set up the build-bookmark scaffold for blueprint-driven repairs.
             if (role != MpRole.MpClient)
                 AIEBases.SetupBookmarkBuilder(this);
             AIAlign = AIAlignment.PlayerNoAI;
@@ -3751,8 +3336,6 @@ namespace TAC_AI.AI
             if (AIAlign == AIAlignment.NonPlayer && !rebootSame) return;
             ResetOnSwitchAlignments(tank);
             AIAlign = AIAlignment.NonPlayer;
-            // T1: collapsed namespace inconsistency (was RCore.GenerateEnemyAI on client,
-            // Enemy.RCore.GenerateEnemyAI on host/SP — same symbol, different qualifiers).
             Enemy.RCore.GenerateEnemyAI(this, tank);
             DebugTAC_AI.Log(KickStart.ModID + ": Enemy AI " + tank.name + " of Team " + tank.Team + ":  Ready to kick some Tech!" + LogSuffixFor(role));
         }
@@ -3803,7 +3386,6 @@ namespace TAC_AI.AI
             }
         }
 
-        // ----------------------------  Pathfinding Processor  ---------------------------- 
         internal float DriveControl
         {
             set => tank.control.DriveControl = value;
@@ -3845,8 +3427,6 @@ namespace TAC_AI.AI
         {
             if (CurHeight == -500)
             {
-                //ManWorld.inst.GetTerrainHeight(tank.boundsCentreWorldNoCheck, out float height);
-                //CurHeight = height;
                 CurHeight = AIEPathMapper.GetAltitudeCached(tank.boundsCentreWorldNoCheck);
             }
             return CurHeight;
@@ -3859,7 +3439,6 @@ namespace TAC_AI.AI
         }
         internal Vector3 GetOtherDir(Tank targetToAvoid)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": GetOtherDir");
             Vector3 inputOffset = tank.boundsCentreWorldNoCheck - targetToAvoid.boundsCentreWorldNoCheck;
             float inputSpacing = targetToAvoid.GetCheapBounds() + lastTechExtents + DodgeStrength;
             Vector3 Final = tank.boundsCentreWorldNoCheck + (inputOffset.normalized * inputSpacing);
@@ -3867,7 +3446,6 @@ namespace TAC_AI.AI
         }
         internal Vector3 GetDir(Tank targetToAvoid)
         {
-            //DebugTAC_AI.Log(KickStart.ModID + ": GetDir");
             Vector3 inputOffset = tank.boundsCentreWorldNoCheck - targetToAvoid.boundsCentreWorldNoCheck;
             float inputSpacing = targetToAvoid.GetCheapBounds() + lastTechExtents + DodgeStrength;
             Vector3 Final = tank.boundsCentreWorldNoCheck - (inputOffset.normalized * inputSpacing);
@@ -3877,19 +3455,13 @@ namespace TAC_AI.AI
         internal static List<KeyValuePair<Vector3, float>> posWeights = new List<KeyValuePair<Vector3, float>>();
         internal Vector3 AvoidAssist(Vector3 targetIn, bool AvoidStatic = true)
         {
-            //IsLikelyJammed = false;
             if (!AvoidStuff || tank.IsAnchored)
                 return targetIn;
-            // Skip sideways destination re-targeting during active combat retreat — it fights the
-            // retreat vector and adds visible wiggle. Lower-level pathing still handles immediate
-            // obstacle reactions; this just suppresses the high-level ally-spacing / scenery-dodge
-            // displacement of the destination point.
             if (WasRetreatingInCombat)
                 return targetIn;
             if (targetIn.IsNaN())
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssist IS NaN!!");
-                //TankAIManager.FetchAllAllies();
                 return targetIn;
             }
             try
@@ -3899,16 +3471,14 @@ namespace TAC_AI.AI
                 float lastAllyDist;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
                 posWeights.Clear();
-                if (SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
+                if (SecondAvoidence && AlliesAlt.Count > 1)
                 {
-                    lastCloseAlly = AIEPathing.SecondClosestAlly(AlliesAlt, tank.boundsCentreWorldNoCheck, out Tank lastCloseAlly2, 
+                    lastCloseAlly = AIEPathing.SecondClosestAlly(AlliesAlt, tank.boundsCentreWorldNoCheck, out Tank lastCloseAlly2,
                         out lastAllyDist, out float lastAuxVal, this);
                     if (lastCloseAlly && lastAllyDist < lastTechExtents + lastCloseAlly.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                     {
                         if (lastCloseAlly2 && lastAuxVal < lastTechExtents + lastCloseAlly2.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name + " and " + lastCloseAlly2.name);
-                            //IsLikelyJammed = true;
                             Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, AvoidStatic, out obst, AdvancedAI);
                             Vector3 ProccessedVal = GetDirAuto(lastCloseAlly) + GetDirAuto(lastCloseAlly2);
                             if (obst)
@@ -3918,8 +3488,6 @@ namespace TAC_AI.AI
                         }
                         else
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name);
-                            //IsLikelyJammed = true;
                             Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, AvoidStatic, out obst, AdvancedAI);
                             Vector3 ProccessedVal = GetDirAuto(lastCloseAlly);
                             if (obst)
@@ -3938,14 +3506,8 @@ namespace TAC_AI.AI
                 else
                 {
                     lastCloseAlly = AIEPathing.ClosestAlly(AlliesAlt, tank.boundsCentreWorldNoCheck, out lastAllyDist, this);
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Ally is " + lastAllyDist + " dist away");
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Trigger threshold is " + (lastTechExtents + Extremes(lastCloseAlly.blockBounds.extents) + 4) + " dist away");
-                    //if (lastCloseAlly == null)
-                    //    DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
                     if (lastCloseAlly != null && lastAllyDist < lastTechExtents + lastCloseAlly.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name);
-                        //IsLikelyJammed = true;
                         Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, AvoidStatic, out obst, AdvancedAI);
                         Vector3 ProccessedVal = GetDirAuto(lastCloseAlly);
                         if (obst)
@@ -3974,9 +3536,6 @@ namespace TAC_AI.AI
             }
             catch (Exception e)
             {
-                // P08 B-NEW8-1: was `if (IsDirectedMovingFromDest) Log(INVERTED); Log(normal);` —
-                // an `if` with no `else` double-logged the inverted-path failure under two keys,
-                // defeating LogWarnPlayerOnce dedup. Add the missing `else`.
                 if (IsDirectedMovingFromDest)
                     DebugTAC_AI.LogWarnPlayerOnce("AvoidAssist()[INVERTED] Critical error", e);
                 else
@@ -3986,19 +3545,13 @@ namespace TAC_AI.AI
         }
         internal Vector3 AvoidAssistPrecise(Vector3 targetIn, bool AvoidStatic = true, bool IgnoreDestructable = false)
         {
-            //  MORE DEMANDING THAN THE ABOVE!
             if (!AvoidStuff || tank.IsAnchored)
                 return targetIn;
-            // P08 B-NEW8-5: mirror the WasRetreatingInCombat early-return from AvoidAssist
-            // (TankAIHelper.cs ~3580) so Path and PrecisePath behave consistently under retreat.
-            // Author's intent in AvoidAssist was "suppress sideways re-targeting during retreat
-            // to prevent wiggle"; PrecisePath should follow the same rule.
             if (WasRetreatingInCombat)
                 return targetIn;
             if (targetIn.IsNaN())
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssistPrecise IS NaN!!");
-                //TankAIManager.FetchAllAllies();
                 return targetIn;
             }
             try
@@ -4008,15 +3561,14 @@ namespace TAC_AI.AI
                 float lastAllyDist;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
                 posWeights.Clear();
-                if (SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
+                if (SecondAvoidence && AlliesAlt.Count > 1)
                 {
-                    lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, tank.boundsCentreWorldNoCheck, out Tank lastCloseAlly2, 
+                    lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, tank.boundsCentreWorldNoCheck, out Tank lastCloseAlly2,
                         out lastAllyDist, out float lastAuxVal, this);
                     if (lastCloseAlly && lastAllyDist < lastTechExtents + lastCloseAlly.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                     {
                         if (lastCloseAlly2 && lastAuxVal < lastTechExtents + lastCloseAlly2.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name + " and " + lastCloseAlly2.name);
                             Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, AvoidStatic, out obst, AdvancedAI, IgnoreDestructable);
                             Vector3 ProccessedVal = GetDirAuto(lastCloseAlly) + GetDirAuto(lastCloseAlly2);
                             if (obst)
@@ -4026,7 +3578,6 @@ namespace TAC_AI.AI
                         }
                         else
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name);
                             Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, AvoidStatic, out obst, AdvancedAI, IgnoreDestructable);
                             Vector3 ProccessedVal = GetDirAuto(lastCloseAlly);
                             if (obst)
@@ -4045,13 +3596,8 @@ namespace TAC_AI.AI
                 else
                 {
                     lastCloseAlly = AIEPathing.ClosestAllyPrecision(AlliesAlt, tank.boundsCentreWorldNoCheck, out lastAllyDist, this);
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Ally is " + lastAllyDist + " dist away");
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Trigger threshold is " + (lastTechExtents + Extremes(lastCloseAlly.blockBounds.extents) + 4) + " dist away");
-                    //if (lastCloseAlly == null)
-                    //    DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
                     if (lastCloseAlly != null && lastAllyDist < lastTechExtents + lastCloseAlly.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name);
                         Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, AvoidStatic, out obst, AdvancedAI, IgnoreDestructable);
                         Vector3 ProccessedVal = GetDirAuto(lastCloseAlly);
                         if (obst)
@@ -4086,18 +3632,13 @@ namespace TAC_AI.AI
         }
         internal Vector3 AvoidAssistPrediction(Vector3 targetIn, float Foresight)
         {
-            //IsLikelyJammed = false;
             if (!AvoidStuff || tank.IsAnchored)
                 return targetIn;
-            // P08 G.4 sibling-of-B-NEW8-5: mirror the WasRetreatingInCombat early-return so all
-            // four AvoidAssist* variants (Path / Precise / Prediction / AirSpacing) share the
-            // author's intent: suppress sideways re-targeting during active combat retreat.
             if (WasRetreatingInCombat)
                 return targetIn;
             if (targetIn.IsNaN())
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssistPrediction IS NaN!!");
-                //TankAIManager.FetchAllAllies();
                 return targetIn;
             }
             try
@@ -4108,7 +3649,7 @@ namespace TAC_AI.AI
                 Vector3 posOffset = tank.boundsCentreWorldNoCheck + (SafeVelocity * Foresight);
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
                 posWeights.Clear();
-                if (SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
+                if (SecondAvoidence && AlliesAlt.Count > 1)
                 {
                     lastCloseAlly = AIEPathing.SecondClosestAlly(AlliesAlt, posOffset, out Tank lastCloseAlly2,
                         out lastAllyDist, out float lastAuxVal, this);
@@ -4116,8 +3657,6 @@ namespace TAC_AI.AI
                     {
                         if (lastCloseAlly2 && lastAuxVal < lastTechExtents + lastCloseAlly2.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name + " and " + lastCloseAlly2.name);
-                            //IsLikelyJammed = true;
                             Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, true, out obst, AdvancedAI);
                             Vector3 ProccessedVal = GetDirAuto(lastCloseAlly) + GetDirAuto(lastCloseAlly2);
                             if (obst)
@@ -4127,8 +3666,6 @@ namespace TAC_AI.AI
                         }
                         else
                         {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name);
-                            //IsLikelyJammed = true;
                             Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, true, out obst, AdvancedAI);
                             Vector3 ProccessedVal = GetDirAuto(lastCloseAlly);
                             if (obst)
@@ -4147,14 +3684,8 @@ namespace TAC_AI.AI
                 else
                 {
                     lastCloseAlly = AIEPathing.ClosestAlly(AlliesAlt, posOffset, out lastAllyDist, this);
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Ally is " + lastAllyDist + " dist away");
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Trigger threshold is " + (lastTechExtents + Extremes(lastCloseAlly.blockBounds.extents) + 4) + " dist away");
-                    //if (lastCloseAlly == null)
-                    //    DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
                     if (lastCloseAlly != null && lastAllyDist < lastTechExtents + lastCloseAlly.GetCheapBounds() + AIGlobals.PathfindingExtraSpace)
                     {
-                        //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ": Spacing from " + lastCloseAlly.name);
-                        //IsLikelyJammed = true;
                         Vector3 obstOff = AIEPathing.ObstDodgeOffset(tank, this, true, out obst, AdvancedAI);
                         Vector3 ProccessedVal = GetDirAuto(lastCloseAlly);
                         if (obst)
@@ -4189,20 +3720,16 @@ namespace TAC_AI.AI
         }
         internal Vector3 AvoidAssistAirSpacing(Vector3 targetIn, float Responsiveness)
         {
-            // P08 G.4 sibling-of-B-NEW8-5: WasRetreatingInCombat parity (see AvoidAssist).
             if (WasRetreatingInCombat)
                 return targetIn;
             try
             {
                 Tank lastCloseAlly;
                 float lastAllyDist;
-                // P08 G.4 sibling-of-B-NEW4-7: was `DodgeSphereCenter / Responsiveness` —
-                // DodgeSphereCenter is an absolute world position; dividing by Responsiveness
-                // (often << 1 for sluggish planes) scales it toward origin and corrupts moveSpace.
                 Vector3 DSO = DodgeSphereCenter;
                 float moveSpace = (DSO - tank.boundsCentreWorldNoCheck).magnitude;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
-                if (SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
+                if (SecondAvoidence && AlliesAlt.Count > 1)
                 {
                     lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, DSO, out Tank lastCloseAlly2,
                         out lastAllyDist, out float lastAuxVal, this);
@@ -4224,7 +3751,6 @@ namespace TAC_AI.AI
                 this.lastCloseAlly = lastCloseAlly;
                 if (lastCloseAlly == null)
                 {
-                    // DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
                     return targetIn;
                 }
                 if (lastAllyDist < lastTechExtents + lastCloseAlly.GetCheapBounds() + AIGlobals.PathfindingExtraSpace + moveSpace)
@@ -4242,11 +3768,10 @@ namespace TAC_AI.AI
             if (targetIn.IsNaN())
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssistAirSpacing IS NaN!!");
-                //TankAIManager.FetchAllAllies();
             }
             return targetIn;
         }
-        
+
         private void UpdatePhysicsInfo()
         {
             if (tank.rbody.IsNotNull())
@@ -4256,7 +3781,7 @@ namespace TAC_AI.AI
                     && !float.IsInfinity(velo.z) && !float.IsInfinity(velo.y))
                 {
                     DodgeSphereCenter = tank.boundsCentreWorldNoCheck + velo.Clamp(lowMaxBoundsVelo, highMaxBoundsVelo);
-                    DodgeSphereRadius = lastTechExtents + Mathf.Clamp(recentSpeed / 2f, 1f, 63f); // Strict
+                    DodgeSphereRadius = lastTechExtents + Mathf.Clamp(recentSpeed / 2f, 1f, 63f);
                     SafeVelocity = velo;
                     LocalSafeVelocity = tank.rootBlockTrans.InverseTransformVector(velo);
                     return;
@@ -4269,7 +3794,7 @@ namespace TAC_AI.AI
         }
         public bool IsOrbiting(float minimumCloseInSpeedSqr = AIGlobals.MinimumCloseInSpeedSqr)
         {
-            return GetPathPointDeltaDistSq() * ((float)KickStart.AIClockPeriod / 40f) < 
+            return GetPathPointDeltaDistSq() * ((float)KickStart.AIClockPeriod / 40f) <
                 Mathf.Max(minimumCloseInSpeedSqr, EstTopSped / 3) && !Avoiding &&
                 Vector3.Dot((PathPoint - tank.boundsCentreWorldNoCheck).normalized, tank.rootBlockTrans.forward) < 0.5f;
         }
@@ -4278,7 +3803,7 @@ namespace TAC_AI.AI
             if (Attempt3DNavi)
             {
                 Vector3 veloFlat;
-                if ((bool)tank.rbody)   // So that drifting is minimized
+                if ((bool)tank.rbody)
                 {
                     veloFlat = SafeVelocity;
                     veloFlat.y = 0;
@@ -4296,7 +3821,7 @@ namespace TAC_AI.AI
         public float GetDistanceFromTask2D(Vector3 taskLocation, float additionalSpacing = 0)
         {
             Vector3 veloFlat;
-            if ((bool)tank.rbody)   // So that drifting is minimized
+            if ((bool)tank.rbody)
             {
                 veloFlat = SafeVelocity;
                 veloFlat.y = 0;
@@ -4311,7 +3836,7 @@ namespace TAC_AI.AI
             if (Attempt3DNavi)
             {
                 Vector3 veloFlat;
-                if ((bool)tank.rbody)   // So that drifting is minimized
+                if ((bool)tank.rbody)
                 {
                     veloFlat = SafeVelocity;
                     veloFlat.y = 0;
@@ -4328,7 +3853,7 @@ namespace TAC_AI.AI
         public float GetPathPointDeltaDistSq2D()
         {
             Vector3 veloFlat;
-            if ((bool)tank.rbody)   // So that drifting is minimized
+            if ((bool)tank.rbody)
             {
                 veloFlat = SafeVelocity;
                 veloFlat.y = 0;
@@ -4341,7 +3866,7 @@ namespace TAC_AI.AI
         }
         public void SetDistanceFromTaskUnneeded()
         {
-            lastOperatorRange = 96; //arbitrary
+            lastOperatorRange = 96;
         }
         public bool AutoHandleObstruction(ref EControlOperatorSet direct, float dist = 0, bool useRush = false, bool useGun = true, float div = 4)
         {
@@ -4354,33 +3879,15 @@ namespace TAC_AI.AI
         }
         public void TryHandleObstruction(bool hasMessaged, float dist, bool useRush, bool useGun, ref EControlOperatorSet direct)
         {
-            //Something is in the way - try fetch the scenery to shoot at
-            //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  Obstructed");
             if (!hasMessaged)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  Can't move there - something's in the way!");
             }
 
             ControlCore.FlagBusyUnstucking();
-            // P09 B-9-1: was unconditionally clearing IsTryingToUnjam, then re-setting it at the
-            // FM > 120 thresholds. Created a false→true round-trip every tick within the beam
-            // window, leaving a latent torn-read hazard for any consumer of IsTechMovingAbs/Signed/
-            // Actual that runs between the clear and re-set. Gate on FM <= UnjamUpdateStart so the
-            // flag stays latched throughout the beam window (120-260) and clears naturally when
-            // SettleDown or soft-decay brings FM back below threshold.
             if (FrustrationMeter <= AIGlobals.UnjamUpdateStart)
                 IsTryingToUnjam = false;
-            // P09 B-3-2: parked techs (DriveDir == Stop) aren't trying to move - don't accumulate
-            // frustration or escalate to beam-fire. Neutral is NOT included here because
-            // BGeneral.ResetValues sets Neutral by default, so the vast majority of unjam calls
-            // arrive with Neutral and rely on the legacy "treat as Forwards" behavior.
             if (direct.DriveDir == EDriveFacing.Stop)
                 return;
-            // Soft decay: if there's any real motion (forward creep or genuine rotation), bleed the
-            // meter so accumulated brief twitches across a long maneuver don't snowball into a beam
-            // trigger. Read rbody.velocity directly rather than recentSpeed — recentSpeed is floored
-            // at 1f (see UpdateAIControl), so a > 0.5f check on it would always pass and the decay
-            // would over-trigger.
             if (FrustrationMeter > 0 && (bool)tank.rbody &&
                 (tank.rbody.velocity.sqrMagnitude > 0.25f
                  || Mathf.Abs(tank.rbody.angularVelocity.y) > AIGlobals.AngularProgressThreshold))
@@ -4389,7 +3896,7 @@ namespace TAC_AI.AI
             }
             ThrottleState = AIThrottleState.FullSpeed;
             if (direct.DriveDir == EDriveFacing.Backwards)
-            {   // we are likely driving backwards
+            {
                 ThrottleState = AIThrottleState.ForceSpeed;
                 DriveVar = -1;
 
@@ -4397,7 +3904,6 @@ namespace TAC_AI.AI
                     Urgency += KickStart.AIClockPeriod / 5f;
                 if (UrgencyOverload > AIGlobals.UrgencyOverloadReconsideration)
                 {
-                    //Are we just randomly angry for too long? let's fix that
                     AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ": Overloaded urgency!  ReCalcing top speed!");
                     EstTopSped = 1;
                     AvoidStuff = true;
@@ -4405,7 +3911,6 @@ namespace TAC_AI.AI
                 }
                 else if (useRush && dist > MaxObjectiveRange * 2)
                 {
-                    //SCREW IT - GO FULL SPEED WE ARE TOO FAR BEHIND!
                     if (useGun)
                         RemoveObstruction();
                     ThrottleState = AIThrottleState.ForceSpeed;
@@ -4437,7 +3942,7 @@ namespace TAC_AI.AI
                     }
                 }
                 else if (AIGlobals.UnjamUpdateFire < FrustrationMeter)
-                {   //Shoot the freaking tree
+                {
                     FrustrationMeter += KickStart.AIClockPeriod;
                     UrgencyOverload += KickStart.AIClockPeriod;
                     if (useGun)
@@ -4446,7 +3951,7 @@ namespace TAC_AI.AI
                     DriveVar = -0.5f;
                 }
                 else
-                {   // Gun the throttle
+                {
                     FrustrationMeter += KickStart.AIClockPeriod;
                     UrgencyOverload += KickStart.AIClockPeriod;
                     ThrottleState = AIThrottleState.ForceSpeed;
@@ -4454,7 +3959,7 @@ namespace TAC_AI.AI
                 }
             }
             else
-            {   // we are likely driving forwards
+            {
                 ThrottleState = AIThrottleState.ForceSpeed;
                 DriveVar = 1;
 
@@ -4462,7 +3967,6 @@ namespace TAC_AI.AI
                     Urgency += KickStart.AIClockPeriod / 5f;
                 if (UrgencyOverload > AIGlobals.UrgencyOverloadReconsideration)
                 {
-                    //Are we just randomly angry for too long? let's fix that
                     AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ": Overloaded urgency!  ReCalcing top speed!");
                     EstTopSped = 1;
                     AvoidStuff = true;
@@ -4470,7 +3974,6 @@ namespace TAC_AI.AI
                 }
                 else if (useRush && dist > MaxObjectiveRange * 2)
                 {
-                    //SCREW IT - GO FULL SPEED WE ARE TOO FAR BEHIND!
                     if (useGun)
                         RemoveObstruction();
                     ThrottleState = AIThrottleState.ForceSpeed;
@@ -4511,7 +4014,7 @@ namespace TAC_AI.AI
                     DriveVar = 0.5f;
                 }
                 else
-                {   // Gun the throttle
+                {
                     FrustrationMeter += KickStart.AIClockPeriod;
                     UrgencyOverload += KickStart.AIClockPeriod;
                     ThrottleState = AIThrottleState.ForceSpeed;
@@ -4527,11 +4030,10 @@ namespace TAC_AI.AI
             else
                 ObstList = AIEPathing.ObstructionAwareness(tank.boundsCentreWorldNoCheck, this, searchRad);
             int bestStep = 0;
-            float bestValue = 250000; // 500
+            float bestValue = 250000;
             int steps = ObstList.Count;
             if (steps <= 0)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": GetObstruction - DID NOT HIT ANYTHING");
                 return null;
             }
             for (int stepper = 0; steps > stepper; stepper++)
@@ -4543,14 +4045,10 @@ namespace TAC_AI.AI
                     bestValue = temp;
                 }
             }
-            //DebugTAC_AI.Log(KickStart.ModID + ": GetObstruction - found " + ObstList.ElementAt(bestStep).name);
             return ObstList.ElementAt(bestStep).trans;
         }
         public void RemoveObstruction(float searchRad = 12)
         {
-            // P09 B-4-5: re-acquire on Unity-destroyed OR out of 1.5x searchRad (tech moved past).
-            // Previously only re-acquired on bare-null, so we kept firing at the original
-            // obstacle's position long after rotating/moving past it.
             float staleRadSqr = (searchRad * 1.5f) * (searchRad * 1.5f);
             bool outOfRange = Obst != null
                 && (Obst.position - tank.boundsCentreWorldNoCheck).sqrMagnitude > staleRadSqr;
@@ -4559,11 +4057,6 @@ namespace TAC_AI.AI
                 Obst = GetObstruction(searchRad);
                 Urgency += KickStart.AIClockPeriod / 5f;
             }
-            // P09 B-9-4: do NOT set FIRE_ALL. FIRE_ALL drives tank.control.FireControl=true which
-            // fires EVERY armed weapon at its independent aim (turrets in resting LOS, missiles at
-            // last enemy lock) with no friendly-fire gate - allies in turret LOS get shot. The
-            // Obsticle WeaponState path already drives weapon fire safely via AimAndFireWeapons +
-            // sceneryBitMask-gated GetObstruction (scenery-only). FIRE_ALL was redundant + dangerous.
         }
         public void SettleDown(bool stopCore = true)
         {
@@ -4572,40 +4065,17 @@ namespace TAC_AI.AI
             FrustrationMeter = 0;
             Obst = null;
             IsTryingToUnjam = false;
-            // P08 B-NEW10-3: clear residual unjam mutations from ControlCore so the Maintainer
-            // doesn't continue driving with FlagBusyUnstucking / DriveAwayFacingTowards state after
-            // the unjam flag clears. Next Director slot will repopulate ControlCore with fresh intent.
-            //
-            // Close-range twitch fix: that hard-stop is only correct when EXITING an unjam (or on
-            // recycle - hence the default stays true). Combat-hold callers (the RWheeled buckets)
-            // call SettleDown every Operations tick and then immediately set their own drive intent
-            // on the operator; stomping ControlCore to Stop here injected an idle frame that the
-            // every-frame Maintainer held until the next (slow) Director rebuild, producing the
-            // visible movement<->idle flap. Those callers pass stopCore:false.
             if (stopCore)
                 SetCoreControlStop();
             ForceSetBeam = false;
-            // P09 B-4-4: guard against ModulePatches.UpdateAim_Prefix NRE on the freshly-nulled Obst.
-            // Only reset WeaponState if it's actually pointing at Obsticle - don't clobber active
-            // Enemy combat that happened to call SettleDown for unrelated reasons. WeaponDirector
-            // re-asserts WeaponState every tick anyway, so this is a one-tick guard for the bad window.
             if (WeaponState == AIWeaponState.Obsticle)
                 WeaponState = AIWeaponState.Normal;
-            // P09 B-5-1: zero the beam timeout so the beam doesn't keep running for up to 40 more
-            // ticks after the FSM reset. Beam pipeline re-arms next tick if FSM still wants it.
             BeamTimeoutClock = 0;
-            // P09 B-5-2: clear FIRE_ALL. BGeneral.ResetValues only runs from active Operations -
-            // a tech with no live op (or one that just finished) would keep firing post-unjam.
             FIRE_ALL = false;
         }
 
-        // ----------------------------  General Targeting  ----------------------------
         internal void AimAndFireWeapons(Vector3 aimWorld, float aimRadius)
         {
-            // P12 BUG-6: small techs auto-fire here without consulting FIRE_ALL (intended convenience for
-            // tiny scouts/melee). But the Obsticle case passes aimRadius 3f, so small techs would spray
-            // obstructions - including invulnerable scenery - every tick. Exclude the Obsticle aim state;
-            // obstacle fire stays gated on FIRE_ALL like every other state.
             if (maxBlockCount < AIGlobals.SmolTechBlockThreshold && aimRadius > 0f
                 && ActiveAimState != AIWeaponState.Obsticle)
                 FireAllWeapons();
@@ -4661,16 +4131,11 @@ namespace TAC_AI.AI
         {
             try
             {
-                // P12 BUG-9: compare against the ACTUAL component state, not a cached flag. If anything
-                // external ever flips tank.Weapons.enabled out from under us, the next call self-heals
-                // instead of latching the stale value forever. Still only logs / churns the Unity enable
-                // lifecycle on a real change (enabled == Disable means the two are out of sync).
                 if (tank.Weapons.enabled == Disable)
                 {
                     DebugTAC_AI.Info(KickStart.ModID + ": AI " + tank.name + " of Team " + tank.Team + ":  Disabled weapons: " + Disable);
                     tank.Weapons.enabled = !Disable;
                 }
-                // Per-tick gate — must run every call during suppression, not just on edge.
                 if (Disable)
                     tank.control.FireControl = false;
             }
@@ -4701,10 +4166,6 @@ namespace TAC_AI.AI
                         float targetDistance = vec.magnitude;
                         if (NeedsLineOfSight && targetDistance > 0.05f)
                         {
-                            // B10: reuse magnitude (vec / d) instead of .normalized (recomputes sqrt).
-                            // The 0.05f guard skips overlapping techs — Physics.Raycast with a zero-
-                            // direction vector is undefined; two coincident centres have nothing
-                            // between them, so leaving wasBlockedThisCheck=false is correct.
                             Vector3 dir = vec / targetDistance;
                             if (Physics.Raycast(pos, dir, out RaycastHit hit,
                                 Mathf.Min(targetDistance, MaxCombatRange), TargetMask, QueryTriggerInteraction.Ignore)
@@ -4713,14 +4174,6 @@ namespace TAC_AI.AI
                                 wasBlockedThisCheck = true;
                             }
                         }
-                        // B4+T1: validation-side hysteresis. A held target is only released past
-                        // MaxCombatRange * CombatRangeRetentionMult. Acquisition (FindEnemy /
-                        // FindEnemyAir) uses the same multiplier (squared form) so the keep/drop
-                        // boundary is symmetric. P05 made the universal per-tick TryRefreshEnemyEnemy
-                        // dispatch via RGeneral.DispatchNoTargetIdle, so this hysteresis is the only
-                        // thing standing between every range-edge wobble and the LollyGag flicker.
-                        // B6: two-tier — even PreserveEnemyTarget can't exceed RTSLockMaxRangeMultiplier
-                        // (hard cap) to prevent cross-map perma-chase in multiplayer RTS.
                         float hardCap = MaxCombatRange * AIGlobals.RTSLockMaxRangeMultiplier;
                         if (targetDistance > hardCap
                             || (targetDistance > MaxCombatRange * AIGlobals.CombatRangeRetentionMult && !PreserveEnemyTarget))
@@ -4730,9 +4183,6 @@ namespace TAC_AI.AI
                         }
                     }
                 }
-                // Apply hysteresis: only flip BlockedLineOfSight on 2 consecutive blocked checks,
-                // clear on any unblocked one. Stops MoveSideways<->stand-and-shoot half-second flicker
-                // from an ally or terrain bump briefly cutting LOS.
                 if (wasBlockedThisCheck)
                 {
                     _losBlockedStreak++;
@@ -4752,12 +4202,6 @@ namespace TAC_AI.AI
             {
                 Tank playerTank = lastPlayer.tank;
                 Visible playerTarget = playerTank.Weapons.GetManualTarget();
-                // B8: honor the player's manual target as an "attack request" only when
-                // (a) target is valid and not friendly/teammate, (b) the player is actively
-                // firing (FireControl) — passive radar lock is NOT an attack request, and
-                // (c) relations are mutable. Then DegradeRelations promotes neutral→enemy
-                // so the IsEnemy purge in CheckEnemyAndAiming won't undo us next tick.
-                // Mirrors the GUINPTInteraction "Annoy the Team" diplomatic event.
                 if (playerTarget && playerTarget.tank != null && playerTarget.isActive &&
                     playerTarget.tank.CentralBlock &&
                     playerTarget.tank.Team != tank.Team &&
@@ -4768,20 +4212,10 @@ namespace TAC_AI.AI
                         playerTank.control.FireControl &&
                         ManBaseTeams.CanAlterRelations(tank.Team, targTeam))
                     {
-                        // Commit the attack request: degrade relations so subsequent
-                        // IsEnemy checks pass. Damage=DamageAngerDropRelations forces
-                        // the drop past the angerThreshold accumulator (consistent with
-                        // GUINPTInteraction.cs:411 "Annoy the Team" semantics).
                         ManBaseTeams.DegradeRelations(tank.Team, targTeam, AIGlobals.DamageAngerDropRelations);
                     }
                     if (ManBaseTeams.IsEnemy(tank.Team, targTeam))
                     {
-                        // B8: was `Provoked = 0; EndPursuit(); lastEnemy = playerTarget;` —
-                        // caused UpdateTargetCombatFocus to instantly EndPursuit on the next
-                        // tick AND (post-B1) left KeepEnemyFocus=false so the range purge
-                        // would drop the acquired target immediately. Mirror B13's MimicDefend
-                        // pattern: SetPursuit(force:true) acquires WITH the lock so the next
-                        // purge tick honors PreserveEnemyTarget.
                         Provoked = AIGlobals.ProvokeTime;
                         SetPursuit(playerTarget, force: true);
                         return lastEnemy;
@@ -4806,21 +4240,15 @@ namespace TAC_AI.AI
                 lastEnemy = FindEnemy(InvertBullyPriority);
             return lastEnemy;
         }
-        private float _losLostGraceTimer = 0f;   // B7: real-time seconds since LOS lost on a held in-range target
+        private float _losLostGraceTimer = 0f;
         private void UpdateTargetCombatFocus()
         {
             if (Provoked > 0)
             {
                 Provoked -= KickStart.AIClockPeriod;
-                _losLostGraceTimer = 0f;       // actively combatting — grace doesn't accrue
+                _losLostGraceTimer = 0f;
                 return;
             }
-            // D5: clamp Provoked to 0. Looks redundant (we're inside `Provoked <= 0`)
-            // but `RRepair.cs:159,182` use strict `Provoked == 0` checks. Decay can
-            // overshoot to a small negative (e.g. `ProvokeTimeShort - AIClockPeriod`
-            // under networked play with AIClockPeriod=30); without this clamp,
-            // RRepair would route into the combat-delay branch forever since decay
-            // never re-runs once we're in this `<=0` arm.
             Provoked = 0;
 
             if (!lastEnemyGet)
@@ -4835,10 +4263,6 @@ namespace TAC_AI.AI
                 EndPursuit();
                 return;
             }
-            // B7: in-range. If a direct-fire shooter has lost sight, hold pursuit for
-            // LOSLostGraceTime before dropping — covers brief occlusion behind cover.
-            // Indirect-fire (artillery, NeedsLineOfSight==false) ignores LOS gating
-            // and behaves as before (pursuit held purely on range).
             if (NeedsLineOfSight && BlockedLineOfSight)
             {
                 _losLostGraceTimer += KickStart.AIClockPeriod * Time.fixedDeltaTime;
@@ -4863,15 +4287,6 @@ namespace TAC_AI.AI
             _lastCombatRange = float.MaxValue;
             return _lastCombatRange;
         }
-        /// <summary>
-        /// T2: Evaluates whether this allied tech should disengage; returns the Retreat verdict.
-        /// Does NOT perform target acquisition — targeting is handled separately by
-        /// CheckEnemyAndAiming. Decision is based on team retreat list, distance from
-        /// base/player, and DamageThreshold.
-        /// </summary>
-        // B5: returns the retreat decision; callers assign Retreat once.
-        // Removes the fragile structural-coupling-to-return that prevented double-eval
-        // — repeating the call now just re-assigns the same value rather than compounding.
         private bool DetermineRetreatPosture()
         {
             if (lastEnemyGet?.tank)
@@ -4940,7 +4355,6 @@ namespace TAC_AI.AI
         }
         private void DetermineRetreatPostureEnemy()
         {
-            //bool DoNotEngage = false;
             Retreat = AIGlobals.IsNotAttract && AIECore.RetreatingTeams.Contains(tank.Team);
 
 #if !STEAM
@@ -4958,18 +4372,13 @@ namespace TAC_AI.AI
         private float lastTargetGatherTime = 0;
         private float lastTargetGatherRangeSqr = 0;
         private List<Tank> targetCache = new List<Tank>();
-        // T5: force a fresh scan next call. Called from OnHit so damage events can't
-        // be hidden behind a stale-cache window.
         internal void InvalidateTargetCache() { lastTargetGatherTime = 0; }
         private List<Tank> GatherTargetTechsInRange(float gatherRangeSqr)
         {
-            // T5: also re-scan if the requested radius grew — a cache populated with a
-            // smaller radius would miss new entrants the larger query expects.
             if (lastTargetGatherTime > Time.time && gatherRangeSqr <= lastTargetGatherRangeSqr)
             {
                 return targetCache;
             }
-            // T5: shorter cache in combat (Provoked or actively pursuing a target).
             float interval = (Provoked > 0f || lastEnemyGet?.tank)
                 ? AIGlobals.TargetCacheRefreshIntervalCombat
                 : AIGlobals.TargetCacheRefreshInterval;
@@ -5004,7 +4413,6 @@ namespace TAC_AI.AI
                 }
                 else
                 {
-                    // B6 two-tier: hard cap always fires; soft cap respects PreserveEnemyTarget.
                     float sqr = (target.tank.boundsCentreWorldNoCheck - scanCenter).sqrMagnitude;
                     bool pastHardCap = sqr > TargetRangeSqr * AIGlobals.RTSLockMaxRangeMultiplierSqr;
                     bool pastSoftCap = sqr > TargetRangeSqr * AIGlobals.CombatRangeRetentionMultSqr;
@@ -5014,7 +4422,7 @@ namespace TAC_AI.AI
                         target = null;
                         EndPursuit();
                     }
-                    else if (PreserveEnemyTarget || NextFindTargetTime <= Time.time) // Carry on chasing the target
+                    else if (PreserveEnemyTarget || NextFindTargetTime <= Time.time)
                     {
                         return target;
                     }
@@ -5023,11 +4431,6 @@ namespace TAC_AI.AI
 
             if (AttackMode == EAttackMode.Random)
             {
-                // D1: filter-then-pick. Original code iterated a random-length prefix of
-                // techs[] and overwrote `target` every step without break — so the result
-                // was the LAST in-range valid enemy in a random prefix (deterministic given
-                // list order, biased toward the tail). Pesterer intent (per comment on
-                // PestererSwitchDelay) is a uniformly-random enemy in range.
                 List<Tank> techs = GatherTargetTechsInRange(TargetRangeSqr);
                 var valid = new List<Visible>(techs.Count);
                 for (int step = 0; step < techs.Count; step++)
@@ -5111,11 +4514,6 @@ namespace TAC_AI.AI
         }
         private Visible ScanAirborneRandom(List<Tank> techs, int launchCount, bool preferAirborne, ref float TargetRangeSqr, Vector3 scanCenter)
         {
-            // D1: filter-then-pick. Original code tightened TargetRangeSqr=dist on every
-            // valid candidate — that turned this "Random" helper into a smallest-distance
-            // picker. Random-mode (Pesterer) intent is a uniformly-random in-range enemy
-            // matching the airborne preference; ref TargetRangeSqr left unmodified so the
-            // ground-preference fallback (?? chain in FindEnemyAir) still sees the original cap.
             var valid = new List<Visible>(launchCount);
             for (int step = 0; step < launchCount; step++)
             {
@@ -5159,12 +4557,6 @@ namespace TAC_AI.AI
             Visible target = lastEnemyGet;
 
             float TargetRangeSqr = MaxCombatRange * MaxCombatRange;
-            // B9: aircraft scan from the velocity-led DodgeSphereCenter — consistent across
-            // Random/Strong/Closest branches AND the staleness check below. Was previously
-            // set in Random branch only; Strong inherited the bounds-centre and large/fast
-            // aircraft made sub-optimal Strong picks. DodgeSphereCenter falls back to
-            // boundsCentreWorldNoCheck when rbody is null (UpdatePhysicsInfo), so this is
-            // strictly a superset of the old behaviour.
             Vector3 scanCenter = DodgeSphereCenter;
 
             if (target != null)
@@ -5175,7 +4567,6 @@ namespace TAC_AI.AI
                 }
                 else
                 {
-                    // B6 two-tier: hard cap always fires; soft cap respects PreserveEnemyTarget.
                     float sqr = (target.tank.boundsCentreWorldNoCheck - scanCenter).sqrMagnitude;
                     bool pastHardCap = sqr > TargetRangeSqr * AIGlobals.RTSLockMaxRangeMultiplierSqr;
                     bool pastSoftCap = sqr > TargetRangeSqr * AIGlobals.CombatRangeRetentionMultSqr;
@@ -5185,7 +4576,7 @@ namespace TAC_AI.AI
                         target = null;
                         EndPursuit();
                     }
-                    else if (PreserveEnemyTarget || NextFindTargetTime <= Time.time) // Carry on chasing the target
+                    else if (PreserveEnemyTarget || NextFindTargetTime <= Time.time)
                     {
                         return target;
                     }
@@ -5205,13 +4596,11 @@ namespace TAC_AI.AI
                 int launchCount = techs.Count();
                 if (InvertBullyPriority)
                 {
-                    // Prefer ground targets (bases). Fall back to airborne if none.
                     target = ScanAirborneStrong(techs, launchCount, preferAirborne: false, invertBully: true, ref TargetRangeSqr, scanCenter)
                           ?? ScanAirborneStrong(techs, launchCount, preferAirborne: true, invertBully: true, ref TargetRangeSqr, scanCenter);
                 }
                 else
                 {
-                    // Prefer airborne targets (smallest in scan). Fall back to ground if none.
                     target = ScanAirborneStrong(techs, launchCount, preferAirborne: true, invertBully: false, ref TargetRangeSqr, scanCenter)
                           ?? ScanAirborneStrong(techs, launchCount, preferAirborne: false, invertBully: false, ref TargetRangeSqr, scanCenter);
                 }
@@ -5246,11 +4635,9 @@ namespace TAC_AI.AI
         }
         public Vector3 InterceptTargetDriving(Visible targetTank)
         {
-            // P08 B-NEW8-4: guard against destroyed-mid-frame Visible (lastEnemyGet.tank can
-            // transition to a Unity-destroyed reference between target selection and consumption).
             if (targetTank.IsNull() || targetTank.tank.IsNull())
                 return tank.boundsCentreWorldNoCheck;
-            if (AdvancedAI)   // Rough Target leading
+            if (AdvancedAI)
             {
                 return RoughPredictTarget(targetTank.tank);
             }
@@ -5262,9 +4649,6 @@ namespace TAC_AI.AI
         private static Vector3 highMaxBoundsVelo = new Vector3(MaxBoundsVelo, MaxBoundsVelo, MaxBoundsVelo);
         public Vector3 RoughPredictTarget(Tank targetTank)
         {
-            // P08 G.5 sibling-of-B-NEW8-4: same destroyed-mid-frame Tank exposure as
-            // InterceptTargetDriving. Guard upstream so every caller (RCore.cs:755 +
-            // AirplaneAICore.cs:905-1038 fan-out) gets the protection.
             if (targetTank.IsNull())
                 return tank.boundsCentreWorldNoCheck;
             if (DriverType != AIDriverType.Stationary && targetTank.rbody.IsNotNull())
@@ -5272,7 +4656,7 @@ namespace TAC_AI.AI
                 var velo = targetTank.rbody.velocity;
                 if (!velo.IsNaN() && !float.IsInfinity(velo.x)
                     && !float.IsInfinity(velo.z) && !float.IsInfinity(velo.y)
-                    && lastCombatRange < float.MaxValue)  // skip the IgnoreEnemyDistance() sentinel
+                    && lastCombatRange < float.MaxValue)
                 {
                     return targetTank.boundsCentreWorldNoCheck + (velo.Clamp(lowMaxBoundsVelo, highMaxBoundsVelo) *
                         (lastCombatRange * AIGlobals.TargetVelocityLeadPredictionMulti));
@@ -5281,15 +4665,13 @@ namespace TAC_AI.AI
             return targetTank.boundsCentreWorldNoCheck;
         }
 
-        // ----------------------------  Lock-On Targeting  ---------------------------- 
         private void ManageAILockOn()
         {
             switch (ActiveAimState)
             {
                 case AIWeaponState.Enemy:
                     if (lastEnemyGet.IsNotNull())
-                    {   // Allow the enemy AI to finely select targets
-                        // T5: site-level guard to avoid Vector3.ToString() alloc when flag off.
+                    {
                         if (!DebugTAC_AI.NoLogTargeting)
                             DebugTAC_AI.LogTargeting(tank, "Overriding targeting to aim at " + lastEnemy.name + " pos " + lastEnemy.tank.boundsCentreWorldNoCheck);
                         lastLockOnTarget = lastEnemyGet;
@@ -5307,10 +4689,6 @@ namespace TAC_AI.AI
                     }
                     break;
                 case AIWeaponState.Mimic:
-                    // Rare-but-live: ActiveAimState is only set to Mimic in AIEWeapons.WeaponMaintainer's
-                    // IsMultiTech branch (when a multi-tech follower's ally has a target). Solo techs never
-                    // reach this case - they resolve to Enemy/Obsticle/Normal instead. Mirror the ally's
-                    // lock-on target so the follower's reticule tracks what the ally is shooting at.
                     if (lastCloseAlly.IsNotNull())
                     {
                         DebugTAC_AI.LogTargeting(tank, "Overriding targeting to aim at player's target");
@@ -5325,7 +4703,7 @@ namespace TAC_AI.AI
             {
                 bool playerAim = tank.PlayerFocused && !ManWorldRTS.PlayerIsInRTS;
                 if (!lastLockOnTarget.isActive || (playerAim && !tank.control.FireControl))
-                {   // Cannot do as camera breaks
+                {
                     lastLockOnTarget = null;
                     return;
                 }
@@ -5353,13 +4731,9 @@ namespace TAC_AI.AI
             }
         }
 
-        // ----------------------------  Chase Handling  ----------------------------
-        public int Provoked = 0;           // Were we hit from afar?
-        public bool KeepEnemyFocus { get; private set; } = false;     // Chasing specified target?
+        public int Provoked = 0;
+        public bool KeepEnemyFocus { get; private set; } = false;
 
-        // B2/T2: per-attacker rolling damage. AccumulateAndCheckThreat is called from
-        // OnHit when the single-shot DamageAlertThreshold is NOT met — sustained low-DPS
-        // fire still trips the alert via the cumulative threshold.
         private struct DamageBucket { public float Accumulator; public float LastUpdateTime; }
         private readonly Dictionary<int, DamageBucket> _damageBuckets = new Dictionary<int, DamageBucket>(4);
         internal bool AccumulateAndCheckThreat(Tank source, float damage)
@@ -5376,29 +4750,23 @@ namespace TAC_AI.AI
             acc += damage;
             if (acc >= AIGlobals.DamageAlertCumulativeThreshold)
             {
-                _damageBuckets.Remove(id);   // consume on trip; re-arm window for next salvo
+                _damageBuckets.Remove(id);
                 return true;
             }
             _damageBuckets[id] = new DamageBucket { Accumulator = acc, LastUpdateTime = now };
             return false;
         }
         internal void ResetDamageAccumulator() => _damageBuckets.Clear();
-        /// <summary>
-        /// T3: enum result for SetPursuit. Callers that only care about "did we acquire?"
-        /// can use the bool shims; callers that need to distinguish "blocked by a held
-        /// lock" (B1) from "target was invalid" (B15 stuck-target debug) can switch on this.
-        /// </summary>
         public enum SetPursuitResult : byte
         {
-            Set            = 0,  // newly assigned (lastEnemy changed, KeepEnemyFocus=true)
-            AlreadyTarget  = 1,  // target == lastEnemy, dest refreshed and lock self-healed
-            BlockedByLock  = 2,  // KeepEnemyFocus held a different target and force=false
-            NullTarget     = 3,  // target was null
-            InvalidTank    = 4,  // target non-null but target.tank was null/destroyed
+            Set            = 0,
+            AlreadyTarget  = 1,
+            BlockedByLock  = 2,
+            NullTarget     = 3,
+            InvalidTank    = 4,
         }
         public bool SetPursuit(Visible target) => IsSetPursuitSuccess(TrySetPursuit(target, false));
         public bool SetPursuit(Visible target, bool force) => IsSetPursuitSuccess(TrySetPursuit(target, force));
-        /// <summary>T3: maps SetPursuitResult to the bool the legacy callers expect.</summary>
         private static bool IsSetPursuitSuccess(SetPursuitResult r) =>
             r == SetPursuitResult.Set || r == SetPursuitResult.AlreadyTarget;
         public SetPursuitResult TrySetPursuit(Visible target) => TrySetPursuit(target, false);
@@ -5410,10 +4778,6 @@ namespace TAC_AI.AI
                 return SetPursuitResult.NullTarget;
             }
             if (!(bool)target.tank) return SetPursuitResult.InvalidTank;
-            // B1: same-target re-call refreshes destination and self-heals the lock.
-            // The per-tick TryRefreshEnemyEnemy in every R* handler depends on this to
-            // keep ControlOperator.lastDestination glued to a moving enemy and to
-            // restore KeepEnemyFocus if it was cleared by the setter invariant.
             if (target == lastEnemy)
             {
                 ControlOperator.SetLastDest(target.tank.boundsCentreWorldNoCheck);
@@ -5424,7 +4788,7 @@ namespace TAC_AI.AI
             if (KeepEnemyFocus && !force) return SetPursuitResult.BlockedByLock;
             lastEnemy = target;
             ControlOperator.SetLastDest(target.tank.boundsCentreWorldNoCheck);
-            MarkOperatorDirty();  // T3: keep age tracking honest on in-place mutation
+            MarkOperatorDirty();
             KeepEnemyFocus = true;
             return SetPursuitResult.Set;
         }
@@ -5435,16 +4799,9 @@ namespace TAC_AI.AI
                 KeepEnemyFocus = false;
             }
         }
-        /// <summary>
-        /// B14/B15: canonical full target release - nulls lastEnemy AND clears KeepEnemyFocus
-        /// atomically. Use for alignment switches, AI re-init, validation purge, monitor
-        /// out-of-radius. Do NOT use inside candidate-scanning loops that only reject a
-        /// LOCAL `target` variable - use EndPursuit() alone there (see FindEnemy 1.21x purge
-        /// and FindEnemyAir 1.21x purge - they release a local, not the committed lastEnemy).
-        /// </summary>
         public void ReleaseTarget()
         {
-            lastEnemy = null;   // setter auto-clears KeepEnemyFocus via the B1 invariant
+            lastEnemy = null;
         }
         public bool InRangeOfTarget(float distance)
         {
@@ -5455,7 +4812,6 @@ namespace TAC_AI.AI
             return (target.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).sqrMagnitude <= distance * distance;
         }
 
-        // ----------------------------  Anchor Management  ---------------------------- 
 
         private static MethodInfo MI = typeof(TechAnchors).GetMethod("ConfigureJoint", BindingFlags.NonPublic | BindingFlags.Instance);
         public void TryInsureAutoAnchor()
@@ -5485,7 +4841,6 @@ namespace TAC_AI.AI
         public void AdjustAnchors()
         {
             bool prevAnchored = tank.IsAnchored;
-            //DebugTAC_AI.Assert("AdjustAnchors()");
             DoUnAnchor();
             if (!tank.IsAnchored)
             {
@@ -5495,15 +4850,12 @@ namespace TAC_AI.AI
 
         public void Unanchor()
         {
-            //DebugTAC_AI.Assert("Unanchor()");
-            //DoUnAnchor();
             AnchorState = AIAnchorState.Unanchor;
             AnchorStateAIInsure = true;
         }
 
         public void AnchorStatic()
         {
-            //DebugTAC_AI.Assert("AnchorStatic()");
             AnchorState = AIAnchorState.AnchorStaticAI;
         }
 
@@ -5517,7 +4869,6 @@ namespace TAC_AI.AI
             if (!tank.IsAnchored && anchorAttempts <= AIGlobals.MaxAnchorAttempts)
             {
                 anchorAttempts++;
-                //DebugTAC_AI.LogDevOnly(KickStart.ModID + ": AI " + tank.name + ":  TryReallyAnchor(" + forced + ")");
                 tank.Anchors.TryAnchorAll(true);
                 if (tank.Anchors.NumIsAnchored > 0)
                 {
@@ -5532,7 +4883,6 @@ namespace TAC_AI.AI
                 bool worked = false;
                 Vector3 startPosTrans = tank.trans.position;
                 tank.FixupAnchors(false);
-                //tank.FixupAnchors(true, true); // Breaks everything
                 if (tank.Anchors.NumIsAnchored > 0)
                 {
                     ExpectAITampering = true;
@@ -5545,7 +4895,6 @@ namespace TAC_AI.AI
                 Vector3 startPos = tank.visible.centrePosition;
                 Quaternion tankFore = AIGlobals.LookRot(tank.trans.forward.SetY(0).normalized, Vector3.up);
                 tank.visible.Teleport(startPos, tankFore, true, true);
-                //Quaternion tankStartRot = tank.trans.rotation;
                 for (int step = 0; step < 6; step++)
                 {
                     if (!tank.IsAnchored)
@@ -5602,14 +4951,11 @@ namespace TAC_AI.AI
         }
         private void DoUnAnchor()
         {
-            //DebugTAC_AI.Log("DoUnAnchor()");
             if (tank.IsAnchored || tank.Anchors.NumIsAnchored > 0)
             {
-                //DebugTAC_AI.Log("DoUnAnchor() - activated");
                 tank.Anchors.UnanchorAll(true);
                 if (!tank.IsAnchored && AIAlign == AIAlignment.Player)
                 {
-                    //DebugTAC_AI.Log("DoUnAnchor() - success");
                     WakeAIForChange();
                 }
             }
@@ -5617,7 +4963,6 @@ namespace TAC_AI.AI
             anchorAttempts = 0;
         }
 
-        // ----------------------------  Logistics  ---------------------------- 
         public TankBlock HeldBlock => heldBlock;
         private TankBlock heldBlock;
         private Vector3 blockHoldPos = Vector3.zero;
@@ -5674,7 +5019,7 @@ namespace TAC_AI.AI
                                 Vector3 forward = tank.trans.TransformDirection(blockHoldRot * Vector3.forward);
                                 Vector3 up = tank.trans.TransformDirection(blockHoldRot * Vector3.up);
                                 Quaternion rotChangeWorld = AIGlobals.LookRot(forward, up);
-                                heldBlock.rbody.MoveRotation(Quaternion.RotateTowards(heldBlock.transform.rotation, rotChangeWorld, 
+                                heldBlock.rbody.MoveRotation(Quaternion.RotateTowards(heldBlock.transform.rotation, rotChangeWorld,
                                     (360 / AIGlobals.BlockAttachDelay) * Time.fixedDeltaTime));
                             }
                             heldBlock.visible.SetLockTimout(Visible.LockTimerTypes.Interactible, 0.25f);
@@ -5690,7 +5035,7 @@ namespace TAC_AI.AI
                     }
                 }
                 else if (ManNetwork.IsHost)
-                {   //clip it into the Tech to send to inventory 
+                {
                     if (!heldBlock.visible.isActive)
                     {
                         DropBlock();
@@ -5717,7 +5062,6 @@ namespace TAC_AI.AI
             }
             else if (ManNetwork.IsNetworked)
             {
-                //DebugTAC_AI.Assert(true, KickStart.ModID + ": Tech " + tank.name + " called HoldBlock in networked environment. This is not supported!");if (TB.block)
                 if (TB.block && Singleton.playerTank)
                 {
                     TB.Teleport(Singleton.playerTank.boundsCentreWorld, Quaternion.identity);
@@ -5817,8 +5161,6 @@ namespace TAC_AI.AI
             {
                 if (heldBlock.rbody)
                 {
-                    // if ((heldBlock.visible.centrePosition - tank.boundsCentreWorldNoCheck).magnitude > 16)
-                    //     heldBlock.visible.centrePosition = tank.boundsCentreWorldNoCheck + (Vector3.up * (lastTechExtents + 3));
                     heldBlock.rbody.velocity = throwDirection.normalized * AIGlobals.ItemThrowVelo;
                 }
                 var CS = heldBlock.GetComponent<ColliderSwapper>();
@@ -5849,10 +5191,8 @@ namespace TAC_AI.AI
             {
                 AvoidStuff = false;
                 IsTryingToUnjam = false;
-                // P08 B-NEW10-3: clear residual unjam mutations from ControlCore (see SettleDown).
                 SetCoreControlStop();
                 CancelInvoke();
-                //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  Allowing approach");
                 Invoke("EndSlowForApproacher", 2);
             }
             if (!techIsApproaching)
@@ -5894,7 +5234,6 @@ namespace TAC_AI.AI
             denyCollect = false;
         }
 
-        // ----------------------------  Self-Repair  ---------------------------- 
         internal Event<TankAIHelper> FinishedRepairEvent = new Event<TankAIHelper>();
         internal void UpdateDamageThreshold()
         {
@@ -5909,8 +5248,6 @@ namespace TAC_AI.AI
                     DamageThreshold = (1f - (root.visible.damageable.Health / (float)root.damage.maxHealth)) * 100;
                     lastBlockCount = blockC;
                 }
-                // Else we have NO ROOT and therefore no blocks(?!?),
-                //   do nothing because putting in zero will immedeately break things
             }
             else
             {
@@ -5932,12 +5269,11 @@ namespace TAC_AI.AI
                     DebugTAC_AI.Assert(KickStart.ModID + ": Tech " + tank.name + "TryRepairStatic has a BookmarkBuilder but NO TechMemor!");
                 }
                 if (lastEnemyGet != null)
-                {   // Combat repairs (combat mechanic)
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " RepairCombat");
+                {
                     AIERepair.RepairStepper(this, tank, TechMemor, true, Combat: true);
                 }
                 else
-                {   // Repairs in peacetime
+                {
                     AIERepair.RepairStepper(this, tank, TechMemor);
                 }
             }
@@ -5964,14 +5300,12 @@ namespace TAC_AI.AI
                     AILimitSettings.OverrideForBuilder();
                 }
                 if (lastEnemyGet != null)
-                {   // Combat repairs (combat mechanic)
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " RepairCombat");
+                {
                     AIERepair.RepairStepper(this, tank, TechMemor, AdvancedAI, Combat: true);
                 }
                 else
-                {   // Repairs in peacetime
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " Repair");
-                    if (AdvancedAI) // faster for smrt
+                {
+                    if (AdvancedAI)
                         AIERepair.InstaRepair(tank, TechMemor, KickStart.AIClockPeriod);
                     else
                         AIERepair.RepairStepper(this, tank, TechMemor);
@@ -5980,8 +5314,7 @@ namespace TAC_AI.AI
             UpdateDamageThreshold();
         }
         public void DelayedRepairUpdate()
-        {   //OBSOLETE until further notice
-            // Dynamic timescaled update that fires when needed, less for slow techs, fast for large techs
+        {
         }
         private void RemoveEnemyMatters()
         {
@@ -5991,15 +5324,14 @@ namespace TAC_AI.AI
         }
         private void RemoveBookmarkBuilder()
         {
-            if (BookmarkBuilder.TryGet(tank, 
+            if (BookmarkBuilder.TryGet(tank,
                 out BookmarkBuilder Builder))
                 Builder.Finish(this);
         }
 
-        // ----------------------------  Debug Collector  ---------------------------- 
         private void ShowCollisionAvoidenceDebugThisFrame()
         {
-            if (AIGlobals.ShowDebugFeedBack && Input.GetKey(KeyCode.LeftShift))// && AIECore.debugVisuals)
+            if (AIGlobals.ShowDebugFeedBack && Input.GetKey(KeyCode.LeftShift))
             {
                 try
                 {

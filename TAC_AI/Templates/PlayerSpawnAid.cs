@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -7,7 +7,7 @@ using TerraTechETCUtil;
 namespace TAC_AI.Templates
 {
     internal class PlayerSpawnAid
-    {   // if the player spawns in the water, we try to spawn them with a bote
+    {
         public static void TryBotePlayerSpawn()
         {
             if (Singleton.playerTank.IsNull())
@@ -40,16 +40,4 @@ namespace TAC_AI.Templates
             }
         }
     }
-    /*
-        FTUEGSOGrade1Bote,
-        FTUEGSOGrade2Bote,
-        FTUEGSOGrade3Bote,
-        FTUEGSOGrade4Bote,
-        FTUEGSOGrade5Bote,
-        FTUEGSOGrade1BoteFallBack,
-        FTUEGSOGrade2BoteFallBack,
-        FTUEGSOGrade3BoteFallBack,
-        FTUEGSOGrade4BoteFallBack,
-        FTUEGSOGrade5BoteFallBack,
-     */
 }

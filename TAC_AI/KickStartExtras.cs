@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-//using Harmony;
 using HarmonyLib;
 using UnityEngine;
 using TAC_AI.AI;
@@ -81,7 +80,7 @@ namespace TAC_AI
             ModHelper.ModConfig thisModConfig = new ModHelper.ModConfig();
             if (!thisModConfig.ReadConfigJsonFile())
             {
-                LoadingHintsExt.MandatoryHints.Add(new LocExtStringNonReg(AltUI.ObjectiveString("Advanced AI") + 
+                LoadingHintsExt.MandatoryHints.Add(new LocExtStringNonReg(AltUI.ObjectiveString("Advanced AI") +
                     " adds multiple layers of depth and " + AltUI.EnemyString("difficulty") + " to TerraTech.  " +
                 AltUI.HintString("Best suited for prospecting veterans looking for a new challenge.")));
             }
@@ -180,7 +179,7 @@ namespace TAC_AI
         public static Nuterra.NativeOptions.OptionToggle aiSelfRepair;
         public static Nuterra.NativeOptions.OptionToggle aiSelfRepair2;
         public static Nuterra.NativeOptions.OptionRange dodgePeriod;
-        public static Nuterra.NativeOptions.OptionRange aiUpkeepRefresh; //AIClockPeriod
+        public static Nuterra.NativeOptions.OptionRange aiUpkeepRefresh;
         public static Nuterra.NativeOptions.OptionRange aiPathing;
         public static Nuterra.NativeOptions.OptionToggle muteNonPlayerBuildRacket;
         public static Nuterra.NativeOptions.OptionToggle allowOverLevelBlocksDrop;
@@ -250,7 +249,7 @@ namespace TAC_AI
         internal static void PushExtModOptionsHandling()
         {
             var TACAI = KickStart.ModID + " - A.I. General";
-#if !STEAM  // Because this toggle is reserved for the loading and unloading of the mod in STEAM release
+#if !STEAM
             betterAI = new OptionToggle("<b>Enable Mod</b>", TACAI, KickStart.EnableBetterAI);
             betterAI.onValueSaved.AddListener(() => { KickStart.EnableBetterAI = betterAI.SavedValue; });
 #endif
@@ -275,7 +274,7 @@ namespace TAC_AI
                     return Mathf.RoundToInt(value * (10f / 6f)) + "%";
                 });
             dodgePeriod.onValueSaved.AddListener(() => { KickStart.AIDodgeCheapness = (int)dodgePeriod.SavedValue + 1; });
-            aiPathing = SuperNativeOptions.OptionRangeAutoDisplay("A.I. Pathfinding Speed", TACAI, 
+            aiPathing = SuperNativeOptions.OptionRangeAutoDisplay("A.I. Pathfinding Speed", TACAI,
                 AIEPathMapper.PathRequestsToCalcPerFrame, 0, 6, 1, (float value) => {
                     if (value == 0)
                         return "Off";
@@ -303,40 +302,33 @@ namespace TAC_AI
             aiSelfRepair2.onValueSaved.AddListener(() => { KickStart.AllowAISelfRepairInMP = aiSelfRepair2.SavedValue; });
 
             var TACAIRTS = KickStart.ModID + " - Real-Time Strategy [RTS] Mode";
-            playerStrategic = new Nuterra.NativeOptions.OptionToggle("Enable A.I. Click-based Control", TACAIRTS, KickStart.AllowPlayerRTSHUD);//\nRandomAdditions and TweakTech highly advised for best experience
-            playerStrategic.onValueSaved.AddListener(() => { 
+            playerStrategic = new Nuterra.NativeOptions.OptionToggle("Enable A.I. Click-based Control", TACAIRTS, KickStart.AllowPlayerRTSHUD);
+            playerStrategic.onValueSaved.AddListener(() => {
                 KickStart.AllowPlayerRTSHUD = playerStrategic.SavedValue;
                 if (KickStart.AllowPlayerRTSHUD)
                 {
                     PlayerRTSUI.Initiate();
-                    // Rebuilds RTS UI (SelectCirclePrefab + SelectWindow/autoWindow) when the player
-                    // toggles RTS HUD on at runtime. Safe after BUG-2 fix added Destroy-before-Instantiate
-                    // guards in DelayedInitiate.
                     ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL);
                 }
                 else
                 {
                     PlayerRTSUI.DeInit();
-                    // ManUI.inst.ShowErrorPopup("A game restart is required to let the changes take effect"); // causes settings fail
                 }
             });
-            enemyStrategic = new Nuterra.NativeOptions.OptionToggle("Allow A.I. to Act When Out of View", TACAIRTS, KickStart.AllowStrategicAI);//\nRandomAdditions and TweakTech highly advised for best experience
+            enemyStrategic = new Nuterra.NativeOptions.OptionToggle("Allow A.I. to Act When Out of View", TACAIRTS, KickStart.AllowStrategicAI);
             enemyStrategic.onValueSaved.AddListener(() => {
                 KickStart.AllowStrategicAI = enemyStrategic.SavedValue;
                 if (KickStart.AllowStrategicAI)
                 {
                     ManEnemyWorld.Initiate();
-                    // Same as above — re-fire DelayedInitiate so RTS UI follows the strategic-AI
-                    // toggle. Safe after BUG-2 fix.
                     ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL);
                 }
                 else
                 {
                     ManEnemyWorld.DeInit();
-                    // ManUI.inst.ShowErrorPopup("A game restart is required to let the changes take effect"); // causes settings fail
                 }
             });
-            guiScaler = SuperNativeOptions.OptionRangeAutoDisplay("RTS GUI Scaling", TACAIRTS, ManWorldRTS.RTSUIScale, 
+            guiScaler = SuperNativeOptions.OptionRangeAutoDisplay("RTS GUI Scaling", TACAIRTS, ManWorldRTS.RTSUIScale,
                 0.5f, 1.5f, 0.05f, (float inVal) => inVal.ToString("P"));
             guiScaler.onValueSaved.AddListener(delegate
             {
@@ -400,7 +392,6 @@ namespace TAC_AI
                     }
                 }
                 KickStart.enablePainMode = painfulEnemies.SavedValue;
-                //DebugRawTechSpawner.CanOpenDebugSpawnMenu = DebugRawTechSpawner.CheckValidMode();
             });
             diff = SuperNativeOptions.OptionRangeAutoDisplay("NPT Difficulty",
                 TACAIEnemies, KickStart.difficulty, KickStart.DifficultyMin, KickStart.DifficultyMax, 50, (float value) => {
@@ -432,7 +423,7 @@ namespace TAC_AI
             displayEvents.onValueSaved.AddListener(() => { KickStart.DisplayEnemyEvents = displayEvents.SavedValue; });
             enemyMiners = new Nuterra.NativeOptions.OptionToggle("NPTs Can Mine", TACAIEnemies, KickStart.AllowEnemiesToMine);
             enemyMiners.onValueSaved.AddListener(() => { KickStart.AllowEnemiesToMine = enemyMiners.SavedValue; });
-            blockRecoveryChance = SuperNativeOptions.OptionRangeAutoDisplay("NPT Block Drop Chance", 
+            blockRecoveryChance = SuperNativeOptions.OptionRangeAutoDisplay("NPT Block Drop Chance",
                 TACAIEnemies, KickStart.EnemyBlockDropChance, 0, 100, 10, (float value) => {
                     if (value == 0)
                         return "Never";
@@ -447,7 +438,7 @@ namespace TAC_AI
             infEnemySupplies = new Nuterra.NativeOptions.OptionToggle("All NPTechs Cheat Blocks", TACAIEnemies, KickStart.EnemiesHaveCreativeInventory);
             infEnemySupplies.onValueSaved.AddListener(() => { KickStart.EnemiesHaveCreativeInventory = infEnemySupplies.SavedValue; });
 
-            founderOnScene = SuperNativeOptions.OptionRangeAutoDisplay("Base Invader Spawn Chance", 
+            founderOnScene = SuperNativeOptions.OptionRangeAutoDisplay("Base Invader Spawn Chance",
                 TACAIEnemies, AIGlobals.EnemyBaseMakerChance, 0, 100, 1, (float value) => {
                     if (value == 0)
                         return "Never";
@@ -456,7 +447,7 @@ namespace TAC_AI
                     return Mathf.RoundToInt(value) + "%";
                 });
             founderOnScene.onValueSaved.AddListener(() => { AIGlobals.EnemyBaseMakerChance = founderOnScene.SavedValue; });
-            founderWorldGen = SuperNativeOptions.OptionRangeAutoDisplay("Natural Base Chance", 
+            founderWorldGen = SuperNativeOptions.OptionRangeAutoDisplay("Natural Base Chance",
                 TACAIEnemies, KickStart.SpawnFoundersPositional, 0, 1f, 0.05f, (float value) => {
                     if (value == 0)
                         return "Never";
@@ -468,7 +459,7 @@ namespace TAC_AI
             founderAlwaysUnloaded = new Nuterra.NativeOptions.OptionToggle("Natural Bases Respawn", TACAIEnemies, KickStart.ActiveSpawnFoundersOffScene);
             founderAlwaysUnloaded.onValueSaved.AddListener(() => { KickStart.ActiveSpawnFoundersOffScene = founderAlwaysUnloaded.SavedValue; });
 
-            existingTeamBaseChance = SuperNativeOptions.OptionRangeAutoDisplay("Team Growth Chance", 
+            existingTeamBaseChance = SuperNativeOptions.OptionRangeAutoDisplay("Team Growth Chance",
                 TACAIEnemies, ManBaseTeams.PercentChanceExisting, 0, 1f, 0.05f, (float value) => {
                     if (value == 0)
                         return "Never";
@@ -477,7 +468,7 @@ namespace TAC_AI
                     return Mathf.RoundToInt(value * 100) + "%";
                 });
             existingTeamBaseChance.onValueSaved.AddListener(() => { ManBaseTeams.PercentChanceExisting = existingTeamBaseChance.SavedValue; });
-            nonHostileBaseChance = SuperNativeOptions.OptionRangeAutoDisplay("Non-Hostile Base Chance", 
+            nonHostileBaseChance = SuperNativeOptions.OptionRangeAutoDisplay("Non-Hostile Base Chance",
                 TACAIEnemies, AIGlobals.AttackableNeutralBaseChanceMulti, 0, 1f, 0.05f, (float value) => {
                     if (value == 0)
                         return "Never";
@@ -495,7 +486,7 @@ namespace TAC_AI
                     return Mathf.RoundToInt(value * 100) + "%";
                 });
             nonHostileAttackableBaseChance.onValueSaved.AddListener(() => { AIGlobals.AttackableNeutralBaseChanceMulti = nonHostileAttackableBaseChance.SavedValue; });
-            nonHostileAlliedBaseChance = SuperNativeOptions.OptionRangeAutoDisplay("Friendly Base Chance", 
+            nonHostileAlliedBaseChance = SuperNativeOptions.OptionRangeAutoDisplay("Friendly Base Chance",
                 TACAIEnemies, AIGlobals.FriendlyBaseChanceMulti, 0, 1f, 0.05f, (float value) => {
                     if (value == 0)
                         return "Never";
@@ -512,7 +503,7 @@ namespace TAC_AI
                     return Mathf.RoundToInt(value).ToString();
                 });
             enemyBaseCount.onValueSaved.AddListener(() => { KickStart.MaxEnemyBaseLimit = (int)enemyBaseCount.SavedValue; });
-            enemyExpandLim = SuperNativeOptions.OptionRangeAutoDisplay("Max NPT Anchored Techs", 
+            enemyExpandLim = SuperNativeOptions.OptionRangeAutoDisplay("Max NPT Anchored Techs",
                 TACAIEnemies, KickStart.MaxBasesPerTeam, 0, 12, 3, (float value) => {
                     if (value == 0)
                         return "Off";
@@ -524,12 +515,12 @@ namespace TAC_AI
             {
                 KickStart.CullFarEnemyBasesMode = SpawnLimiterSettings.SavedValue;
                 KickStart.UpdateCullDist();
-            }); 
+            });
 
             if (!KickStart.isPopInjectorPresent)
             {
                 var TACAIEnemiesPop = KickStart.ModID + " - Non-Player Techs (NPT) Spawning";
-                enemyMaxCount = SuperNativeOptions.OptionRangeAutoDisplay("NPTechs Spawn Limit", 
+                enemyMaxCount = SuperNativeOptions.OptionRangeAutoDisplay("NPTechs Spawn Limit",
                     TACAIEnemiesPop, KickStart.AIPopMaxLimit, 6, 32, 1, (float value) => {
                         if (value == 6)
                             return "Default";
@@ -631,17 +622,11 @@ namespace TAC_AI
                     KickStart.CommitDeathMode = ragnarok.SavedValue;
                     OverrideManPop.ChangeToRagnarokPop(KickStart.CommitDeathMode);
                 });
-                /*
-                copycat = new OptionToggle("<b>Copy Cat</b> - Enemy can use your local Tech snaps!", TACAIEnemiesPop, KickStart.CatMode);
-                copycat.onValueSaved.AddListener(() =>
-                {
-                    KickStart.CatMode = copycat.SavedValue;
-                });*/
                 EnoughLocalTechsSanityCheck();
             }
             if (KickStart.EnemyBlockDropChance == 0)
             {
-                Globals.inst.moduleDamageParams.detachMeterFillFactor = 0;// Make enemies drop no blocks!
+                Globals.inst.moduleDamageParams.detachMeterFillFactor = 0;
             }
 
             if (KickStart.AirEnemiesSpawnRate == 0)

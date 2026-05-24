@@ -8,9 +8,6 @@ namespace TAC_AI.AI
         public static void ResetValues(TankAIHelper helper, ref EControlOperatorSet direct)
         {
             helper.ThrottleState = AIThrottleState.FullSpeed;
-            // P12 BUG-4: don't clear a live player-RTS hold-fire command - ManWorldRTS.Update owns that
-            // bit on a per-frame clock, and this op-tick reset would otherwise race it into FireControl
-            // flicker. Enemy / non-player techs short-circuit at the AIAlign check (no input poll).
             if (!(helper.AIAlign == AIAlignment.Player && !ManNetwork.IsNetworked &&
                   ManWorldRTS.inst != null && AIGlobals.PlayerClientFireCommand() &&
                   ManWorldRTS.inst.LocalPlayerTechsControlled.Contains(helper)))
@@ -29,7 +26,6 @@ namespace TAC_AI.AI
             if (helper.lastEnemyGet != null)
             {
                 helper.TryRefreshEnemyAllied();
-                //Fire even when retreating - the AI's life depends on this!
                 helper.WantsToFight = true;
                 return false;
             }
@@ -43,7 +39,6 @@ namespace TAC_AI.AI
 
         public static void SelfDefend(TankAIHelper helper, Tank tank)
         {
-            // Alternative of the above - does not aim at enemies while mining
             if (helper.Obst == null)
             {
                 if (AidDefend(helper, tank))
@@ -60,7 +55,7 @@ namespace TAC_AI.AI
         public static void RTSCombat(TankAIHelper helper, Tank tank)
         {
             if (helper.lastEnemyGet != null)
-            {   // focus fire like Grudge
+            {
                 helper.WantsToFight = true;
                 if (!helper.lastEnemyGet.isActive)
                     helper.TryRefreshEnemyAllied();
@@ -78,11 +73,7 @@ namespace TAC_AI.AI
                 AIGlobals.FindItemScanRangeExtension, helper.lastTechExtents * AIGlobals.WaterDepthTechHeightPercent,
                 out var tmpRes);
             helper.theResource = tmpRes;
-            if (helper.foundGoal) helper.theResourceNode = tmpRes; // also tag the resource-node role
-            // Deferred-8 fix: branches were swapped. "Found a Resource Node" + centrePosition deref
-            // is the success path (requires foundGoal == true); "Scanning..." + StopByBase is the
-            // failure fallback. Inversion caused an NRE every time a node was found, and the
-            // function returned true only on the NRE path.
+            if (helper.foundGoal) helper.theResourceNode = tmpRes;
             if (helper.foundGoal)
             {
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Found a Resource Node...");
@@ -91,7 +82,7 @@ namespace TAC_AI.AI
                 return true;
             }
             else
-            { // We failed to find anything, so we just sit back and chill
+            {
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Scanning for resources...");
                 StopByBase(helper, tank, includeTradingStations, ref dist, ref hasMessaged, ref direct);
                 return false;
@@ -113,9 +104,9 @@ namespace TAC_AI.AI
             else
             {
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Searching for nearest base!");
-                helper.EstTopSped = 1;//slow down the clock to reduce lagg
+                helper.EstTopSped = 1;
                 direct.STOP(helper);
-                return false; // There's no base!
+                return false;
             }
         }
         public static void GetBaseIfNeeded(TankAIHelper helper, Tank tank, bool includeTradingStations, ref float dist, ref bool hasMessaged, ref EControlOperatorSet direct)
@@ -130,13 +121,13 @@ namespace TAC_AI.AI
             {
                 helper.foundBase = false;
                 direct.STOP(helper);
-                return; // There's no base! 
+                return;
             }
             direct.DriveDest = EDriveDest.ToBase;
             float girth = helper.lastBaseExtremes + helper.lastTechExtents;
             helper.theBase.GetHelperInsured().SlowForApproacher(helper);
             if (dist < girth + 3)
-            {   // We are at the base, too close so give some space
+            {
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Giving room to base... |Tech is at " + tank.boundsCentreWorldNoCheck);
                 direct.DriveAwayFacingTowards();
                 helper.AvoidStuff = false;
@@ -145,7 +136,7 @@ namespace TAC_AI.AI
                 helper.SettleDown();
             }
             else if (dist < girth + 7)
-            {   // We are at the base, stop moving and hold pos
+            {
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at a base and applying brakes. |Tech is at " + tank.boundsCentreWorldNoCheck);
                 direct.DriveToFacingTowards();
                 helper.AvoidStuff = false;
@@ -154,7 +145,7 @@ namespace TAC_AI.AI
                 helper.SettleDown();
             }
             else
-            {   // Go to the place
+            {
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Going to base! |Tech is at " + tank.boundsCentreWorldNoCheck);
                 direct.DriveToFacingTowards();
                 helper.AvoidStuff = true;
@@ -163,7 +154,7 @@ namespace TAC_AI.AI
         public static void StopByPosition(TankAIHelper helper, Tank tank, Vector3 position, float girth, ref EControlOperatorSet direct)
         {
             Vector3 veloFlat = Vector3.zero;
-            if ((bool)tank.rbody)   // So that drifting is minimized
+            if ((bool)tank.rbody)
             {
                 veloFlat = helper.SafeVelocity;
                 veloFlat.y = 0;
@@ -172,7 +163,7 @@ namespace TAC_AI.AI
             float dist = (direct.lastDestination - tank.boundsCentreWorldNoCheck + veloFlat).magnitude;
             direct.DriveDest = EDriveDest.ToLastDestination;
             if (dist < girth + 3)
-            {   // We are at the place, too close so give some space
+            {
                 direct.DriveAwayFacingTowards();
                 helper.AvoidStuff = false;
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -180,7 +171,7 @@ namespace TAC_AI.AI
                 helper.SettleDown();
             }
             else if (dist < girth + 7)
-            {   // We are at the place, stop moving and hold pos
+            {
                 direct.DriveToFacingTowards();
                 helper.AvoidStuff = false;
                 helper.ThrottleState = AIThrottleState.Yield;
@@ -188,7 +179,7 @@ namespace TAC_AI.AI
                 helper.SettleDown();
             }
             else
-            {   // Go to the place
+            {
                 direct.DriveToFacingTowards();
                 helper.AvoidStuff = true;
             }

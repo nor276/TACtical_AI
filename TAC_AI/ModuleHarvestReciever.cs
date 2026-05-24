@@ -28,10 +28,9 @@ namespace TAC_AI
             TankBlock.SubToBlockAttachConnected(null, OnDetach);
             if (TankBlock.tank)
                 OnAttach();
-            //holder.TakeItemEvent.Subscribe(); // too late
         }
         public void OnTaken(Visible vis, ModuleItemHolder.Stack stack)
-        { 
+        {
         }
         public void DelayedSub()
         {
@@ -43,12 +42,10 @@ namespace TAC_AI
             {
                 if (holder.Acceptance.HasFlag(ModuleItemHolder.AcceptFlags.Blocks))
                 {
-                    //DebugTAC_AI.Log("Block " + name + " is a Block Receiver");
                     AIECore.BlockHandlers.Add(this);
                 }
                 if (holder.Acceptance.HasFlag(ModuleItemHolder.AcceptFlags.Chunks))
                 {
-                    //DebugTAC_AI.Log("Block " + name + " is a Chunk Receiver");
                     AIECore.Depots.Add(this);
                 }
             }

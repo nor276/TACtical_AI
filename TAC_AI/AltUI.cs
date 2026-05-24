@@ -65,25 +65,25 @@ namespace TerraTechETCUtil
                         {
                             if (resCase.name == "ACTION_MENU_SHORT_BKG")
                                 MenuTexRect = resCase;
-                            else if (resCase.name == "Button_BLUE")       // HUD_Button_BG
+                            else if (resCase.name == "Button_BLUE")
                                 ButtonTexMain = resCase;
-                            else if (resCase.name == "Button_BLUE_Highlight")// HUD_Button_Highlight
+                            else if (resCase.name == "Button_BLUE_Highlight")
                                 ButtonTexHover = resCase;
-                            else if (resCase.name == "Button_BLUE_Pressed") // HUD_Button_Selected
+                            else if (resCase.name == "Button_BLUE_Pressed")
                                 ButtonTexSelect = resCase;
-                            else if (resCase.name == "Button_GREEN")        // ????
+                            else if (resCase.name == "Button_GREEN")
                                 ButtonTexAccept = resCase;
-                            else if (resCase.name == "Button_GREEN_Highlight")// ????
+                            else if (resCase.name == "Button_GREEN_Highlight")
                                 ButtonTexAcceptHover = resCase;
-                            else if (resCase.name == "Button_GREEN_Pressed")// ????
+                            else if (resCase.name == "Button_GREEN_Pressed")
                                 ButtonTexSelectGreen = resCase;
-                            else if (resCase.name == "Button_RED")          // HUD_Button_Disabled_BG
+                            else if (resCase.name == "Button_RED")
                                 ButtonTexDisabled = resCase;
-                            else if (resCase.name == "Button_RED_Highlight")        // ????
+                            else if (resCase.name == "Button_RED_Highlight")
                                 ButtonTexDisabledHover = resCase;
-                            else if (resCase.name == "Button_RED_Pressed")        // ????
+                            else if (resCase.name == "Button_RED_Pressed")
                                 ButtonTexSelectRed = resCase;
-                            else if (resCase.name == "HUD_Button_InActive") // HUD_Button_InActive
+                            else if (resCase.name == "HUD_Button_InActive")
                                 ButtonTexInactive = resCase;
                         }
                     }
@@ -254,7 +254,7 @@ namespace TerraTechETCUtil
             GUI.skin = cache;
         }
 
-        static readonly FieldInfo 
+        static readonly FieldInfo
             textInput = typeof(FloatingTextPanel).GetField("m_AmountText", BindingFlags.NonPublic | BindingFlags.Instance),
             listOverlays = typeof(ManOverlay).GetField("m_ActiveOverlays", BindingFlags.NonPublic | BindingFlags.Instance),
             rects = typeof(FloatingTextPanel).GetField("m_Rect", BindingFlags.NonPublic | BindingFlags.Instance),

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace TAC_AI
 {
@@ -16,15 +16,4 @@ namespace TAC_AI
         Buccaneer = 128,
         All = 255,
     }
-    /*
-            public bool isAegisAvail = false;       //Is there an Aegis-enabled AI on this tech?
-
-            public bool isProspectorAvail = false;  //Is there a Prospector-enabled AI on this tech?
-            public bool isScrapperAvail = false;    //Is there a Scrapper-enabled AI on this tech?
-            public bool isEnergizerAvail = false;   //Is there a Energizer-enabled AI on this tech?
-
-            public bool isAviatorAvail = false;
-            public bool isAstrotechAvail = false;
-            public bool isBuccaneerAvail = false;
-     */
 }

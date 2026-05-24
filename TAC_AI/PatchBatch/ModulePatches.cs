@@ -28,8 +28,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleWeapon);
             static readonly FieldInfo targDeli = typeof(TargetAimer).GetField("AimDelegate", BindingFlags.NonPublic | BindingFlags.Instance);
-            //AllowAIToAimAtScenery - On targeting
-            
+
             private static bool UpdateAim_Prefix(ModuleWeapon __instance, IModuleWeapon ___m_WeaponComponent, ref TargetAimer ___m_TargetAimer)
             {
                 if (!KickStart.EnableBetterAI)
@@ -44,12 +43,6 @@ namespace TAC_AI
                             case AIWeaponState.Normal:
                                 break;
                             case AIWeaponState.Enemy:
-                                // P12 BUG-7 / TD-4: vanilla applies NO velocity lead (only gravity-drop),
-                                // and AutoAim guns ignore tank.control.TargetPositionWorld - so without this,
-                                // every direct-fire AI weapon trails a moving target by the full time-of-flight.
-                                // Lead per-weapon using THIS gun's muzzle velocity (retiring the single global
-                                // 0.01f lead constant for aiming), composed through the existing gravity-drop
-                                // AimDelegate so arc weapons still solve elevation for the led point.
                                 if (___m_TargetAimer && AICommand.lastEnemyGet?.tank?.rbody != null &&
                                     ___m_WeaponComponent is ModuleWeaponGun leadGun)
                                 {
@@ -62,7 +55,6 @@ namespace TAC_AI
                                         Vector3 tgtVel = leadTgt.rbody.velocity;
                                         if (!float.IsNaN(tgtVel.x) && !float.IsInfinity(tgtVel.x))
                                         {
-                                            // iterative time-of-flight (2 passes converge for near-constant velocity)
                                             float tof = (tgtPos - firePos).magnitude / muzzleVel;
                                             tof = (tgtPos + (tgtVel * tof) - firePos).magnitude / muzzleVel;
                                             tof = Mathf.Min(tof, AIGlobals.LeadPredictionMaxTOF);
@@ -79,22 +71,18 @@ namespace TAC_AI
                                     __instance.block.trans.TransformDirection(new Vector3(0, -0.5f, 1)), __instance.RotateSpeed);
                                 return false;
                             case AIWeaponState.Obsticle:
-                                // P09 B-4-1: guard against null/destroyed Obst. SettleDown nulls Obst but
-                                // doesn't always clear ActiveAimState — and even when both are cleared,
-                                // a destroyed-mid-frame Unity Transform satisfies != null but NREs on .position.
-                                // Mirror TankAIManager.cs:639-642's invariant on the consumer side.
                                 if (AICommand.Obst.IsNull())
                                 {
                                     AICommand.Obst = null;
                                     AICommand.ActiveAimState = AIWeaponState.Normal;
-                                    return true; // fall through to vanilla aim
+                                    return true;
                                 }
                                 Visible obstVis = AICommand.Obst.GetComponent<Visible>();
                                 if (obstVis && !obstVis.isActive)
                                 {
                                     AICommand.Obst = null;
                                     AICommand.ActiveAimState = AIWeaponState.Normal;
-                                    return true; // fall through to vanilla aim
+                                    return true;
                                 }
                                 if (___m_TargetAimer)
                                 {
@@ -119,7 +107,7 @@ namespace TAC_AI
                 catch { }
                 return true;
             }
-            
+
             static readonly FieldInfo aimers = typeof(ModuleWeapon).GetField("m_TargetAimer", BindingFlags.NonPublic | BindingFlags.Instance),
                 aimerTargPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance),
                 WeaponTargPos = typeof(ModuleWeapon).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -259,9 +247,8 @@ namespace TAC_AI
             {
                 if (__instance.block.tank.IsNull())
                     return;
-                // Setup trolls if Population Injector is N/A
-                if (KickStart.enablePainMode && KickStart.AllowEnemiesToStartBases && SpecialAISpawner.thisActive && 
-                    ManPop.inst.IsSpawningEnabled && 
+                if (KickStart.enablePainMode && KickStart.AllowEnemiesToStartBases && SpecialAISpawner.thisActive &&
+                    ManPop.inst.IsSpawningEnabled &&
                     ManWorld.inst.Vendors.IsVendorSCU(__instance.block.BlockType))
                 {
                     if (ManWorld.inst.GetTerrainHeight(__instance.transform.position, out _))
@@ -282,7 +269,6 @@ namespace TAC_AI
                     "per-tick movement maintainer hook — drives DriveMaintainer on every vanilla tick");
                 if (KickStart.EnableBetterAI)
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": AIEnhanced enabled");
                     try
                     {
                         var tank = __instance.block.tank;
@@ -298,7 +284,6 @@ namespace TAC_AI
                                 }
                             }
                         }
-                        // else it's still initiating
                     }
                     catch (Exception e)
                     {
@@ -310,7 +295,6 @@ namespace TAC_AI
             }
         }
 
-        // Resources/Collection
         internal static class ResourceDispenserPatches
         {
             internal static Type target = typeof(ResourceDispenser);
@@ -323,8 +307,6 @@ namespace TAC_AI
                     if (dmg && !dmg.Invulnerable && !AIECore.Minables.Contains(__instance.visible))
                         AIECore.Minables.Add(__instance.visible);
                 }
-                // Risk-2 fix: surface the first occurrence per hook so silent Minables-list
-                // corruption is diagnosable (was: `catch { } // null call`).
                 catch (Exception e) { DebugTAC_AI.LogWarnPlayerOncePerKey("ResourceDispenser.OnSpawn:" + (__instance ? __instance.GetType().Name : "<null>"), "ResourceDispenser.OnSpawn hook failed; Minables list may have stale entries", e); }
             }
             private static void InitState_Postfix(ResourceDispenser __instance)
@@ -369,13 +351,10 @@ namespace TAC_AI
             }
             private static void OnRecycle_Prefix(ResourceDispenser __instance)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": Removed resource from list (OnRecycle)");
                 if (AIECore.Minables.Contains(__instance.visible))
                 {
                     AIECore.Minables.Remove(__instance.visible);
                 }
-                //else
-                //    DebugTAC_AI.Log(KickStart.ModID + ": RESOURCE WAS ALREADY REMOVED! (OnRecycle)");
 
             }
             private static void Deactivate_Prefix(ResourceDispenser __instance)

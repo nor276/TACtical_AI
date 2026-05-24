@@ -62,7 +62,6 @@ namespace TAC_AI.Templates
                     { DebugTAC_AI.Log(KickStart.ModID + ": FetchPublicTechs(CommunityCluster) - commBatch - ERROR " + e); }
                 }
 
-                //textData = KickStartTAC_AI.oInst.GetModContainer().GetTextFromModAssetBundle("commBatch");
                 if (textData == null)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": FetchPublicTechs(CommunityCluster) - FAILED from assetbundle, trying local...");
@@ -76,8 +75,6 @@ namespace TAC_AI.Templates
                         }
                     }
                 }
-                //if (textData == null)
-                //    DebugTAC_AI.Assert("commBatch could not be found!");
                 DebugTAC_AI.Log(KickStart.ModID + ": FetchPublicTechs(CommunityCluster) - File " + Path.GetFileNameWithoutExtension("commBatch.RTList") +
                     " missing or compromized - looking into our contents:");
                 ResourcesHelper.LookIntoModContents(KickStartTAC_AI.oInst.GetModContainer());
@@ -119,7 +116,7 @@ namespace TAC_AI.Templates
                 }
                 catch { }
             }
-            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);//, RawTechExporter.JSONDEV);
+            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);
         }
 
         internal static void DeployUncompressed(string location)
@@ -133,7 +130,6 @@ namespace TAC_AI.Templates
                 {
                     if (!dictSorted.TryGetValue(res, out _))
                         dictSorted.Add(res, item.Value);
-                    //Else, overlapping entry
                 }
                 else
                     needsToAddToSpawnBaseTypes = true;
@@ -204,14 +200,14 @@ namespace TAC_AI.Templates
                 }
             }
             string export = Path.Combine(new DirectoryInfo(Application.dataPath).Parent.ToString(), "MassExport");
-            File.WriteAllText(Path.Combine(export, "ESpawnBaseTypes.json"), ""); // CLEAR
+            File.WriteAllText(Path.Combine(export, "ESpawnBaseTypes.json"), "");
             List<string> toWrite = new List<string>();
             foreach (string str in basetypeNamesOrdered)
             {
                 toWrite.Add(str + ",");
             }
             File.AppendAllLines(Path.Combine(export, "ESpawnBaseTypes.json"), toWrite);
-            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);//, RawTechExporter.JSONDEV);
+            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);
         }
 
         internal static void Organize(ref Dictionary<SpawnBaseTypes, RawTechTemplate> dict)

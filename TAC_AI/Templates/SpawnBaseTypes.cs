@@ -14,61 +14,56 @@ namespace TAC_AI.Templates
         GSOSeller,
         GSOMidBase,
         GSOMinerCluster,
-        GSOAIMinerProduction,// To-Do [Mining drone spawner]
+        GSOAIMinerProduction,
         GSOTechFactory,
         GSOHVYTankFactory,
-        GSOAirbase,// To-Do [aircraft spawner]
-        GSOStarport,// To-Do [Starfighter spawner]
-        GSOCorvetteGantry, //
-        GSOMacrocosmGantry,// To-Do [heavy spaceship spawner]
-        //-HQs
-        GSOMilitaryBase,// To-Do
+        GSOAirbase,
+        GSOStarport,
+        GSOCorvetteGantry,
+        GSOMacrocosmGantry,
+        GSOMilitaryBase,
 
         GCMiningRig,
         GCTerraBore,
         GCLoaderLauncher,
-        GCProspectorHub,// To-Do [Heavy Mining drone spawner]
+        GCProspectorHub,
         GCMiningLaser,
         GCDefTurret,
-        //-HQs
         GCHeadquarters,
 
         VENTuningShop,
         VENGasStation,
         VENPitStop,
         VENRallyHost,
-        VENAviationCenter,// To-Do [Multi-Aircraft spawner]
-        VENGasSilo,// To-Do
-        //-HQs
+        VENAviationCenter,
+        VENGasSilo,
         VENSpeedac,
 
         HECombatStation,
         HEOilDerrick,
-        HEComsat, // To-Do [sends allies to attack really far]
-        HEMunitionsDepot,// To-Do [Bike factory]
-        HETankFactory,// To-Do [Light tank spawner]
-        HEAAFactory, // To-Do [AA spawner]
+        HEComsat,
+        HEMunitionsDepot,
+        HETankFactory,
+        HEAAFactory,
         HEArtyFactory,
         HEXLTankFactory,
         HEAircraftGarrison,
         HEXLAircraftGarrison,
-        //-HQs
         HECommandCentre,
 
         BFGains,
         BFExtractor,
         BFDrifter,
-        BFShampoo,// To-Do [medium ground Tech spawner]
+        BFShampoo,
         BFHoverFactory,
-        BFSporkFabricator,// To-Do [medium spaceship spawner]
-        //-HQs
+        BFSporkFabricator,
         BFNoleusAutoworks,
 
         RRDecanter,
         RRSampler,
-        RRFactory,// To-Do - RR Light tank spawner
+        RRFactory,
         RRHeavyFactory,
-        RRScienceVessel,// To-Do - RR spaceship spawner
+        RRScienceVessel,
 
         GSOLightDefense,
         GSOTowerDefense,
@@ -78,7 +73,7 @@ namespace TAC_AI.Templates
         VENDeputyTurret,
         HEPerimeterDefense,
         HECapitalDefense,
-        BFOrbitarGuard, // To-Do
+        BFOrbitarGuard,
 
         GSOTonyTeam,
         GSOHarvesterTech,
@@ -87,47 +82,43 @@ namespace TAC_AI.Templates
         BFHarvesterTech,
         RRHarvesterTech,
 
-        // Hybridz - will spawn if player is at every max grade corp and they are PAIN
         AttractServo,
-        // TAC lol (OBSOLETE)
         TACInvaderAttract,
         TACInvaderAttract2,
         TACOutpostMissions,
         TACSentinelTurret,
 
-        // World Gen (emergency)
-        // Aircraft - from slow to fast sorted by corp
-        GSOLiftOff,         //> Unarmed, early
-        GSOEpicTony,        // lotta lasers
-        GSOAirdropSquad,    //> GSO Dropship
-        GSOHammer,          //> GSO Missile aircraft
-        GSOFightOrFlight,   // Heavy GSO does-all
+        GSOLiftOff,
+        GSOEpicTony,
+        GSOAirdropSquad,
+        GSOHammer,
+        GSOFightOrFlight,
 
-        GCFuryFlier,        // Heavy GC assault plane
+        GCFuryFlier,
 
-        VENLiftOff,         //> Unarmed, early
-        VENPuffPlane,       //> Small Venture interceptor
-        VENDraftPlane,      // Medium Venture interceptor
-        VENZephrPlane,      // Medium interceptor [mortars]
-        VENTornadoPlane,    // Heavy interceptor [missiles]
-        VENHotWings,        // Racer dropship
-        VENMachinator,      //> gg toofast, tons of missiles
+        VENLiftOff,
+        VENPuffPlane,
+        VENDraftPlane,
+        VENZephrPlane,
+        VENTornadoPlane,
+        VENHotWings,
+        VENMachinator,
 
-        HEPeanutJet,        //> Intro cutscene enemy, has cruise missiles very early
-        HEProx,             //> Little fighter
-        HEVengence,         //> Railgun fighter
-        HEDropship,         // Wheeled Tank Dropship (Alien ref)
-        HEBombsAway,        //> Anti-base bomber
-        HECyclone,          // Very fast and dangerous HE aircraft armed to the bone
+        HEPeanutJet,
+        HEProx,
+        HEVengence,
+        HEDropship,
+        HEBombsAway,
+        HECyclone,
 
-        BFEchoAir,          // Small laser interceptor
-        BFColossus,         // Large BF hover dropship
-        BFFrizbee,          // lotta lasors
-        BFOblivion,         // lotta beam lasors
+        BFEchoAir,
+        BFColossus,
+        BFFrizbee,
+        BFOblivion,
 
-        RRDragonFlop,       // Omnicraft with lasors
+        RRDragonFlop,
 
-        SJBayonase,         // Medium mortar bomber
+        SJBayonase,
 
         GSOQuadGale,
         GSOQuadGaleM,
@@ -142,7 +133,7 @@ namespace TAC_AI.Templates
         HESmashApache,
         BFeClipse,
 
-        SJWindbag,          // annoying air bag airship
+        SJWindbag,
 
         GSOShallowWaterGuard,
         GCPlasmaDredge,
@@ -151,10 +142,9 @@ namespace TAC_AI.Templates
         VENNautilus,
         HESwaddleBoat,
         HEDreadnaught,
-        HEBattleSwivels,    // HEDreadnaught but with swivels
+        HEBattleSwivels,
         BFLuxYacht,
 
-        //Player-helping naval crafts
         FTUEGSOGrade1Bote,
         FTUEGSOGrade2Bote,
         FTUEGSOGrade3Bote,
@@ -178,8 +168,6 @@ namespace TAC_AI.Templates
         HESpaceArty,
         BFSpaceArty,
 
-        //-----------
-        //-----------
         VENHarvester,
         Chungmus,
         TidusJ,
@@ -194,7 +182,6 @@ namespace TAC_AI.Templates
 
         Vette2,
 
-        //-Eradicators
         Invulnerable2,
         Tyrant2,
 
@@ -202,11 +189,6 @@ namespace TAC_AI.Templates
         GSOPowerStation,
         GSOQuickBuck,
 
-        //---------
-        //---------
-        // OBSOLETE - The values below do not represent their respective entries anymore
-        // Note: Need to label contributions
-        // Vertu and (LOOK IT UP) contributed huge batches to this
         TINYTANKS,
         LDAInitiator,
         VertuDefartillery,
@@ -347,128 +329,6 @@ namespace TAC_AI.Templates
         PreludeMP,
         V_LDAAssaultdrone,
 
-        /*
-        DefBattleTower,
-        DefDisrupterSentry,
-        DefHeavyLaserSentry,
-        DefLRMSentry,
-        DefSentryGun,
-        DefSentryGunB,
-        Hatchet,
-        ComCannonTower,
-        ComDefBattleTower,
-        Monolith,
-        PetesSecretStash,
-        TestSubjectACDC73,
-        ComDefHMT,
-        ComDefPWatcher,
-        ComBattleDrone,
-        ComCapitalTech,
-        ComDefArtillery,
-        ComDefCannon,
-        ComDefFort,
-        ComDefNode,
-        ComDefPOverwatch,
-        ComENCV2,
-        ComMissileDEFP,
-        ComMobileBastion,
-        ComSolarNode,
-        AntiShieldTinyTank,
-        Beta,
-        Cosmic,
-        Electron,
-        ExpRamp,
-        ExplodeTheory,
-        EXPloder,
-        Geckette,
-        LABRover,
-        ComBrawlerTank,
-        ComKothTankV2,
-        ComMissileDrone,
-        MecanumSpider,
-        MeteorMiner,
-        MeteorDriller,
-        PlasmaTester,
-        PlasmaTheory,
-        Proton,
-        Prototypedrone,
-        RampTank,
-        ResearchRamp,
-        RocketCroc,
-        ScienceExplorer,
-        ScienceTrack,
-        ScrapSpider,
-        ShotDog,
-        SoundRover,
-        SoundScience,
-        SpaceMiner,
-        TESTGravity,
-        TESTPlasma,
-        TESTSound,
-        TeslaHolder,
-        TestlaLazeRR,
-        TheBattlePrototype,
-        TheCrabparatus,
-        TheRocketBEE,
-        ThermalRRat,
-        TINYTANKS,
-        ComAITank,
-        ComBasiancedTank,
-        ComBattleTank,
-        ComCommandtank,
-        ComDrone,
-        ComDroneTank,
-        ComLightTank,
-        ComScouttank,
-        ComAIScout,
-        ComAngryTech,
-        ComAssaultT1,
-        ComAssaultTank,
-        ComEnforcerMk2,
-        ComHardyTankV2,
-        ComPainTrain,
-        ComPyroTech,
-        ComReactorTank,
-        ComSiegeTech,
-        ComStormTank,
-        ComTerrorTech,
-        ComTitan,
-        ComDoomTrain,
-        Worker,
-        ZAPPer,
-        Crescent,
-        ComLaserDrone,
-        Maikro,
-        Scythe,
-        ComResponseDrone,
-        Armageddon,
-        Brawler,
-        Dinghy,
-        EXPHover,
-        Hornet,
-        Hummingbird,
-        ComMicroBattleship,
-        Piranha,
-        PreludeMP,
-        QueenBee,
-        Spyder,
-        StarN422281337,
-        Stingray,
-        ThebRRokenHover,
-        ComAssaultdrone,
-        ComBattleCruiser,
-        ComBSIronWill,
-        ComEscortCruiser,
-        ComHeavyCruiser,
-        ComHeavyTank,
-        ComTeslaTank,
-        ComHoverTank,
-        ComAtmoBattleship,
-        ComExperimentalO,
-        ComLaserCruiser,
-        ComLEAD,
-        ComLaserBattleship,
-        */
     }
 
 }

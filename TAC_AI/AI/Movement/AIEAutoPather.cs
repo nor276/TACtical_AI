@@ -117,10 +117,8 @@ namespace TAC_AI.AI.Movement
         {
             if (pathable.Pathfinder != null)
             {
-                //DebugTAC_AI.Log("AIAutoPather - Cancelled pathfinding.");
                 if (!AIEPathMapper.StopPather(pathable.Pathfinder))
                 {
-                    //DebugTAC_AI.Log("AIAutoPather - Cancelled pathfinding but it was already not active?!");
                 }
                 pathable.Pathfinder.Finished = true;
                 pathable.Pathfinder = null;
@@ -128,7 +126,7 @@ namespace TAC_AI.AI.Movement
             return true;
         }
 
-        public abstract byte GetDifficultyFromAlt(byte alt); // 128 max
+        public abstract byte GetDifficultyFromAlt(byte alt);
 
         public virtual void Recalc(Vector3 startPosScene, Vector3 endPosScene)
         {

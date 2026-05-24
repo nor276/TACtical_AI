@@ -10,22 +10,21 @@ namespace TAC_AI.AI
     internal class AIEBases
     {
         internal static bool BaseConstructTech(Tank tech, Snapshot techToMake)
-        {   // Expand the base!
+        {
             InvokeHelper.Invoke(DoBaseConstructTech, 0.1f, tech, techToMake);
             return true;
         }
         private static void DoBaseConstructTech(Tank tech, Snapshot techToMake)
-        {   // Expand the base!
+        {
             try
             {
                 if (!Singleton.Manager<ManWorld>.inst.CheckIsTileAtPositionLoaded(tech.boundsCentreWorld))
                     DebugTAC_AI.Assert(KickStart.ModID + ": BaseConstructTech - Spawning Tech is out of world playable bounds at " +
                         tech.boundsCentreWorld.ToString() + " this should not be possible");
-                if (TryFindOpenBuildLocation(tech, tech.boundsCentreWorld + (tech.rootBlockTrans.forward * 
+                if (TryFindOpenBuildLocation(tech, tech.boundsCentreWorld + (tech.rootBlockTrans.forward *
                     (techToMake.techData.Radius + 8 + tech.GetCheapBounds())),
                     techToMake.techData.Radius + 0.5f, AIGlobals.defaultExpandRadRange, 5, out Vector3 pos, true))
                 {
-                    //var clone = techToMake.techData.GetShallowClonedCopy();
                     RawTechLoader.SpawnTechFragment(pos, tech.Team, new RawTech(techToMake.techData, true));
                 }
             }
@@ -66,7 +65,7 @@ namespace TAC_AI.AI
         {
             if (BookmarkBuilder.TryGet(helper.tank, out BookmarkBuilder builder))
             {
-                DebugTAC_AI.Log(KickStart.ModID + ": Tech " + helper.tank.name + 
+                DebugTAC_AI.Log(KickStart.ModID + ": Tech " + helper.tank.name +
                     " Setup for SetupTechAutoConstruction with block count " + builder.blueprint.savedTech.Count);
                 helper.TechMemor.SetupForNewTechConstruction(helper, builder.blueprint.savedTech);
                 if (builder.instant)
@@ -83,10 +82,10 @@ namespace TAC_AI.AI
                 helper.ForceRebuildAlignment();
             }
             else
-                DebugTAC_AI.LogError("OnFinishTechAutoConstruction expected the blueprint to be registered in BookmarkedPlans" + 
+                DebugTAC_AI.LogError("OnFinishTechAutoConstruction expected the blueprint to be registered in BookmarkedPlans" +
                     ", but it was not present in there?  Did we remove it earlier???");
         }
-        private static IEnumerable<Vector3> IterateManhattanDiamondCreep(Vector3 target, float placementTargetSize, 
+        private static IEnumerable<Vector3> IterateManhattanDiamondCreep(Vector3 target, float placementTargetSize,
             float SearchRadius, int radiusDivisions)
         {
             float subdivisionUnit = SearchRadius / radiusDivisions;
@@ -129,29 +128,6 @@ namespace TAC_AI.AI
                     return true;
                 }
             }
-            /*
-            location[0] = tank.transform.TransformPoint(new Vector3(offsetRadApprox, 0, 0)) + coreOffset;
-            location[1] = tank.transform.TransformPoint(new Vector3(-offsetRadApprox, 0, 0)) + coreOffset;
-            location[2] = tank.transform.TransformPoint(new Vector3(0, 0, offsetRadApprox)) + coreOffset;
-            location[3] = tank.transform.TransformPoint(new Vector3(0, 0, -offsetRadApprox)) + coreOffset;
-            location[4] = tank.transform.TransformPoint(new Vector3(offsetRadApprox, 0, offsetRadApprox)) + coreOffset;
-            location[5] = tank.transform.TransformPoint(new Vector3(-offsetRadApprox, 0, offsetRadApprox)) + coreOffset;
-            location[6] = tank.transform.TransformPoint(new Vector3(offsetRadApprox, 0, -offsetRadApprox)) + coreOffset;
-            location[7] = tank.transform.TransformPoint(new Vector3(-offsetRadApprox, 0, -offsetRadApprox)) + coreOffset;
-            location[8] = tank.transform.TransformPoint(new Vector3(0, 0, 0)) + coreOffset;
-
-            foreach (var item in location.OrderBy(x => (x - targetWorld).sqrMagnitude))
-            {
-                Vector3 posCase = item;
-                if (IgnoreCurrentlyBuilding)
-                    buildingCancel = false;
-                if (IsLocationValid(posCase, ref buildingCancel))
-                {
-                    pos = posCase;
-                    return true;
-                }
-            }
-            */
             pos = tank.boundsCentreWorldNoCheck;
             return false;
         }
