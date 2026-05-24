@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using TAC_AI.AI;
 using UnityEngine;
 
@@ -7,7 +7,6 @@ namespace TAC_AI
     internal class ModuleChargerTracker : MonoBehaviour, IAIFollowable
     {
         TankBlock TankBlock;
-        // Returns the position of itself in the world as a point the AI can pathfind to
         public Tank tank { get; private set; }
         public Transform trans;
         public Vector3 position => trans.position;

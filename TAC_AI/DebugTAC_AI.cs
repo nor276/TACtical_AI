@@ -14,9 +14,13 @@ namespace TAC_AI
         internal static bool DoLogInfos = false;
         internal static bool DoLogAISetup = false;
         internal static bool DoLogPathing = false;
-        internal static bool DoLogSpawning = true;
+        internal static bool DoLogSpawning = false;
         internal static bool DoLogLoading = false;
         internal static bool DoLogTeams = true;
+        // T5: target-acquisition lifecycle events (target released / lost / out of range,
+        // weapon lock-on overrides). Separate from DoLogOwnership which only tracks
+        // lastEnemy *setter* transitions. Use LogTargeting / LogTargeting(tech, ...).
+        internal static bool DoLogTargeting = false;
         private static bool DoLogNet = false;
 #if DEBUG
         private static bool LogDev = true;
@@ -98,6 +102,22 @@ namespace TAC_AI
             }
             UnityEngine.Debug.Log(KickStart.ModID + ": "  + message + e);
         }
+        private static readonly HashSet<string> warnedKeys = new HashSet<string>();
+        /// <summary>
+        /// Like LogWarnPlayerOnce, but dedups per-key so repeated failures across distinct
+        /// keys (e.g. tank names) each surface their first occurrence instead of being
+        /// hidden by the session-wide NotErrored gate.
+        /// </summary>
+        internal static void LogWarnPlayerOncePerKey(string key, string message, Exception e)
+        {
+            if (!ShouldLog)
+                return;
+            if (warnedKeys.Add(key))
+            {
+                ManModGUI.ShowErrorPopup("ERROR with Advanced AI\n" + message + "\nContinue with caution: \n" + e);
+            }
+            UnityEngine.Debug.Log(KickStart.ModID + ": " + message + e);
+        }
         internal static void LogLoad(string message)
         {
             if (!ShouldLog || !DoLogLoading)
@@ -123,6 +143,21 @@ namespace TAC_AI
         {
             if (NoLogSpawning)
                 return;
+            UnityEngine.Debug.Log(message);
+        }
+        // T5: target-acquisition lifecycle. Player-tank-filtered variant mirrors
+        // LogSpecific so a fleet engagement doesn't spam — only the player's own tech
+        // emits when the flag is on. Use bare LogTargeting(string) for non-tech-scoped
+        // events (e.g. weapon lock overrides without an obvious "this tank" context).
+        internal static bool NoLogTargeting => !ShouldLog || !DoLogTargeting;
+        internal static void LogTargeting(string message)
+        {
+            if (NoLogTargeting) return;
+            UnityEngine.Debug.Log(message);
+        }
+        internal static void LogTargeting(Tank tech, string message)
+        {
+            if (NoLogTargeting || tech != Singleton.playerTank) return;
             UnityEngine.Debug.Log(message);
         }
         internal static void Log(Exception e)
@@ -156,6 +191,12 @@ namespace TAC_AI
             if (!ShouldLog)
                 return;
             UnityEngine.Debug.Log(message + "\n" + StackTraceUtility.ExtractStackTrace().ToString());
+        }
+        internal static void LogError(string message, Exception e)
+        {
+            if (!ShouldLog)
+                return;
+            UnityEngine.Debug.Log(message + " - " + e + "\n" + StackTraceUtility.ExtractStackTrace().ToString());
         }
         internal static void LogDevOnly(string message)
         {
@@ -235,7 +276,107 @@ namespace TAC_AI
                 throw new InvalidOperationException("Endless loop!");
             }
         }
-        internal static void PopupDebugInfo(string text, WorldPosition pos) => AltUI.PopupDebugInfo(text, pos);
-        internal static void PopupDebugInfo(string text, Vector3 scenePos) => AltUI.PopupDebugInfo(text, scenePos);
+
+        internal static string Prefix(string subsystem, string severity = "INFO")
+            => "[TAC_AI:" + subsystem + ":" + severity + "]";
+
+        internal static void LogTagged(string subsystem, string message)
+        {
+            if (!ShouldLog) return;
+            UnityEngine.Debug.Log(Prefix(subsystem) + " " + message);
+        }
+
+        internal static void WarnTagged(string subsystem, string message)
+        {
+            if (!ShouldLog) return;
+            UnityEngine.Debug.Log(Prefix(subsystem, "WARN") + " " + message);
+        }
+
+        internal static void ErrorTagged(string subsystem, string message)
+        {
+            if (!ShouldLog) return;
+            UnityEngine.Debug.Log(Prefix(subsystem, "ERROR") + " " + message + "\n"
+                + StackTraceUtility.ExtractStackTrace().ToString());
+        }
+
+        internal static void DebugTagged(string subsystem, string message)
+        {
+            if (!ShouldLog || !LogDev) return;
+            UnityEngine.Debug.Log(Prefix(subsystem, "DEBUG") + " " + message);
+        }
+
+        internal static string VisibleName(int id)
+        {
+            try
+            {
+                var tv = ManVisible.inst?.GetTrackedVisible(id);
+                if (tv != null)
+                {
+                    string n = null;
+                    try { n = tv.visible?.name; } catch { }
+                    if (!string.IsNullOrEmpty(n))
+                        return "'" + n + "' #" + id;
+                }
+            }
+            catch { /* swallow — caller may be deep in a tick; we never want logging
+                       to throw. Fall through to the id-only fallback. */ }
+            return "#" + id;
+        }
+
+        internal static string VisibleName(Tank tank)
+        {
+            if (tank == null) return "<null>";
+            try
+            {
+                int id = tank.visible?.ID ?? 0;
+                string n = tank.name;
+                return string.IsNullOrEmpty(n) ? ("#" + id) : ("'" + n + "' #" + id);
+            }
+            catch { return "<tank?>"; }
+        }
+
+        internal static void LogOwnership(string field, object oldVal, object newVal)
+        {
+            if (!ShouldLog) return;
+            string callerHint = "?";
+            try
+            {
+                // skip(1) = our caller (the property setter); skip(2) = the actual writing subsystem.
+                var sf = new System.Diagnostics.StackFrame(2, false);
+                var m = sf.GetMethod();
+                if (m != null)
+                    callerHint = (m.DeclaringType != null ? m.DeclaringType.Name : "?") + "." + m.Name;
+            }
+            catch { /* never let the diagnostic crash the setter */ }
+            UnityEngine.Debug.Log(Prefix("Ownership") + " " + field + ": "
+                + (oldVal ?? "<null>") + " → " + (newVal ?? "<null>") + " by " + callerHint);
+        }
+
+        internal static void DumpStateHistory(AI.TankAIHelper helper, string reason)
+        {
+            if (!ShouldLog) return;
+            if (helper == null)
+            {
+                UnityEngine.Debug.Log(Prefix("History", "WARN") + " null helper. reason=" + reason);
+                return;
+            }
+            try
+            {
+                UnityEngine.Debug.Log(Prefix("History") + " " + VisibleName(helper.tank)
+                    + " (reason=" + reason + "):\n  " + helper.GetStateHistorySnapshot());
+            }
+            catch { /* swallow — dumper must never crash the caller */ }
+        }
+
+        private static readonly HashSet<string> firstFireKeys = new HashSet<string>();
+        internal static void FirstFire(string key, string description = null)
+        {
+            if (!ShouldLog) return;
+            if (firstFireKeys.Add(key))
+            {
+                UnityEngine.Debug.Log(Prefix("Patch") + " first-fire: " + key
+                    + (string.IsNullOrEmpty(description) ? "" : " — " + description));
+            }
+        }
     }
 }

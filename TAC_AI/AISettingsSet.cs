@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using TAC_AI.AI;
@@ -9,65 +9,43 @@ namespace TAC_AI
 {
     public interface AISettings
     {
-        /// <summary>Range to stop before enemy</summary>
         float CombatSpacing { get; }
-        /// <summary>Range to pursue enemies</summary>
         float CombatChase { get; }
-        /// <summary>Maximum Range to stray from objective</summary>
         float ObjectiveRange { get; }
         bool shouldChase { get; }
 
-
-        /// <summary>Should the AI take combat calculations and retreat if nesseary?</summary>
         bool AdvancedAI { get; }
-        /// <summary>Should the AI only follow player movement while in MT mode?</summary>
         bool AllMT { get; }
-        /// <summary>Should the AI ram the enemy?</summary>
         bool FullMelee { get; }
-        /// <summary>Should the AI circle the enemy?</summary>
         bool SideToThreat { get; }
 
-        // Repair Auxilliaries
-        /// <summary>Allied auto-repair</summary>
         bool AutoRepair { get; }
-        /// <summary>Draw from player inventory reserves</summary>
         bool UseInventory { get; }
     }
     public struct AISettingsLimit : AISettings
     {
         private TankAIHelper helper;
 
-        /// <summary>Range to stop before enemy</summary>
         public float CombatSpacing { get => combatRange; }
         private float combatRange;
-        /// <summary>Range to pursue enemies</summary>
         public float CombatChase { get => chaseRange; }
         private float chaseRange;
-        /// <summary>Maximum Range to stray from objective</summary>
-        public float ObjectiveRange { get => AIGlobals.DefaultMaxObjectiveRange; }
+        public float ObjectiveRange { get => objectiveRange; }
+        private float objectiveRange;
         public bool shouldChase => CombatChase > 0;
 
-
-        /// <summary>Should the AI take combat calculations and retreat if nesseary?</summary>
         public bool AdvancedAI { get => advancedAI; }
         private bool advancedAI;
-        /// <summary>Should the AI only follow player movement while in MT mode?</summary>
         public bool AllMT { get => allMT; }
         private bool allMT;
-        /// <summary>Should the AI ram the enemy?</summary>
         public bool FullMelee { get => fullMelee; }
         private bool fullMelee;
-        /// <summary>Should the AI circle the enemy?</summary>
         public bool SideToThreat { get => sideToThreat; }
         private bool sideToThreat;
 
-        // Repair Auxilliaries
-        /// <summary>Allied auto-repair</summary>
         public bool AutoRepair => helper.TechMemor;
-        /// <summary>Draw from player inventory reserves</summary>
         public bool UseInventory { get => useInventory; }
         private bool useInventory;
-
 
         public AISettingsLimit(TankAIHelper helperInst)
         {
@@ -75,6 +53,7 @@ namespace TAC_AI
 
             combatRange = 25;
             chaseRange = AIGlobals.DefaultMaxTargetingRange;
+            objectiveRange = AIGlobals.DefaultMaxObjectiveRange;
 
             advancedAI = false;
             allMT = false;
@@ -94,10 +73,12 @@ namespace TAC_AI
         public void Recalibrate()
         {
             combatRange = 25;
+            objectiveRange = AIGlobals.DefaultMaxObjectiveRange;
             fullMelee = false;
             advancedAI = false;
             allMT = false;
             sideToThreat = false;
+            useInventory = false;
             foreach (ModuleAIExtension AIEx in helper.AIList)
             {
                 if (AIEx.AdvancedAI)
@@ -111,50 +92,39 @@ namespace TAC_AI
                 if (AIEx.InventoryUser)
                     useInventory = true;
 
-                // Engadgement Ranges
                 if (AIEx.MinCombatRange > combatRange)
                     combatRange = AIEx.MinCombatRange;
                 if (AIEx.MaxCombatRange > chaseRange)
                     chaseRange = AIEx.MaxCombatRange;
+                if (AIEx.MaxObjectiveRange > objectiveRange)
+                    objectiveRange = AIEx.MaxObjectiveRange;
             }
         }
     }
 
     public struct AISettingsSet : AISettings
     {
-        /// <summary>Spacing: Range to stop before enemy</summary>
         public float CombatSpacing { get => combatSpacing; set => combatSpacing = value; }
         private float combatSpacing;
-        /// <summary>Chase: Range to pursue enemies</summary>
         public float CombatChase { get => combatChase; set => combatChase = value; }
         private float combatChase;
-        /// <summary>Maximum Range to stray from objective</summary>
         public float ObjectiveRange { get => objectiveRange; set => objectiveRange = value; }
         private float objectiveRange;
-        /// <summary>Maximum Range to search for job articles</summary>
         public float ScanRange { get => scanRange; set => scanRange = value; }
         private float scanRange;
         public bool shouldChase => CombatChase > 0;
 
-
-        /// <summary>Should the AI take combat calculations and retreat if nesseary?</summary>
         public bool AdvancedAI { get => advancedAI; set => advancedAI = value; }
         private bool advancedAI;
-        /// <summary>Should the AI only follow player movement while in MT mode?</summary>
         public bool AllMT { get => allMT; set => allMT = value; }
         private bool allMT;
-        /// <summary>Should the AI ram the enemy?</summary>
         public bool FullMelee { get => fullMelee; set => fullMelee = value; }
         private bool fullMelee;
-        /// <summary>Should the AI circle the enemy?</summary>
         public bool SideToThreat { get => sideToThreat; set => sideToThreat = value; }
         private bool sideToThreat;
 
-        // Repair Auxilliaries
-        /// <summary>Allied auto-repair</summary>
         public bool AutoRepair { get => autoRepair; set => autoRepair = value; }
         private bool autoRepair;
-        /// <summary>Draw from player inventory reserves</summary>
         public bool UseInventory { get => useInventory; set => useInventory = value; }
         private bool useInventory;
 
@@ -180,10 +150,6 @@ namespace TAC_AI
             useInventory = toggleDefault;
         }
 
-        /// <summary>
-        /// Get it from Tech save data
-        /// </summary>
-        /// <param name="blockSpec"></param>
         public AISettingsSet(TankPreset.BlockSpec blockSpec)
         {
             SetIfPossible(blockSpec, "CombatR", out combatSpacing);
@@ -208,7 +174,7 @@ namespace TAC_AI
 
             advancedAI = refr.AdvancedAI;
             allMT = refr.AllMT;
-            fullMelee = refr.AllMT;
+            fullMelee = refr.FullMelee;
             sideToThreat = refr.SideToThreat;
             autoRepair = refr.AutoRepair;
             useInventory = refr.UseInventory;
@@ -221,8 +187,6 @@ namespace TAC_AI
             useInventory = setTrue;
         }
 
-
-        // Utilities
         public void ClampMaxFloats(AISettingsSet settings)
         {
             CombatSpacing = Mathf.Min(CombatSpacing, settings.CombatSpacing);
@@ -312,9 +276,6 @@ namespace TAC_AI
                 LOC_UseInventory_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need Better Future A.I."
         }
 
-
-
-        // Serialization
         [Flags]
         public enum AIToggleFlags : byte
         {

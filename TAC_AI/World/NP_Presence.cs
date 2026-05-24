@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -36,9 +36,6 @@ namespace TAC_AI.World
         }
     }
 
-    /// <summary>
-    /// The master class to command fleets of AI
-    /// </summary>
     public class NP_Presence
     {
 #if DEBUG
@@ -58,7 +55,6 @@ namespace TAC_AI.World
         public HashSet<NP_MobileUnit> EMUs = new HashSet<NP_MobileUnit>();
         protected HashSet<NP_TechUnit> Fighting = new HashSet<NP_TechUnit>();
         public bool IsFighting => Fighting.Any();
-
 
         protected float lastAttackedTimestep = 0;
         protected AITeamMode teamMode = AITeamMode.Idle;
@@ -88,15 +84,14 @@ namespace TAC_AI.World
         }
         private Visible _lastTarget = null;
         private int lastTargetUpdateCount = 0;
-
+        // L1-9: expire lastTarget after OperatorTicksKeepTarget operator ticks (field was never decremented).
+        protected void TickTargetExpiry() { if (lastTargetUpdateCount > 0) lastTargetUpdateCount--; }
 
         public NP_Presence(int Team)
         {
             team = Team;
         }
 
-
-        // Checks
         public bool HasMobileETUs()
         {
             return EMUs.ToList().Exists(delegate (NP_MobileUnit cand) { return cand.MoveSpeed > 12; });
@@ -152,15 +147,11 @@ namespace TAC_AI.World
             return teamValue;
         }
 
-
-        /// <summary>
-        /// Returns false if the team should be removed
-        /// </summary>
-        /// <returns></returns>
         public virtual bool UpdateOperatorRTS(List<NP_TechUnit> TUDestroyed)
         {
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Turn for Team " + Team);
             attackStarted = false;
+            TickTargetExpiry();
             HandleUnitRecon();
             //PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Updating for team " + Team);
             HandleCombat(TUDestroyed);
@@ -176,10 +167,6 @@ namespace TAC_AI.World
             }
             return AnyLeftStanding;
         }
-        /// <summary>
-        /// Returns false if our team no longer exists
-        /// </summary>
-        /// <returns></returns>
         public virtual bool UpdateOperator()
         {
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommand - Turn for Team " + Team);
@@ -194,7 +181,6 @@ namespace TAC_AI.World
 
         public virtual void UpdateMaintainer(float timeDelta)
         {
-            // The techs move every UpdateMoveDelay seconds
             //DebugTAC_AI.Log(KickStart.ModID + ": ManEnemyWorld - UpdateMaintainer, num fighting " + Fighting.Count());
             foreach (var item in Fighting)
             {
@@ -202,8 +188,6 @@ namespace TAC_AI.World
             }
         }
 
-
-        // Basics
         protected void HandleRepairs()
         {
             NP_BaseUnit funds = UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
@@ -278,34 +262,42 @@ namespace TAC_AI.World
             PresenceDebugDEV("HandleRecharge - Remaining " + excessEnergy + " energy");
         }
 
-        // Recon
         protected void HandleUnitRecon()
         {
             scannedPositions.Clear();
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
+
+            // P15 BUG: rebuild the own-tech tile set every tick regardless of MainBase, because
+            // HandleCombat consumes tilesHasOwnTechs unconditionally. A team with zero unloaded
+            // bases (so MainBase == null) but an active *loaded* maker base still passes the
+            // GlobalMakerBaseCount() gate and reaches HandleCombat — leaving this rebuild gated on
+            // MainBase let it run unloaded combat against a stale tile set. ETU.tilePos has no
+            // MainBase dependency, so this is safe to run unconditionally; the rebuild does no
+            // scanning, so the "home defense first" ordering below is unaffected.
+            tilesHasOwnTechs.Clear();
+            foreach (NP_TechUnit ETU in EMUs)
+            {
+                try
+                {
+                    if (!tilesHasOwnTechs.Contains(ETU.tilePos))
+                        tilesHasOwnTechs.Add(ETU.tilePos);
+                }
+                catch { }
+            }
+            foreach (NP_TechUnit ETU in EBUs)
+            {
+                try
+                {
+                    if (!tilesHasOwnTechs.Contains(ETU.tilePos))
+                        tilesHasOwnTechs.Add(ETU.tilePos);
+                }
+                catch { }
+            }
+
             if (MainBase != null)
             {
                 UnloadedBases.GetScannedTilesAroundTech(MainBase); // This happens first - home defense is more important
 
-                tilesHasOwnTechs.Clear();
-                foreach (NP_TechUnit ETU in EMUs)
-                {
-                    try
-                    {
-                        if (!tilesHasOwnTechs.Contains(ETU.tilePos))
-                            tilesHasOwnTechs.Add(ETU.tilePos);
-                    }
-                    catch { }
-                }
-                foreach (NP_TechUnit ETU in EBUs)
-                {
-                    try
-                    {
-                        if (!tilesHasOwnTechs.Contains(ETU.tilePos))
-                            tilesHasOwnTechs.Add(ETU.tilePos);
-                    }
-                    catch { }
-                }
                 if (!attackStarted)
                 {
                     foreach (var item in tilesHasOwnTechs)
@@ -323,7 +315,6 @@ namespace TAC_AI.World
             }
         }
 
-        // Combat
         protected void HandleCombat(List<NP_TechUnit> TUDestroyed)
         {
             Fighting.Clear();
@@ -429,9 +420,6 @@ namespace TAC_AI.World
             return damageTotal;
         }
 
-
-
-        // Movement
         protected void HandleUnitMoving()
         {
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
@@ -494,7 +482,9 @@ namespace TAC_AI.World
                         ManEnemyWorld.StrategicMoveQueue(ETU, playerCoord, OnUnitReachDestinationNoBase, out bool fail);
                         if (fail)
                         {
-                            EMUs.Remove(ETU);
+                            // Symmetric cleanup: StopManagingUnit clears trackedVis and
+                            // teamFounder (if applicable), not just the EMUs entry.
+                            ManEnemyWorld.StopManagingUnit(ETU);
                             step--;
                             count--;
                         }
@@ -505,14 +495,8 @@ namespace TAC_AI.World
             }
         }
 
-
         private static StringBuilder moving = new StringBuilder();
         private static StringBuilder startedMove = new StringBuilder();
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="eventTile"></param>
-        /// <returns>True if a tech is moving</returns>
         private bool MoveAllETUs()
         {
             bool techsMoving = false;
@@ -527,7 +511,16 @@ namespace TAC_AI.World
                         if (ETU.tilePos == lastEventTile)
                             continue;
                         if (!ETU.isMoving)
-                            MoveETU(ETU, ref techsMoving);
+                        {
+                            // (the orphan-cleanup signal). Evict here rather than letting the
+                            // orphan linger and trigger the same drift log every tick.
+                            if (!MoveETU(ETU, ref techsMoving))
+                            {
+                                ManEnemyWorld.StopManagingUnit(ETU);
+                                step--;
+                                count--;
+                            }
+                        }
                         else
                         {
                             moving.Append(ETU.Name + ", ");
@@ -558,7 +551,16 @@ namespace TAC_AI.World
                     if (ETU.tilePos == lastEventTile)
                         continue;
                     if (!ETU.isMoving)
-                        MoveETU(ETU, ref techsMoving);
+                    {
+                        if (!MoveETU(ETU, ref techsMoving))
+                        {
+                            // Orphan: StrategicMoveQueue reported criticalFail. Evict
+                            // here rather than letting the same drift log repeat.
+                            ManEnemyWorld.StopManagingUnit(ETU);
+                            step--;
+                            count--;
+                        }
+                    }
                     else
                         techsMoving = true;
                 }
@@ -590,7 +592,6 @@ namespace TAC_AI.World
             }
         }
 
-
         protected void OnUnitReachDestinationNoBase(TileMoveCommand TMC, bool pathSuccess, bool activeScene)
         {
             if (pathSuccess && activeScene)
@@ -621,8 +622,6 @@ namespace TAC_AI.World
             }
         }
 
-
-        // Funding
         internal void UpdateRevenue()
         {
             foreach (NP_BaseUnit EBU in EBUs)
@@ -654,11 +653,6 @@ namespace TAC_AI.World
             return false;
         }
 
-
-
-
-
-        // Modes
         internal void SetAttackMode(IntVector2 tilePos, Visible target = null)
         {
             //PresenceDebug("Enemy team " + Team + " has found target");
@@ -691,9 +685,6 @@ namespace TAC_AI.World
             }
         }
 
-
-
-        // MISC
         internal void PresenceDebug(string thing)
         {
 #if DEBUG
@@ -736,9 +727,6 @@ namespace TAC_AI.World
 
     }
 
-    /// <summary>
-    /// The enemy base in world-relations
-    /// </summary>
     public class NP_Presence_Automatic : NP_Presence
     {
 
@@ -747,17 +735,11 @@ namespace TAC_AI.World
         private AIFounderMode founderMode = AIFounderMode.HomeIdle;
         private int lastFounderStopUpdateTicks = 0;
 
-
-
         public NP_Presence_Automatic(int Team, bool canLaunchSieges) : base (Team)
         {
             canSiege = canLaunchSieges;
         }
 
-        /// <summary>
-        /// Returns false if the team should be removed
-        /// </summary>
-        /// <returns></returns>
         public override bool UpdateOperatorRTS(List<NP_TechUnit> TUDestroyed)
         {
             if (Team == SpecialAISpawner.trollTeam)
@@ -772,6 +754,7 @@ namespace TAC_AI.World
             }
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Turn for Team " + Team);
             attackStarted = false;
+            TickTargetExpiry();
             if (lastFounderStopUpdateTicks > 0)
                 lastFounderStopUpdateTicks--;
             //PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Updating for team " + Team);
@@ -827,19 +810,11 @@ namespace TAC_AI.World
                 return base.MoveETU(ETU, ref techsMoving);
         }
 
-        // Checks
         public bool ShouldReturnToBase()
         {
             return teamMode == AITeamMode.Retreating || teamMode == AITeamMode.Defending;
         }
 
-        // Founder
-        /// <summary>
-        /// Don't use for end-of task sets
-        /// </summary>
-        /// <param name="initial"></param>
-        /// <param name="anon"></param>
-        /// <returns></returns>
         private static bool CanFounderSwitchState(AIFounderMode initial, AIFounderMode anon)
         {
             switch (initial)
@@ -879,11 +854,6 @@ namespace TAC_AI.World
                     throw new Exception(KickStart.ModID + ": EnemyPresence.CanSwitchState initial variable is invalid " + initial.ToString());
             }
         }
-        /// <summary>
-        /// WORK IN PROGRESS - returns false if it failed
-        /// </summary>
-        /// <param name="ETU"></param>
-        /// <param name="techsMoving"></param>
         private bool DoFounderMovement(NP_TechUnit ETU, ref bool techsMoving)
         {
             AIFounderMode takeAction;
@@ -903,30 +873,25 @@ namespace TAC_AI.World
             if (takeAction != AIFounderMode.HomeIdle && CanFounderSwitchState(founderMode, takeAction))
             {
                 founderMode = takeAction;
-                // Base is under attack
                 if (ManEnemyWorld.StrategicMoveQueue(ETU, lastEventTile, OnUnitReachDestinationBase, out bool fail))
                 {
                     PresenceDebug(" Founder " + ETU.Name.ToString() + " is moving to tile " + lastEventTile + " to do " + founderMode);
                     techsMoving = true;
                 }
                 if (fail)
-                    return false;
+                    return false;   // outer MoveETU loop sees this and evicts via StopManagingUnit
             }
             else
             {   // Do random things
-                SetFounderDestination(ETU, ref techsMoving);
+                if (!SetFounderDestination(ETU, ref techsMoving))
+                    return false;   // propagate orphan signal
             }
             return true;
         }
-        /// <summary>
-        /// WORK IN PROGRESS
-        /// </summary>
-        /// <param name="ETU"></param>
-        /// <param name="techsMoving"></param>
-        private void SetFounderDestination(NP_TechUnit ETU, ref bool techsMoving)
+        private bool SetFounderDestination(NP_TechUnit ETU, ref bool techsMoving)
         {
             if (MainBase == null || lastFounderStopUpdateTicks > 0)
-                return;
+                return true;
             if (CanFounderSwitchState(founderMode, AIFounderMode.VendorGo))
             {
                 founderMode = AIFounderMode.VendorGo;
@@ -938,7 +903,7 @@ namespace TAC_AI.World
                     {
                         techsMoving = true;
                     }
-                    return;
+                    return !fail;
                 }
             }
             else if (founderMode == AIFounderMode.VendorBuy)
@@ -948,6 +913,7 @@ namespace TAC_AI.World
                 {
                     techsMoving = true;
                 }
+                if (fail) return false;
             }
             else if (CanFounderSwitchState(founderMode, AIFounderMode.HomeIdle))
             {
@@ -956,7 +922,9 @@ namespace TAC_AI.World
                 {
                     techsMoving = true;
                 }
+                if (fail) return false;
             }
+            return true;
         }
         private void OnFounderReachVendor(TileMoveCommand TMC, bool pathSuccess, bool activeScene)
         {
@@ -981,7 +949,6 @@ namespace TAC_AI.World
                 founderMode = AIFounderMode.HomeReturn;
         }
 
-        // Special
         private void HandleTraderTrolls()
         {
             int count = EMUs.Count;
@@ -1002,8 +969,6 @@ namespace TAC_AI.World
             }
         }
 
-
-        // MISC
         public bool TryGetFounderUnloaded(out NP_MobileUnit ETUFounder)
         {
             ETUFounder = null;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -23,40 +23,25 @@ namespace TAC_AI.AI
 
     public class AIERepair
     {
-        /// <summary>
-        /// Auto-repair handler for both enemy and allied AIs
-        /// </summary>
 
-        // The Delay in how long 
         public static float RepairDelayMulti = 5;
         public static float RepairDelayCombatMulti = 3;
         public static float RepairDelayCombatMultiBase = 5;
-        // ALLIED
-        // Basic AIs
         public static short DelayNormal = 8;
-        // Smarter AIs
         public static short DelaySmart = 2;
-        // ENEMY
-        // General Enemy AIs
         public static short DelayEnemy = 60; // this is divided by 2 later on
-        // Enemy Base AIs
         public static short DelayBase = 30; // Divided by difficulty
 
-        // STATUS UPDATE
         public static bool NonPlayerAttachAllow = false;
         public static bool BulkAdding = false;
 
         // -- Calculated --
-        // Basic AIs
         internal static short delaySafe;
         internal static short delayCombat;
-        // Smarter AIs
         internal static short sDelaySafe;
         internal static short sDelayCombat;
-        // Enemy Mobile AIs
         internal static short eDelaySafe;
         internal static short eDelayCombat;
-        // Enemy Base AIs
         internal static short bDelaySafe;
         internal static short bDelayCombat;
 
@@ -94,7 +79,6 @@ namespace TAC_AI.AI
             private List<BlockTypes> MissingTypes = new List<BlockTypes>();
             private static Stopwatch saveDelay = new Stopwatch();
 
-            // Handling this
             internal void Initiate(bool DoFirstSave = true)
             {
                 tank = gameObject.GetComponent<Tank>();
@@ -102,14 +86,27 @@ namespace TAC_AI.AI
                 tank.DetachEvent.Subscribe(Compromised);
                 Helper.FinishedRepairEvent.Subscribe(OnFinishedBuilding);
                 Helper.TechMemor = this;
+                DebugTAC_AI.LogTagged("MemInit", DebugTAC_AI.VisibleName(tank) + " TechMemor attached DoFirstSave=" + DoFirstSave);
                 Helper.PendingDamageCheck = true;
                 blockIntegrityDirty = true;
                 purchaseOp = EnemyPurchase;
+                TryRestoreFromPersistedBlueprint();
                 if (DoFirstSave)
                 {
                     if (SavedTech.Any() || BookmarkBuilder.TryGet(tank, out BookmarkBuilder BB))
                     {
-                        DebugTAC_AI.LogAISetup("Design for " + tank.name + ", ID [" + tank.visible.ID + "] was assigned by BookmarkBuilder, using it.");
+                        if (SavedTech.Any() && SavedTech.Count < tank.blockman.blockCount)
+                        {
+                            DebugTAC_AI.LogTagged("MemStale",
+                                DebugTAC_AI.VisibleName(tank) + " blueprint stale (saved=" + SavedTech.Count
+                                + " < live=" + tank.blockman.blockCount + ") — discarding and re-snapping");
+                            SavedTech.Clear();
+                            SaveTech();
+                        }
+                        else
+                        {
+                            DebugTAC_AI.LogAISetup("Design for " + tank.name + ", ID [" + tank.visible.ID + "] was assigned by BookmarkBuilder, using it.");
+                        }
                     }
                     else
                     {
@@ -131,6 +128,8 @@ namespace TAC_AI.AI
             }
             internal void Remove()
             {
+                DebugTAC_AI.LogTagged("MemReset", DebugTAC_AI.VisibleName(tank) + " TechMemor.Remove (snapshot had "
+                    + SavedTech.Count + " blocks)");
                 CancelInvoke();
                 tank.DetachEvent.Unsubscribe(Compromised);
                 Helper.FinishedRepairEvent.Unsubscribe(OnFinishedBuilding);
@@ -177,8 +176,6 @@ namespace TAC_AI.AI
                     conveyorsBorked = true;
             }
 
-
-            // Save operations
             public bool SaveTech()
             {
                 if (rejectSaveAttempts)
@@ -205,7 +202,7 @@ namespace TAC_AI.AI
                     DebugTAC_AI.Info(KickStart.ModID + ": INVALID TECH DATA SAVED FOR TANK " + tank.name + "\n" +StackTraceUtility.ExtractStackTrace());
                 }
                 DebugTAC_AI.Info(KickStart.ModID + ":  DesignMemory - Saved " + tank.name);
-                //build AROUND the cab pls
+                DebugTAC_AI.LogTagged("MemSnap", DebugTAC_AI.VisibleName(tank) + " blocks=" + SavedTech.Count);
                 //if (SavedTech.Count() > 1)
                 //    SavedTech = new List<BlockMemory>(SavedTech).OrderBy((blok) => (blok.CachePos - tank.CentralBlock.cachedLocalPosition).sqrMagnitude).ToList();
                 ValidateTechIfNeeded();
@@ -224,7 +221,7 @@ namespace TAC_AI.AI
                     SavedTech.Add(mem);
                 }
                 DebugTAC_AI.Log(KickStart.ModID + ":  DesignMemory - Overwrote(SaveTech) " + tank.name);
-                //build AROUND the cab pls
+                DebugTAC_AI.LogTagged("MemSnap", DebugTAC_AI.VisibleName(tank) + " (overwrite) blocks=" + SavedTech.Count);
                 //if (SavedTech.Count() > 1)
                 //    SavedTech = new List<BlockMemory>(SavedTech).OrderBy((blok) => (blok.CachePos - Vector3.zero).sqrMagnitude).ToList();
                 ValidateTechIfNeeded();
@@ -240,13 +237,6 @@ namespace TAC_AI.AI
                             + " and purged them from memory to prevent self-repair meltdown");
             }
 
-            /// <summary>
-            /// CALL THIS AFTER CHANGING SavedTech!!!
-            /// Can be a source of Hash Collisions.  
-            /// No Hash Collisions have occurred yet however.
-            /// </summary>
-            /// <param name="blockGOName"></param>
-            /// <returns></returns>
             private void BuildTechQuickLookup()
             {
                 fastBlockLookup.Clear();
@@ -276,7 +266,6 @@ namespace TAC_AI.AI
                 }
             }
 
-
             public void MemoryToTech(List<RawBlockMem> overwrite)
             {   // Loading a Tech from the BlockMemory
                 blockIntegrityDirty = true;
@@ -295,7 +284,6 @@ namespace TAC_AI.AI
                     SavedTech.Add(mem);
                 }
                 DebugTAC_AI.Log(KickStart.ModID + ":  DesignMemory - Overwrote(MemoryToTech) " + tank.name + ", ID (" + tank.visible.ID + ")");
-                //build AROUND the cab pls
                 //if (SavedTech.Count() > 1)
                 //    SavedTech = new List<BlockMemory>(SavedTech).OrderBy((blok) => (blok.CachePos - Vector3.zero).sqrMagnitude).ToList();
                 ValidateTechIfNeeded();
@@ -373,18 +361,11 @@ namespace TAC_AI.AI
                 blockIntegrityDirty = false;
             }
 
-            // Gets
             public bool HasFullHealth()
             {
                 return Helper.DamageThreshold.Approximately(0);
             }
 
-            /// <summary>
-            /// Returns true if the tech is damaged and has blocks to use
-            /// </summary>
-            /// <param name="tank"></param>
-            /// <param name="mind"></param>
-            /// <returns></returns>
             public bool SystemsCheck()
             {
                 float totalDesignBlocks = (float)SavedTech.Count;
@@ -430,15 +411,11 @@ namespace TAC_AI.AI
                 return typesToRepair;
             }
 
-
             public void UpdateMissingBlockTypes(List<BlockTypes> currentlyMissing)
             {
                 MissingTypes = currentlyMissing;
             }
 
-
-
-            // Advanced
             public bool ChanceGrabBackBlock()
             {
                 if (KickStart.EnemyBlockDropChance == 0)
@@ -548,8 +525,6 @@ namespace TAC_AI.AI
                 lastAttached = block.block.BlockType;
             }
 
-
-            // JSON
             public void TechToJSONLog()
             {   // Saving a Tech from the BlockMemory
                 List<RawBlockMem> mem = TechToMemory();
@@ -617,13 +592,60 @@ namespace TAC_AI.AI
                 MemoryToTech(mem);
             }
 
-            // CONSTRUCTION
-            /// <summary>
-            /// Bookmarks the build's data into the Tech for incremental building, but will not 
-            ///   guarentee completion.
-            /// </summary>
-            /// <param name="helper"></param>
-            /// <param name="JSON"></param>
+            internal bool HasSavedTech() => SavedTech.Count > 0;
+
+            internal string SerializeBlueprintToString()
+            {
+                if (SavedTech.Count == 0)
+                    return null;
+                // concurrent serialize/deserialize path (TechToJSONLog/JSONToTech both use SB).
+                var sb = new System.Text.StringBuilder();
+                sb.Append(JsonUtility.ToJson(SavedTech[0]));
+                for (int i = 1; i < SavedTech.Count; i++)
+                {
+                    sb.Append('|');
+                    sb.Append(JsonUtility.ToJson(SavedTech[i]));
+                }
+                return sb.ToString();
+            }
+
+            internal void DeserializeBlueprintFromString(string toLoad)
+            {
+                if (string.IsNullOrEmpty(toLoad))
+                    return;
+                SavedTech.Clear();
+                foreach (var part in toLoad.Split('|'))
+                {
+                    if (part.Length == 0)
+                        continue;
+                    try { SavedTech.Add(JsonUtility.FromJson<RawBlockMem>(part)); }
+                    catch { DebugTAC_AI.Log(KickStart.ModID + ": DeserializeBlueprint failed on entry " + SavedTech.Count); }
+                }
+                blockIntegrityDirty = true;
+                ValidateTechIfNeeded();
+                BuildTechQuickLookup();
+                rejectSaveAttempts = true;
+            }
+
+            private void TryRestoreFromPersistedBlueprint()
+            {
+                if (SavedTech.Count > 0)
+                    return; // already populated (e.g., BookmarkBuilder); leave alone
+                if (tank == null)
+                    return;
+                foreach (var ext in tank.blockman.IterateBlockComponents<ModuleAIExtension>())
+                {
+                    if (ext != null && !string.IsNullOrEmpty(ext.SavedTechBlueprint))
+                    {
+                        DeserializeBlueprintFromString(ext.SavedTechBlueprint);
+                        DebugTAC_AI.LogTagged("MemRestore",
+                            DebugTAC_AI.VisibleName(tank) + " restored " + SavedTech.Count
+                            + " blocks from persisted blueprint");
+                        return; // first non-empty wins; other Extensions carry the same data
+                    }
+                }
+            }
+
             public void SetupForNewTechConstruction(TankAIHelper helper, List<RawBlockMem> inst)
             {
                 MemoryToTech(inst);
@@ -632,15 +654,10 @@ namespace TAC_AI.AI
                 helper.PendingDamageCheck = true;
             }
 
-            // Load operation
             public List<RawBlockMem> ReturnContents()
             {
                 return new List<RawBlockMem>(IterateReturnContents());
             }
-            /// <summary>
-            /// creates no junk but DO NOT ALTER!!!
-            /// </summary>
-            /// <returns></returns>
             internal List<RawBlockMem> IterateReturnContents()
             {
                 if (SavedTech.Count() == 0)
@@ -651,12 +668,6 @@ namespace TAC_AI.AI
                 return SavedTech;
             }
 
-            /// <summary>
-            /// Can be a source of Hash Collisions.  
-            /// No Hash Collisions have occurred yet however.
-            /// </summary>
-            /// <param name="blockGOName"></param>
-            /// <returns></returns>
             public List<RawBlockMem> ReturnAllPositionsOfTypeSLOW(string blockGOName)
             {
                 int hash = blockGOName.GetHashCode();
@@ -665,13 +676,6 @@ namespace TAC_AI.AI
 
             private static HashSet<int> hashCache = new HashSet<int>();
 
-            /// <summary>
-            /// SUPER SLOW
-            /// Can be a source of Hash Collisions.  
-            /// No Hash Collisions have occurred yet however.
-            /// </summary>
-            /// <param name="blockGOName"></param>
-            /// <returns></returns>
             public List<RawBlockMem> ReturnAllPositionsOfMultipleTypes(List<BlockTypes> types)
             {
                 hashCache.Clear();
@@ -762,8 +766,6 @@ namespace TAC_AI.AI
                 }
             }
 
-
-            // EXPERIMENT
             public static void RebuildTechForwards(Tank tank)
             {
                 List<RawBlockMem> mem = RawTechTemplate.TechToMemoryExternal(tank);
@@ -776,7 +778,6 @@ namespace TAC_AI.AI
                 tank.blockman.Disintegrate(true, addToThisFrameLater);
                 return blockCache;
             }
-
 
             internal bool HandlePurchase()
             {
@@ -811,9 +812,6 @@ namespace TAC_AI.AI
                 else
                     return true;
             }
-
-
-            /// REPAIR OPERATIONS
 
             //Controlling code that re-attaches loose blocks for AI techs.
             internal BlockTypes lastAttached;
@@ -902,8 +900,6 @@ namespace TAC_AI.AI
                     // If we try to attach to a tech that doesn't exist, it corrupts and breaks ALL future techs that spawn.
                     //   The game breaks, yadda yadda, ManUpdate looses it's marbles, causing bullets and wheels to freak out.
                     //   In other words, *Unrecoverable crash*
-                    //
-                    //      So we end the madness here
                     return false;
                 }
 
@@ -936,8 +932,6 @@ namespace TAC_AI.AI
                 return success;
             }
 
-
-            // Repair Utilities
             private static List<TankBlock> fBlocks = new List<TankBlock>();
             private static List<TankBlock> fBlocksOut = new List<TankBlock>();
             public List<TankBlock> FindBlocksNearbyTank()
@@ -1179,15 +1173,6 @@ namespace TAC_AI.AI
                 return false;
             }
 
-            /// <summary>
-            /// Queued with 0.75 sec delay
-            /// </summary>
-            /// <param name="tank"></param>
-            /// <param name="TechMemor"></param>
-            /// <param name="typesMissing"></param>
-            /// <param name="playerInventory"></param>
-            /// <param name="useLimitedSupplies"></param>
-            /// <returns></returns>
             internal bool TrySpawnAndAttachBlockFromListWithSkin(ref List<BlockTypes> typesMissing, bool playerInventory = false, bool purchase = false)
             {
                 int attachAttempts = typesMissing.Count();
@@ -1258,15 +1243,6 @@ namespace TAC_AI.AI
                 return false;
             }
 
-            /// <summary>
-            /// Handled instantly
-            /// </summary>
-            /// <param name="tank"></param>
-            /// <param name="TechMemor"></param>
-            /// <param name="typesMissing"></param>
-            /// <param name="playerInventory"></param>
-            /// <param name="useLimitedSupplies"></param>
-            /// <returns></returns>
             internal bool TrySpawnAndAttachBlockFromListWithSkinInst(ref List<BlockTypes> typesMissing, bool playerInventory = false, bool purchase = false)
             {
                 int attachAttempts = typesMissing.Count();
@@ -1346,7 +1322,6 @@ namespace TAC_AI.AI
                 return false;
             }
 
-
             //tank.boundsCentreWorldNoCheck + (Vector3.up * 128)
             private bool IterateAndTryAttachBlockMP(BlockTypes bType, ref List<BlockTypes> typesMissing, Vector3 blockSpawnPos, bool playerInventory = false, bool purchase = false)
             {
@@ -1368,7 +1343,6 @@ namespace TAC_AI.AI
                 if (count == 0)
                     return false;
 
-
                 TankBlock prefabBlock = RawTechLoader.GetPrefabFiltered(bType, blockSpawnPos);
                 if (!prefabBlock)
                 {
@@ -1376,7 +1350,6 @@ namespace TAC_AI.AI
                     return false;
                 }
                 bool attemptW;
-
 
                 //DebugTAC_AI.Log(KickStart.ModID + ": TrySpawnAndAttachBlockFromList - potential spots " + posBlocks.Count + " for block " + foundBlock.name);
                 for (int step2 = 0; step2 < count; step2++)
@@ -1504,7 +1477,6 @@ namespace TAC_AI.AI
             return rot;
         }
 
-
         public static bool AIBlockAttachRequest(Tank tank, RawBlockMem template, TankBlock canidate, bool mandatory)
         {
             bool success;
@@ -1560,10 +1532,6 @@ namespace TAC_AI.AI
             return attached;
         }
 
-
-
-
-        // Player AI respective repair operations
         private static bool PreRepairPrep(Tank tank, DesignMemory TechMemor)
         {
             if (TechMemor.IsNull())
@@ -1740,13 +1708,6 @@ namespace TAC_AI.AI
             }
         }*/
 
-
-        // Booleenssd
-        /// <summary>
-        ///  Returns true if the tech can repair
-        /// </summary>
-        /// <param name="tank"></param>
-        /// <returns></returns>
         public static bool CanRepairNow(Tank tank)
         {
             var TechMemor = tank.gameObject.GetComponent<DesignMemory>();
@@ -1786,11 +1747,6 @@ namespace TAC_AI.AI
             return false;
         }
 
-        /// <summary>
-        /// Returns true if the tech is damaged, has blocks to use and DesignMemory is present
-        /// </summary>
-        /// <param name="tank"></param>
-        /// <returns></returns>
         public static bool SystemsCheck(Tank tank)
         {
             var TechMemor = tank.GetComponent<DesignMemory>();
@@ -1806,7 +1762,6 @@ namespace TAC_AI.AI
             {
                 if (Singleton.Manager<ManPlayer>.inst.InventoryIsUnrestricted)
                 {
-                    //no need to return to infinite stockpile
                     return true;
                 }
                 else
@@ -1881,7 +1836,6 @@ namespace TAC_AI.AI
             }
             return isAvail;
         }
-
 
         // EXPERIMENTAL - AI-Based new Tech building
         internal static void SetupForNewTechConstruction(DesignMemory TechMemor, List<TankBlock> tankTemplate)
@@ -1967,13 +1921,6 @@ namespace TAC_AI.AI
             return;
         }
 
-
-        // External major operations
-        /// <summary>
-        /// Builds a Tech instantly, no requirements
-        /// </summary>
-        /// <param name="tank"></param>
-        /// <param name="TechMemor"></param>
         public static void TurboconstructExt(Tank tank, List<RawBlockMem> Mem, bool fullyCharge = true)
         {
             DebugTAC_AI.Log(KickStart.ModID + ":  DesignMemory: Turboconstructing " + tank.name);
@@ -1993,11 +1940,6 @@ namespace TAC_AI.AI
             if (fullyCharge)
                 tank.EnergyRegulator.SetAllStoresAmount(1);
         }
-        /// <summary>
-        /// Builds a Tech instantly, no requirements
-        /// </summary>
-        /// <param name="tank"></param>
-        /// <param name="TechMemor"></param>
         public static void TurboconstructExt(Tank tank, List<RawBlockMem> Mem, List<TankBlock> provided, bool fullyCharge = true)
         {
             DebugTAC_AI.Log(KickStart.ModID + ":  DesignMemory: Turboconstructing " + tank.name);
@@ -2017,12 +1959,6 @@ namespace TAC_AI.AI
             if (fullyCharge)
                 tank.EnergyRegulator.SetAllStoresAmount(1);
         }
-        /// <summary>
-        /// EXTERNAL
-        /// </summary>
-        /// <param name="tank"></param>
-        /// <param name="Mem"></param>
-        /// <param name="typesMissing"></param>
         public static void TurboRepairExt(Tank tank, List<RawBlockMem> Mem, ref List<BlockTypes> typesMissing)
         {
             List<TankBlock> cBlocks = tank.blockman.IterateBlocks().ToList();
@@ -2162,8 +2098,6 @@ namespace TAC_AI.AI
             return AIBlockAttachRequest(tank, template, canidate, false);
         }
 
-
-        // Util
         private static void CheckGameTamperedWith(Tank tank, DesignMemory mem)
         {
             try

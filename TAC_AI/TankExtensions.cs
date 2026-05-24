@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -93,6 +93,7 @@ namespace TAC_AI
                     if (!ManNetwork.IsNetworked)
                     {
                         helper.theResource = node.visible;
+                        helper.theResourceNode = node.visible;
                         helper.CollectedTarget = false;
                     }
                     ManWorldRTS.inst.TechMovementQueue.Remove(helper.tank.visible.ID);
@@ -115,6 +116,7 @@ namespace TAC_AI
                 if (!ManNetwork.IsNetworked)
                 {
                     helper.theResource = block.visible;
+                    helper.theResourceNode = block.visible;
                     helper.CollectedTarget = false;
                 }
                 success = true;
@@ -151,8 +153,6 @@ namespace TAC_AI
             helper.RTSDestination = TankAIHelper.RTSDisabled;
             helper.SetRTSState(false);
         }
-
-
 
         public static bool IsTeamFounder(this TechData tank)
         {
@@ -192,12 +192,33 @@ namespace TAC_AI
         }
         public static TankAIHelper GetHelperInsured(this Tank tank)
         {
+            if (!tank)
+            {
+                DebugTAC_AI.LogError(KickStart.ModID + ": GetHelperInsured - CALLED ON NULL OBJECT");
+                return null;
+            }
             TankAIHelper helper = tank.GetComponent<TankAIHelper>();
             if (!helper)
             {
                 helper = tank.gameObject.AddComponent<TankAIHelper>().Subscribe();
             }
             return helper;
+        }
+        /// <summary>
+        /// Detects duplicate components of type T on the given GameObject, logs an assert
+        /// with the supplied context, destroys all but the first (oldest) instance, and
+        /// returns the kept one. Use to recover from invariant violations rather than
+        /// throwing from an event handler (which can corrupt unrelated subscribers).
+        /// </summary>
+        public static T EnforceSingleComponent<T>(this GameObject go, string ctx) where T : Component
+        {
+            var all = go.GetComponents<T>();
+            if (all.Length <= 1) return all.Length == 1 ? all[0] : null;
+            DebugTAC_AI.Assert(true, KickStart.ModID + ": DUPLICATE " + typeof(T).Name +
+                " on " + go.name + " (" + all.Length + " found) at " + ctx + " - destroying extras");
+            for (int i = 1; i < all.Length; i++)
+                UnityEngine.Object.DestroyImmediate(all[i]);
+            return all[0];
         }
         public static float GetCheapBounds(this Visible vis)
         {
@@ -208,12 +229,8 @@ namespace TAC_AI
             }
             if (!vis.tank)
                 return vis.Radius;
-            TankAIHelper helper = vis.GetComponent<TankAIHelper>();
-            if (!helper)
-            {
-                helper = vis.gameObject.AddComponent<TankAIHelper>().Subscribe();
-            }
-            return helper.lastTechExtents;
+            TankAIHelper helper = vis.tank.GetHelperInsured();
+            return helper != null ? helper.lastTechExtents : vis.Radius;
         }
         public static float GetCheapBounds(this Tank tank)
         {
@@ -310,7 +327,6 @@ namespace TAC_AI
             }
             return false;
         }
-
 
         private static readonly List<BlockManager.BlockAttachment> tempCache = new List<BlockManager.BlockAttachment>(64);
         internal static bool CanAttachBlock(this Tank tank, TankBlock TB, IntVector3 posOnTechGrid, OrthoRotation rotOnTech)

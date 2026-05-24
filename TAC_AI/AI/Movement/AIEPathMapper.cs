@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -14,11 +14,6 @@ namespace TAC_AI.AI.Movement
         }
     }
 
-    /// <summary>
-    /// Evaluates world tiles (in smaller tiles) to figure out how path-findable they are.
-    ///   It's a heightmap of the terrain accounting for obsticles.
-    ///   Hosted in TankAIManager.
-    /// </summary>
     public class AIEPathMapper : MonoBehaviour
     {
         public static bool EnableAdvancedPathing => PathRequestsToCalcPerFrame != 0;
@@ -31,9 +26,6 @@ namespace TAC_AI.AI.Movement
         public const int AutoPathersToCalcPerFrame = 2;
         public static int PathRequestsToCalcPerFrame = 1;
 
-        /// <summary>
-        /// TerrainHeightVarianceMaxDifference
-        /// </summary>
         public static float THVMD => KickStart.TerrainHeight;
         public static float vertOffset => KickStart.TerrainHeightOffset;
         public const byte maxAltByte = 128;
@@ -73,7 +65,6 @@ namespace TAC_AI.AI.Movement
                     {
                         try
                         {
-                            // Neat tile overlay
                             item.Value.tile.m_ModifiedQuadTree.Draw(item.Value.tile.CalcSceneOrigin(), true);
 
                             if (drawFrame)
@@ -173,10 +164,6 @@ namespace TAC_AI.AI.Movement
             }
         }
 
-
-        /// <summary>
-        /// Destination, Pathers
-        /// </summary>
         internal static readonly List<AIEAutoPather> pathRequests = new List<AIEAutoPather>();
         internal static readonly List<AIEAutoPather> pathRequestsSuspended = new List<AIEAutoPather>();
         private static int pathStep = 0;
@@ -238,25 +225,11 @@ namespace TAC_AI.AI.Movement
                 frameCalcStep++;
             }
         }
-        private void ImmedeatelyPathAll()
-        {
-            for (int step = 0; step < pathRequests.Count;)
-            {
-                var path = pathRequests[0];
-                if (path.CalcRoute())
-                    pathStep++;
-                else
-                {
-                    path.IsRegistered = false;
-                    pathRequests.RemoveAt(pathStep);
-                }
-            }
-        }
 
         public static bool StopPather(AIEAutoPather pather)
         {
-            if (pather != null && pather.IsRegistered && pathRequests.Remove(pather) 
-                || pathRequestsSuspended.Remove(pather))
+            if (pather != null && pather.IsRegistered
+                && (pathRequests.Remove(pather) || pathRequestsSuspended.Remove(pather)))
             {
                 pather.IsRegistered = false;
                 return true;
@@ -270,15 +243,22 @@ namespace TAC_AI.AI.Movement
         }
         public static void RegisterTile(WorldTile tile)
         {
-            if (!sub)
+            if (!sub || inst == null)
             {
                 sub = true;
-                inst = new GameObject("PathMapper").AddComponent<AIEPathMapper>();
+                if (inst == null)
+                    inst = new GameObject("PathMapper").AddComponent<AIEPathMapper>();
                 ManWorld.inst.TileManager.TileDestroyedEvent.Subscribe(UnregisterTile);
                 ManWorldDeformerExt.OnTerrainDeformed.Subscribe(UnregisterTile);
             }
             if (tilesMapped.ContainsKey(tile.Coord))
-                throw new Exception("AIPathMapper(RegisterTile) - Tried to add a WorldTile that is already present");
+            {
+                // Was: throw. After the ResetAll-without-unsubscribe race was fixed (see ResetAll
+                // below), duplicate registration is no longer pathological — log and skip instead
+                // of crashing the caller.
+                DebugTAC_AI.Log("AIEPathMapper(RegisterTile) - tile " + tile.Coord + " already registered; skipping.");
+                return;
+            }
             //DebugTAC_AI.Log("AIEPathMapper: Registered tile " + tile.Coord.ToString());
             tilesMapped.Add(tile.Coord, AIPathTileCached.GetAIPathTileCached(tile));
         }
@@ -289,7 +269,6 @@ namespace TAC_AI.AI.Movement
             IntVector2 coord = tile.Coord;
             if (tilesMapped.TryGetValue(coord, out AIPathTileCached inst))
             {
-                inst.Reset();
                 tilesMapped.Remove(coord);
             }
         }
@@ -299,6 +278,20 @@ namespace TAC_AI.AI.Movement
             pathRequests.Clear();
             pathRequestsSuspended.Clear();
             autoPathers.Clear();
+            if (inst != null)
+            {
+                // Unsubscribe before destroying the GameObject — otherwise the next RegisterTile
+                // re-subscribes on top of the previous handlers, multiplying UnregisterTile
+                // invocations per tile-destroy event after every mode-switch.
+                if (sub)
+                {
+                    ManWorld.inst.TileManager.TileDestroyedEvent.Unsubscribe(UnregisterTile);
+                    ManWorldDeformerExt.OnTerrainDeformed.Unsubscribe(UnregisterTile);
+                }
+                UnityEngine.Object.Destroy(inst.gameObject);
+                inst = null;
+            }
+            sub = false;
         }
 
         public static byte GetAlt(Vector3 scenePos, bool Throws)
@@ -467,7 +460,6 @@ namespace TAC_AI.AI.Movement
             return highHeight != -100;
         }
 
-
         public static bool MakeBlocker(Collider col, out SceneryBlocker SB)
         {
             if (col is BoxCollider BC)
@@ -526,6 +518,7 @@ namespace TAC_AI.AI.Movement
         public static byte GetDifficulty(Vector3 scenePos, AIEAutoPather pather)
         {
             float ToFill = pather.MoveGridScale * AIEAutoPather.PathingRadiusMulti;
+            ToFill = Mathf.Max(ToFill, EvalRad * 2);
             byte bestDiff = 0;
             Vector2 posAltSub = scenePos.ToVector2XZ() - new Vector2(ToFill / 2, ToFill / 2);
             Vector2 posAltPos = scenePos.ToVector2XZ() + new Vector2(ToFill / 2, ToFill / 2);
@@ -568,6 +561,7 @@ namespace TAC_AI.AI.Movement
         public static byte GetDifficultyWater(Vector3 scenePos, AIEAutoPather pather)
         {
             float ToFill = pather.MoveGridScale * AIEAutoPather.PathingRadiusMulti;
+            ToFill = Mathf.Max(ToFill, EvalRad * 2);
 
             byte bestDiff = 0;
             Vector2 posAltSub = scenePos.ToVector2XZ() - new Vector2(ToFill / 2, ToFill / 2);
@@ -617,6 +611,7 @@ namespace TAC_AI.AI.Movement
         public static byte GetDifficultyNoWater(Vector3 scenePos, AIEAutoPather pather)
         {
             float ToFill = pather.MoveGridScale * AIEAutoPather.PathingRadiusMulti;
+            ToFill = Mathf.Max(ToFill, EvalRad * 2);
 
             byte bestDiff = 0;
             Vector2 posAltSub = scenePos.ToVector2XZ() - new Vector2(ToFill / 2, ToFill / 2);
@@ -666,6 +661,7 @@ namespace TAC_AI.AI.Movement
         public static bool GetIsEnterable(Vector3 scenePos, AIEAutoPather pather)
         {
             float ToFill = pather.MoveGridScale * AIEAutoPather.PathingRadiusMulti;
+            ToFill = Mathf.Max(ToFill, EvalRad * 2);
             float unitBottom = -pather.MoveGridScale / 2;
             byte unitBottomByte = SceneAltToChunkAlt(scenePos.y + unitBottom);
 
@@ -708,6 +704,7 @@ namespace TAC_AI.AI.Movement
         public static bool GetIsEnterableAboveWater(Vector3 scenePos, AIEAutoPather pather)
         {
             float ToFill = pather.MoveGridScale * AIEAutoPather.PathingRadiusMulti;
+            ToFill = Mathf.Max(ToFill, EvalRad * 2);
             float unitBottom = -pather.MoveGridScale / 2;
             byte unitBottomByte = SceneAltToChunkAlt(scenePos.y + unitBottom);
 
@@ -762,6 +759,7 @@ namespace TAC_AI.AI.Movement
         public static bool GetIsEnterableWithinWater(Vector3 scenePos, AIEAutoPather pather)
         {
             float ToFill = pather.MoveGridScale * AIEAutoPather.PathingRadiusMulti;
+            ToFill = Mathf.Max(ToFill, EvalRad * 2);
             float unitTop = pather.MoveGridScale / 2;
             byte unitTopByte = SceneAltToChunkAlt(scenePos.y + unitTop);
             //byte unitBottomByte = SceneAltToChunkAlt(scenePos.y - unitTop);
@@ -882,16 +880,9 @@ namespace TAC_AI.AI.Movement
             return SceneAltToChunkAlt(KickStart.WaterHeight);
         }
 
-
-        internal static void DepoolUnusedTiles()
-        {
-            AIPathTileCached.UnusedTiles.Clear();
-        }
         private class AIPathTileCached
         {
             internal static FieldInfo blockersGet = typeof(WorldTile).GetField("m_SceneryBlockers", BindingFlags.NonPublic | BindingFlags.Instance);
-
-            internal static Queue<AIPathTileCached> UnusedTiles = new Queue<AIPathTileCached>();
 
             public WorldTile tile { get; private set; } = null;
             public readonly HashSet<Collider> LooselyAddedBlockers;
@@ -902,23 +893,9 @@ namespace TAC_AI.AI.Movement
 
             internal static AIPathTileCached GetAIPathTileCached(WorldTile tile)
             {
-                if (!UnusedTiles.Any())
-                    new AIPathTileCached().Reset();
-                var newInst = UnusedTiles.Dequeue();
-                newInst.SetupAIPathTileCached(tile);
-                return newInst;
-            }
-            internal void Reset()
-            {
-                for (int step = 0; step < chunkBytes.Length; step++)
-                {
-                    chunkBytes[step] = 0;
-                }
-                LooselyAddedBlockers.Clear();
-                Objects.Clear();
-                blockers.Clear();
-
-                UnusedTiles.Enqueue(this);
+                var inst = new AIPathTileCached();
+                inst.SetupAIPathTileCached(tile);
+                return inst;
             }
 
             private void SetupAIPathTileCached(WorldTile tile)
@@ -973,10 +950,7 @@ namespace TAC_AI.AI.Movement
                         if (!blockers.Contains(item))
                             blockers.Add(item);
                     }
-                    foreach (var item in Objects.TakeWhile(x => x == null))
-                    {
-                        Objects.Remove(item);
-                    }
+                    Objects.RemoveWhere(x => x == null);
                     foreach (var item in Objects)
                     {
                         foreach (var col in item.GetComponentsInChildren<Collider>())
@@ -997,9 +971,6 @@ namespace TAC_AI.AI.Movement
             {
                 return (EvalChunk(pos, Throws) >> 1) < GetChunkAltWater();
             }
-            /// <summary>
-            /// Obst is an uncalculated devience in height presented by an unloaded object
-            /// </summary>
             internal bool NotLoaded(WorldPosition pos, bool Throws)
             {
                 return (EvalChunk(pos,Throws) & 1) == 1;
@@ -1047,9 +1018,6 @@ namespace TAC_AI.AI.Movement
                 }
                 return isTrue;
             }
-            /// <summary>
-            /// Obst is an uncalculated devience in height presented by an unloaded object
-            /// </summary>
             internal bool BytesToNotLoaded(ref byte chunkByte)
             {
                 return (chunkByte & 1) == 1;
@@ -1160,7 +1128,7 @@ namespace TAC_AI.AI.Movement
                     }
                     else
                     {
-                        DebugTAC_AI.Log("Pos " + scenePos + " is pathable with height " + height);
+                        //DebugTAC_AI.Log("Pos " + scenePos + " is pathable with height " + height);
                         chunkByte = CompactChunkByte(SceneAltToChunkAlt(height), false);
                     }
                     //AIGlobals.PopupPlayerInfo(diff.ToString(), WorldPosition.FromScenePosition(ManWorld.inst.ProjectToGround(scenePos, true)));
@@ -1168,7 +1136,6 @@ namespace TAC_AI.AI.Movement
                 }
                 if (ThrowException && BytesToNotLoaded(ref chunkByte))
                 {
-                    chunkBytes[index] = 0;
                     throw new TileNotLoadedException("Tile at " + pos.TileCoord + " scenePos " + pos.ScenePosition + " is not loaded");
                 }
                 return chunkByte;
@@ -1210,7 +1177,6 @@ namespace TAC_AI.AI.Movement
                 return false;
             }
         }
-
 
         internal class GUIManaged
         {
@@ -1278,4 +1244,3 @@ namespace TAC_AI.AI.Movement
         }
     }
 }
-

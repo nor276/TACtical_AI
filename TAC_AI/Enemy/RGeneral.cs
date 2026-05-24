@@ -1,11 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using TerraTechETCUtil;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Enemy.EnemyOperations;
-using TAC_AI.Enemy.EnemyOperations;
 using TAC_AI.AI.AlliedOperations;
 
 namespace TAC_AI.AI.Enemy
@@ -39,6 +38,10 @@ namespace TAC_AI.AI.Enemy
         internal static bool LollyGag(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct, bool holdGround = false)
         {
             bool isRegenerating = false;
+            // T4: band-aid auto-clear removed; root cause is in the FetchChargedChargers
+            // branch below (now gated on energy<0.9f) so the existing
+            // `if (helper.GetEnergyPercent() > 0.9f) mind.Hurt = false;` clear can fire
+            // when a tech reaches/sits-at a charger with topped-off energy.
             if (mind.Hurt)// && helper.lastDestination.Approximately(tank.boundsCentreWorldNoCheck, 10)
             {
                 if (mind.CommanderSmarts >= EnemySmarts.Meh)
@@ -56,8 +59,11 @@ namespace TAC_AI.AI.Enemy
                                 DefaultIdle(helper, tank, mind, ref direct);
                             }
                         }
-                        else if (!holdGround && AIECore.FetchChargedChargers(tank, mind.MaxCombatRange, out IAIFollowable posTrans, out _, tank.Team))
+                        else if (!holdGround && helper.GetEnergyPercent() < 0.9f &&
+                            AIECore.FetchChargedChargers(tank, mind.MaxCombatRange, out IAIFollowable posTrans, out _, tank.Team))
                         {
+                            // T4: skip charger trip if energy is already topped off — lets the
+                            // clear-Hurt check below fire instead of returning early.
                             direct.SetLastDest(posTrans.position);
                             return true;
                         }
@@ -92,7 +98,6 @@ namespace TAC_AI.AI.Enemy
                     {
                         if (helper.GetEnergyPercent() > 0.5f)
                         {
-                            //flex yee building speeds on them players
                             helper.PendingDamageCheck = !RRepair.EnemyInstaRepair(tank, mind);
                             //helper.AttemptedRepairs++;
                         }
@@ -121,6 +126,18 @@ namespace TAC_AI.AI.Enemy
                 direct.SetLastDest(mind.sceneStationaryPos);
             else
             {
+                // B6: heartbeat re-aggro. Without this, idle attitudes (Default / Miner /
+                // Junker / Boss / NPCBaseHost / Guardian / Part*) never call
+                // TryRefreshEnemyEnemy and stay in LollyGag forever once a target is lost.
+                // HomingIdle below already re-acquires each tick (skip-via-NextFindTargetTime
+                // throttle keeps the cost bounded). Gate on Provoked<=0 so a tech still in
+                // combat hysteresis doesn't get its target overwritten by a bystander.
+                if (helper.lastEnemyGet == null && helper.Provoked <= 0
+                    && helper.NextFindTargetTime <= Time.time)
+                {
+                    helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
+                    helper.NextFindTargetTime = Time.time + AIGlobals.ScanDelay;
+                }
                 switch (mind.CommanderMind)
                 {
                     case EnemyAttitude.Default: // do dumb stuff
@@ -138,14 +155,11 @@ namespace TAC_AI.AI.Enemy
                     case EnemyAttitude.Boss:        // Tidy base - will run off to do missions later
                         RScavenger.Scavenge(helper, tank, mind, ref direct);
                         break;
-                    //The case below I still have to think of a reason for them to do the things
                     case EnemyAttitude.Junker:  // Huddle up by blocks on the ground
                         RScavenger.Scavenge(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.OnRails:
-                        break;
-                    case EnemyAttitude.Invader:
-                        break;
+                    // P13 DEAD-2: removed empty OnRails / Invader cases — both were no-op `break`s
+                    // identical to default, so routing them to default is behavior-preserving.
                     case EnemyAttitude.Guardian:
                         RGuardian.MotivateDefend(helper, tank, mind, ref direct);
                         break;
@@ -157,7 +171,6 @@ namespace TAC_AI.AI.Enemy
                         BMultiTech.BeamLockWithinBounds(helper, tank); //lock rigidbody with closest non-MT Tech on build beam
                         break;
                     case EnemyAttitude.PartStatic:
-                        // Defend and sit like good guard dog
                         BMultiTech.MimicDefend(helper, tank);
                         BMultiTech.MTStatic(helper, tank, ref direct);
                         BMultiTech.BeamLockWithinBounds(helper, tank); //lock rigidbody with closest non-MT Tech on build beam
@@ -180,41 +193,105 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
+        // B3/B10: combat-bucket retreat hysteresis helpers. Set on retreat-bucket entry,
+        // cleared on advance-bucket entry. Consumed by RWheeled.AttackVroom advanceEdge
+        // (widens range*1.25 → range*1.4 when retreating) and by TankAIHelper.AvoidAssist
+        // (suppresses ally-spacing displacement while retreating). Originally RWheeled-only;
+        // B10 extends application to RChopper/RNaval/RStarship.
+        internal static void MarkRetreating(TankAIHelper helper) { helper.WasRetreatingInCombat = true; }
+        internal static void MarkAdvancing(TankAIHelper helper) { helper.WasRetreatingInCombat = false; }
 
-        // Handle being bored AIs
         internal static void DefaultIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
-            if (helper.ActionPause == 1)
+            // REVIVED reroll: on expiry pick a NEW wander dest + restart (was `== 1`, which the tick steps
+            // skip, so the destination never re-randomized). Retuned via the actionPause seconds shim:
+            // 1000t = 2.0s wander hold; coast (drive -> None) in the final 250t = 0.5s. See docs/21.
+            if (helper.ActionPause <= 0)
             {
                 direct.SetLastDest(GetRANDPos(tank));
-                helper.actionPause = 0;
+                helper.actionPause = 1000;
             }
-            else if (helper.ActionPause == 0)
-                helper.actionPause = 60;
-            if (helper.ActionPause > 15)
+            if (helper.ActionPause > 250)
                 direct.DriveDest = EDriveDest.ToLastDestination;
             else
                 direct.DriveDest = EDriveDest.None;
         }
+        /// <summary>
+        /// B7+T2+D1: centralized no-target dispatch. Called by EnemyOperationsController
+        /// before its R* switch when helper.lastEnemyGet is null. Replaces 6 duplicated
+        /// per-handler null branches that had drifted (RStation skipped LollyGag entirely
+        /// per D1; RAircraft uses LollyGagAir; RWheeled added a re-acquire + Provoked-hold
+        /// that no other handler had).
+        ///
+        /// Behavior:
+        ///   1. Re-acquire via TryRefreshEnemyEnemy (the T2 RWheeled hardening, now universal)
+        ///   2. If still no target and Provoked > 0: hold position (DriveDest = None)
+        ///      — Provoked but no target means combat hysteresis; wandering off via LollyGag
+        ///      would lose the engagement.
+        ///   3. Else dispatch by EvilCommander:
+        ///        Airplane / Chopper -> LollyGagAir (aircraft-specific idle)
+        ///        Stationary         -> LollyGag(holdGround:true)  (D1 revival; the
+        ///                              holdGround overload re-pins to sceneStationaryPos
+        ///                              and runs Hurt-auto-clear + Smrt/IntAIligent repair
+        ///                              without the drive-to-charger branch)
+        ///        else               -> LollyGag (standard idle dispatch)
+        /// </summary>
+        internal static void DispatchNoTargetIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
+        {
+            // T2 (universal): single re-acquire before idling — covers single-tick range/LOS
+            // flicker that would otherwise drop the target.
+            helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
+            if (helper.lastEnemyGet != null)
+                return;   // re-acquired; caller can proceed with the R* handler
+            if (helper.Provoked > 0)
+            {
+                // Provoked but no target — hold, don't wander.
+                direct.DriveDest = EDriveDest.None;
+                return;
+            }
+            switch (mind.EvilCommander)
+            {
+                case EnemyHandling.Airplane:
+                case EnemyHandling.Chopper:
+                    RAircraft.LollyGagAir(helper, tank, mind, ref direct);
+                    return;
+                case EnemyHandling.Stationary:
+                    // D1 revived: holdGround=true is the Stationary-specific path —
+                    // skips drive-to-charger (gated on !holdGround), pins to sceneStationaryPos,
+                    // and runs Hurt-auto-clear + Smrt/IntAIligent repair branches.
+                    LollyGag(helper, tank, mind, ref direct, holdGround: true);
+                    return;
+                default:
+                    LollyGag(helper, tank, mind, ref direct);
+                    return;
+            }
+        }
+
         internal static void HomingIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
-            //Try find next target to assault
+            // B8: null-guard arguments + narrow catch to Unity-NRE class. The previous
+            // bare catch{} (comment claimed "No tanks available") swallowed every exception
+            // including real NREs from TryRefreshEnemyEnemy / visible teardown races.
+            if (helper == null || tank == null || mind == null)
+            {
+                DebugTAC_AI.LogError("HomingIdle called with null helper/tank/mind; skipping");
+                return;
+            }
             try
             {
                 var target = helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
-                if (target)
+                if (target && target.tank != null)
                     direct.SetLastDest(target.tank.boundsCentreWorldNoCheck);
                 else
                     DefaultIdle(helper, tank, mind, ref direct);
-                /*
-                helper.lastEnemy = helper.FindEnemy(mind.InvertBullyPriority, inRange: AIGlobals.EnemyExtendActionRange);
-                if (helper.lastEnemyGet)
-                    direct.lastDestination = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck;
-                else
-                    DefaultIdle(helper, tank, mind, ref direct);
-                */
             }
-            catch { }//No tanks available
+            catch (Exception e) when (e is NullReferenceException || e is MissingReferenceException)
+            {
+                DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    "HomingIdle:" + tank.name,
+                    "HomingIdle NRE on " + tank.name + " - target/visible state went null mid-frame", e);
+                DefaultIdle(helper, tank, mind, ref direct);
+            }
         }
         internal static Vector3 GetRANDPos(Tank tank)
         {
@@ -227,103 +304,73 @@ namespace TAC_AI.AI.Enemy
             return final;
         }
 
-        /// <summary>
-        /// Only is used to keep track of enemies
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
-        /// <param name="mind"></param>
         internal static void Scurry(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             // Determines the weapons actions and aiming of the AI - Sub-Neutral (Coward)
             //if (mind.CommanderAttack == EnemyAttack.Coward)
             //{
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
-            helper.AttackEnemy = helper.Provoked > 0;
+            helper.WantsToFight = helper.Provoked > 0;
             //}
         }
 
-        /// <summary>
-        /// Only is used to keep track of enemies
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
-        /// <param name="mind"></param>
         internal static void Monitor(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             TeamBasePointer funds = RLoadedBases.GetTeamHQ(tank.Team);
             if (funds != null)
             {
                 if ((funds.WorldPos.ScenePosition - tank.boundsCentreWorldNoCheck).sqrMagnitude > AIGlobals.MaximumNeutralMonitorSqr)
-                    helper.lastEnemy = null;  // Stop following this far from base
+                    helper.ReleaseTarget();  // B15: was bare `helper.lastEnemy = null;` — left KeepEnemyFocus stuck, next SetPursuit silently no-op'd
                 else
                     helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             }
             else  // Don't stalk cause that's rude
-                helper.lastEnemy = null;  // Stop following this far from base
-            helper.AttackEnemy = false;
+                helper.ReleaseTarget();  // B15: same — no HQ means full release
+            helper.WantsToFight = false;
             if (helper.lastEnemyGet)
             {
-                //helper.SetPursuit(helper.lastEnemyGet);
+                // B1 revival: SetPursuit's silent no-op against a stuck KeepEnemyFocus was why
+                // this was disabled. After B1+B15 the same-target re-call self-heals the lock.
+                helper.SetPursuit(helper.lastEnemyGet);
                 if (ManBaseTeams.IsEnemy(tank.Team, helper.lastEnemyGet.tank.Team))
-                    helper.AttackEnemy = true;
+                    helper.WantsToFight = true;
             }
         }
 
-
-        // HOSTILITIES
-        /// <summary>
-        /// Base attack
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
         internal static void BaseAttack(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
-            // Determines the weapons actions and aiming of the AI
             var lastEnemyC = helper.lastEnemy;
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             //DebugTAC_AI.Log("Base " + tank.name + " has enemy: " + helper.lastEnemy.IsNotNull() + " prev " + lastEnemyC.IsNotNull());
             
             if (helper.lastEnemyGet != null)
             {
-                helper.AttackEnemy = true;
+                helper.WantsToFight = true;
             }
             else
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
             
         }
 
-        /// <summary>
-        /// Attack like default
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
         internal static void AidAttack(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
-            // Determines the weapons actions and aiming of the AI
             var lastEnemyC = helper.lastEnemy;
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             //DebugTAC_AI.Log("Tech " + tank.name + " has enemy: " + helper.lastEnemy.IsNotNull() + " prev " + lastEnemyC.IsNotNull()
             //    + " | Range " + helper.MaxCombatRange);
-            helper.AttackEnemy = false;
+            helper.WantsToFight = false;
             if (helper.lastEnemyGet != null)
             {
                 //Fire even when retreating - the AI's life depends on this!
-                helper.AttackEnemy = true;
-                /*
-                if (helper.lastCombatRange < AIGlobals.MaxRangeFireAll)
-                {
-                    helper.FIRE_ALL = true;
-                    return;
-                }*/
+                // P12 BUG-2/DEAD-4: proactive fire is now driven by this WantsToFight flag, which the
+                // WeaponMaintainer Enemy case consumes (FIRE_ALL || WantsToFight). The old blanket
+                // "lastCombatRange < MaxRangeFireAll -> FIRE_ALL = true; return;" was removed: it set the
+                // unsafe blanket FIRE_ALL the P09 pass excised everywhere, only covered AidAttack, and was
+                // clobbered every tick by BGeneral.ResetValues anyway.
+                helper.WantsToFight = true;
             }
         }
 
-        /// <summary>
-        /// Hold fire until aiming at target cab-forwards or after some time
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
         internal static void AimAttack(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             // Determines the weapons actions and aiming of the AI, this one is more fire-precise and used for turrets
@@ -341,7 +388,7 @@ namespace TAC_AI.AI.Enemy
                         float dot = Vector3.Dot(tank.rootBlockTrans.right, aimTo);
                         if (dot > 0.45f || dot < -0.45f || helper.WeaponDelayClock >= 150)
                         {
-                            helper.AttackEnemy = true;
+                            helper.WantsToFight = true;
                             helper.WeaponDelayClock = 150;
                         }
                     }
@@ -349,7 +396,7 @@ namespace TAC_AI.AI.Enemy
                     {
                         if (Vector3.Dot(tank.rootBlockTrans.forward, aimTo) > 0.45f || helper.WeaponDelayClock >= 150)
                         {
-                            helper.AttackEnemy = true;
+                            helper.WantsToFight = true;
                             helper.WeaponDelayClock = 150;
                         }
                     }
@@ -361,7 +408,7 @@ namespace TAC_AI.AI.Enemy
                         float dot = Vector2.Dot(tank.rootBlockTrans.right.ToVector2XZ(), aimTo.ToVector2XZ());
                         if (dot > 0.45f || dot < -0.45f || helper.WeaponDelayClock >= 150)
                         {
-                            helper.AttackEnemy = true;
+                            helper.WantsToFight = true;
                             helper.WeaponDelayClock = 150;
                         }
                     }
@@ -369,7 +416,7 @@ namespace TAC_AI.AI.Enemy
                     {
                         if (Vector2.Dot(tank.rootBlockTrans.forward.ToVector2XZ(), aimTo.ToVector2XZ()) > 0.45f || helper.WeaponDelayClock >= 150)
                         {
-                            helper.AttackEnemy = true;
+                            helper.WantsToFight = true;
                             helper.WeaponDelayClock = 150;
                         }
                     }
@@ -378,16 +425,10 @@ namespace TAC_AI.AI.Enemy
             else
             {
                 helper.WeaponDelayClock = 0;
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
             }
         }
 
-
-        /// <summary>
-        /// Prioritize removal of obsticles over attacking enemy
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
         internal static void SelfDefense(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             // Alternative of the above - does not aim at enemies while mining
@@ -396,50 +437,23 @@ namespace TAC_AI.AI.Enemy
                 AidAttack(helper, tank, mind);
             }
             else
-                helper.AttackEnemy = true;
+                helper.WantsToFight = true;
         }
 
-
-        /// <summary>
-        /// Stay focused on first target if the unit is order to focus-fire
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
         internal static void RTSCombat(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
-            // Determines the weapons actions and aiming of the AI
             if (helper.lastEnemyGet != null)
             {   // focus fire like Grudge
-                helper.AttackEnemy = true;
+                helper.WantsToFight = true;
                 if (!helper.lastEnemyGet.isActive)
                     helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             }
             else
             {
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
                 helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             }
         }
 
-        /// <summary>
-        /// (OBSOLETE!!! Handled by FindEnemy) Find enemy and then chase the enemy until lost
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
-        /*
-        internal static void HoldGrudge(TankAIHelper helper, Tank tank, EnemyMind mind)
-        {
-            if (helper.lastEnemy != null)
-            {
-                if (helper.lastEnemy.isActive)
-                {
-                    //Hold that grudge!
-                    helper.DANGER = true;
-                    return;
-                }
-            }
-            helper.DANGER = false;
-            helper.lastEnemySet = mind.FindEnemy();
-        }*/
     }
 }

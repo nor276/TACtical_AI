@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -13,28 +13,11 @@ namespace TAC_AI.AI.Movement
     }
     public interface IPathfindable
     {
-        /// <summary>
-        /// Should we try actively pathfinding?
-        /// Should ONLY be set by SetAutoPathfinding()!
-        /// </summary>
         bool AutoPathfind { get; set; }
-        /// <summary>
-        /// Handled automatically.  DO NOT TOUCH!
-        /// </summary>
         AIEAutoPather Pathfinder { get; set; }
-        /// <summary> Do pathfinding in 3D space - will cost more performance! </summary>
         bool Do3DPathing { get; }
-        /// <summary>
-        /// How we should handle water pathfinding
-        /// </summary>
         WaterPathing WaterPathing { get; set; }
-        /// <summary>
-        /// The precision of the pathing grid.  Smaller Techs should have smaller values.
-        /// </summary>
         float PathingPrecision { get; set; }
-        /// <summary>
-        /// The max allowed difficulty of the pathing when finding a route.  The more capable, the higher this is.
-        /// </summary>
         byte MaxPathDifficulty { get; set; }
 
         Vector3 CurrentPosition();
@@ -49,7 +32,7 @@ namespace TAC_AI.AI.Movement
         {
             if (active != pathable.AutoPathfind)
             {
-                if (!AIEPathMapper.EnableAdvancedPathing)
+                if (active && !AIEPathMapper.EnableAdvancedPathing)
                     return;
                 pathable.AutoPathfind = active;
                 if (active)
@@ -61,11 +44,6 @@ namespace TAC_AI.AI.Movement
                 }
             }
         }
-        /// <summary>
-        /// Updates Pathfinding
-        /// </summary>
-        /// <param name="pathable"></param>
-        /// <returns></returns>
         public static bool StartPathfind(this IPathfindable pathable)
         {
             if (pathable.Do3DPathing)
@@ -90,8 +68,8 @@ namespace TAC_AI.AI.Movement
         public const float TerrainSlopeMaxClimbPerUnit = 1.0f;
         [Range(0.1f, 50f)]
         public const float TerrainSlopeMaxDropPerUnit = 6.25f;
-        public const float TerrainSlopeClimbPenaltyMulti = DefaultMaxDifficulty / TerrainSlopeMaxClimbPerUnit;
-        public const float TerrainSlopeFallPenaltyMulti = TerrainSlopeClimbPenaltyMulti;//DefaultMaxDifficulty / TerrainSlopeMaxDropPerUnit;
+        public const float TerrainSlopeClimbPenaltyMulti = 8f;
+        public const float TerrainSlopeFallPenaltyMulti = DefaultMaxDifficulty / TerrainSlopeMaxDropPerUnit;
         public const float maxDeadEndsTillFailMulti = 2f;
         public const float maxPathedTillFailDistMulti = 8f;
         public const int MaxPointsInLineToRemove = 4;
@@ -151,7 +129,6 @@ namespace TAC_AI.AI.Movement
         }
 
         public abstract byte GetDifficultyFromAlt(byte alt); // 128 max
-
 
         public virtual void Recalc(Vector3 startPosScene, Vector3 endPosScene)
         {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -6,9 +6,6 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement
 {
-    /// <summary>
-    /// Acts as the slow, non-immedeate pathfinding for land and sea AIs.
-    /// </summary>
 
     public class AIEAutoPather2D : AIEAutoPather
     {
@@ -25,13 +22,6 @@ namespace TAC_AI.AI.Movement
             AIEPathMapper.RegisterPather(this);
         }
 
-        /// <summary>
-        /// Must be called from within the class instance with the pather in it
-        /// </summary>
-        /// <param name="pathable"></param>
-        /// <param name="startPos"></param>
-        /// <param name="destPos"></param>
-        /// <returns></returns>
         public static bool DoPathfinding(ref IPathfindable pathable)
         {
             if (pathable == null)
@@ -40,7 +30,6 @@ namespace TAC_AI.AI.Movement
             Vector3 startPos = pathable.CurrentPosition();
             Vector3 destPos = pathable.GetTargetDestination();
 
-            // Check if we should just rely on immedeate pathing
             if (!IsFarEnough(startPos, destPos))
                 return false;
             var pathfinder = pathable.Pathfinder;
@@ -54,7 +43,6 @@ namespace TAC_AI.AI.Movement
             }
             else
             {
-                // Check if we should recalc it
                 if (IsFarEnough(pathfinder.EndPosWP.ScenePosition, destPos) || (pathfinder.IsFinished && !pathfinder.Success &&
                     IsFarEnough(pathfinder.StartPosWP.ScenePosition, startPos)))
                 {
@@ -64,7 +52,6 @@ namespace TAC_AI.AI.Movement
             }
             return true;
         }
-
 
         private void RecalcManual()
         {
@@ -78,7 +65,7 @@ namespace TAC_AI.AI.Movement
         }
         private void Recalc_Internal(Vector3 startPos, Vector3 endPos)
         {
-            PathingUnit.OnFinishedPathfinding(null);
+            deadEnds = 0;
             PathRoute.Clear();
             pathed.Clear();
             maxDiff = (byte)Mathf.Clamp(PathingUnit.MaxPathDifficulty, 1, AIEPathMapper.maxAltByte - 1);
@@ -182,7 +169,6 @@ namespace TAC_AI.AI.Movement
             }
         }
 
-
         private static HashSet<IntVector2> pos = new HashSet<IntVector2>();
         private static HashSet<IntVector2> posPre = new HashSet<IntVector2>();
         private static HashSet<IntVector2> posPre2 = new HashSet<IntVector2>();
@@ -190,13 +176,14 @@ namespace TAC_AI.AI.Movement
         {
             pos.Clear();
             pos.Add(IntVector2.zero);
+            posPre.Clear();
+            posPre.Add(IntVector2.zero);
             for (int step = 0; step < rad; step++)
             {
                 posPre2.Clear();
                 foreach (var item in posPre)
                     posPre2.Add(item);
                 posPre.Clear();
-                posPre.Add(IntVector2.zero);
                 foreach (var item in posPre2)
                 {
                     foreach (var item2 in iterationsStr)
@@ -264,23 +251,20 @@ namespace TAC_AI.AI.Movement
         }
         internal void PrintErrorInfoCoord(IntVector2 chunk, byte end)
         {
+            if (!endPrematureDebug)
+                return;
             Vector3 posV = ToSceneHeightFast(chunk);
             byte init = AIEPathMapper.GetDifficultyNoWater(posV, this);
             byte heading = CalcHeadingDiff(chunk, CurPos);
             byte obstActive = CalcActiveObst(posV);
-            //DebugTAC_AI.Log("PrintErrorInfoCoord - " + posV +  " | initial: " + init + " | heading: " + heading + " | obst: " + obstActive + 
-            //    " | total: " + end);
+            DebugTAC_AI.Log("PrintErrorInfoCoord - " + posV + " | initial: " + init + " | heading: " + heading + " | obst: " + obstActive +
+                " | total: " + end);
         }
-
 
         private static List<KeyValuePair<byte, IntVector2>> toCheck = new List<KeyValuePair<byte, IntVector2>>();
         private static List<KeyValuePair<byte, IntVector2>> toCheckAlt = new List<KeyValuePair<byte, IntVector2>>();
         private static List<KeyValuePair<byte, IntVector2>> toCheckExtra = new List<KeyValuePair<byte, IntVector2>>();
         private static List<KeyValuePair<byte, IntVector2>> toCheckExtra2 = new List<KeyValuePair<byte, IntVector2>>();
-        /// <summary>
-        /// For each call, paths each tile every call PathingIterationsPerCall times
-        /// </summary>
-        /// <returns>True if calcing, false when finished</returns>
         public override bool CalcRoute()
         {
             if (PathingUnit == null)
@@ -292,7 +276,6 @@ namespace TAC_AI.AI.Movement
             {
                 Finished = false;
                 DebugTAC_AI.Log("AIAutoPather - Stopped updating.");
-                PathingUnit.OnFinishedPathfinding(null);
                 return false;
             }
             toCheck.Clear();
@@ -319,30 +302,22 @@ namespace TAC_AI.AI.Movement
                                 toCheckAlt.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
-                        if (!nearbyObst)
+                        toCheckExtra.Clear();
+                        toCheckExtra2.Clear();
+                        foreach (var item in iterationsDia)
                         {
-                            toCheckExtra.Clear();
-                            toCheckExtra2.Clear();
-                            foreach (var item in iterationsDia)
+                            posC = CurPos + item;
+                            if (!pathed.Contains(posC))
                             {
-                                posC = CurPos + item;
-                                if (!pathed.Contains(posC))
-                                {
-                                    diff = CalcAvoidWater(posC, CurPos);
-                                    PrintErrorInfoCoord(posC, diff);
-                                    if (diff <= maxDiff)
-                                        toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                    else
-                                        nearbyObst = true;
-                                    toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                }
-                            }
-                            if (!nearbyObst)
-                            {
-                                toCheck.AddRange(toCheckExtra);
-                                toCheckAlt.AddRange(toCheckExtra2);
+                                diff = CalcAvoidWater(posC, CurPos);
+                                PrintErrorInfoCoord(posC, diff);
+                                if (diff <= maxDiff)
+                                    toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
+                        toCheck.AddRange(toCheckExtra);
+                        toCheckAlt.AddRange(toCheckExtra2);
                         break;
                     case WaterPathing.AllowWater:
                         foreach (var item in iterationsStr)
@@ -358,29 +333,21 @@ namespace TAC_AI.AI.Movement
                                 toCheckAlt.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
-                        if (!nearbyObst)
+                        toCheckExtra.Clear();
+                        toCheckExtra2.Clear();
+                        foreach (var item in iterationsDia)
                         {
-                            toCheckExtra.Clear();
-                            toCheckExtra2.Clear();
-                            foreach (var item in iterationsDia)
+                            posC = CurPos + item;
+                            if (!pathed.Contains(posC))
                             {
-                                posC = CurPos + item;
-                                if (!pathed.Contains(posC))
-                                {
-                                    diff = CalcAll(posC, CurPos);
-                                    if (diff <= maxDiff)
-                                        toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                    else
-                                        nearbyObst = true;
-                                    toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                }
-                            }
-                            if (!nearbyObst)
-                            {
-                                toCheck.AddRange(toCheckExtra);
-                                toCheckAlt.AddRange(toCheckExtra2);
+                                diff = CalcAll(posC, CurPos);
+                                if (diff <= maxDiff)
+                                    toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
+                        toCheck.AddRange(toCheckExtra);
+                        toCheckAlt.AddRange(toCheckExtra2);
                         break;
                     case WaterPathing.StayInWater:
                         foreach (var item in iterationsStr)
@@ -396,32 +363,23 @@ namespace TAC_AI.AI.Movement
                                 toCheckAlt.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
-                        if (!nearbyObst)
+                        toCheckExtra.Clear();
+                        toCheckExtra2.Clear();
+                        foreach (var item in iterationsDia)
                         {
-                            toCheckExtra.Clear();
-                            toCheckExtra2.Clear();
-                            foreach (var item in iterationsDia)
+                            posC = CurPos + item;
+                            if (!pathed.Contains(posC))
                             {
-                                posC = CurPos + item;
-                                if (!pathed.Contains(posC))
-                                {
-                                    diff = CalcWaterOnly(posC, CurPos);
-                                    if (diff <= maxDiff)
-                                        toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                    else
-                                        nearbyObst = true;
-                                    toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                }
-                            }
-                            if (!nearbyObst)
-                            {
-                                toCheck.AddRange(toCheckExtra);
-                                toCheckAlt.AddRange(toCheckExtra2);
+                                diff = CalcWaterOnly(posC, CurPos);
+                                if (diff <= maxDiff)
+                                    toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
+                        toCheck.AddRange(toCheckExtra);
+                        toCheckAlt.AddRange(toCheckExtra2);
                         break;
                 }
-
 
                 if (toCheck.Count == 0)
                 {
@@ -752,7 +710,6 @@ namespace TAC_AI.AI.Movement
                 //throw new Exception("AIAutoPather - TryShorten returned no valid points for pathfinding");
             }
             int removed = 1;
-            // Remove loopbacks
             int index = 0;
             posssss.Clear();
             foreach (var item in PathRoute)
@@ -784,7 +741,6 @@ namespace TAC_AI.AI.Movement
                     }
                 }
             }
-            // Remove straight extra points
             for (int step = 0; step < PathRoute.Count - 2; step++)
             {
                 IntVector2 posCheck = PathRoute[step];
@@ -800,7 +756,6 @@ namespace TAC_AI.AI.Movement
                 }
             }
             /*
-            // Remove corner bend points and longer straights
             for (int step = 2; step < PathRoute.Count; step++)
             {
                 if (((Vector2)(PathRoute[step] - PathRoute[step - 2])).sqrMagnitude == 16) // 4 * 4
@@ -809,7 +764,6 @@ namespace TAC_AI.AI.Movement
                     removed++;
                 }
             }*/
-            PathRoute.RemoveAt(0);
             //DebugTAC_AI.Log("AIAutoPather - TryShorten has removed " + removed + " entries");
             //throw new NotImplementedException("AIAutoPather - TryShorten is incomplete");
         }

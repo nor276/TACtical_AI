@@ -1,15 +1,9 @@
-﻿namespace TAC_AI.Templates
+namespace TAC_AI.Templates
 {
-    /// <summary>
-    /// LEGACY - Most spawns are now merged!
-    /// </summary>
     public enum SpawnBaseTypes
     {
-        // STATIONARY TECHS
-        // error
         NotAvail,
 
-        // fallbacks
         GSO0Base,
         GCTotum,
         VENPipperoni,
@@ -17,9 +11,6 @@
         BFCyberFlote,
         RRSideswipe,
 
-
-        // The Bases
-        // GSO
         GSOSeller,
         GSOMidBase,
         GSOMinerCluster,
@@ -33,7 +24,6 @@
         //-HQs
         GSOMilitaryBase,// To-Do
 
-        // GeoCorp
         GCMiningRig,
         GCTerraBore,
         GCLoaderLauncher,
@@ -43,7 +33,6 @@
         //-HQs
         GCHeadquarters,
 
-        // Venture
         VENTuningShop,
         VENGasStation,
         VENPitStop,
@@ -53,7 +42,6 @@
         //-HQs
         VENSpeedac,
 
-        // Hawkeye
         HECombatStation,
         HEOilDerrick,
         HEComsat, // To-Do [sends allies to attack really far]
@@ -67,7 +55,6 @@
         //-HQs
         HECommandCentre,
 
-        // Better Future
         BFGains,
         BFExtractor,
         BFDrifter,
@@ -77,15 +64,12 @@
         //-HQs
         BFNoleusAutoworks,
 
-        // Reticule Research
         RRDecanter,
         RRSampler,
         RRFactory,// To-Do - RR Light tank spawner
         RRHeavyFactory,
         RRScienceVessel,// To-Do - RR spaceship spawner
 
-
-        // The Defenses
         GSOLightDefense,
         GSOTowerDefense,
         GSOMegaDefense,
@@ -96,9 +80,6 @@
         HECapitalDefense,
         BFOrbitarGuard, // To-Do
 
-
-
-        // MOBILE TECHS
         GSOTonyTeam,
         GSOHarvesterTech,
         GCHarvesterTech,
@@ -148,7 +129,6 @@
 
         SJBayonase,         // Medium mortar bomber
 
-        // Choppers
         GSOQuadGale,
         GSOQuadGaleM,
 
@@ -164,7 +144,6 @@
 
         SJWindbag,          // annoying air bag airship
 
-        // Naval
         GSOShallowWaterGuard,
         GCPlasmaDredge,
         GCYukonCharleyDredge,
@@ -187,7 +166,6 @@
         FTUEGSOGrade4BoteFallBack,
         FTUEGSOGrade5BoteFallBack,
 
-        // Space
         GSOSpaceshipMini,
         GSOSpaceshipCompact,
         GSOSpaceship,
@@ -195,16 +173,13 @@
         HECroc,
         BFTrident,
 
-        // space arty
         GSOSpaceArty,
         VENSpaceArty,
         HESpaceArty,
         BFSpaceArty,
 
         //-----------
-        // COMMUNITY
         //-----------
-        // Land Techs
         VENHarvester,
         Chungmus,
         TidusJ,
@@ -214,25 +189,20 @@
         AntiBomb,
         AntiSkyScience,
 
-        // Air Techs
         Midge,
         Damselfly,
 
-        // Space Techs
         Vette2,
 
         //-Eradicators
         Invulnerable2,
         Tyrant2,
 
-        // Bases
         GSO0GExtractor,
         GSOPowerStation,
-        /// <summary> Last of the prefab techs </summary>
         GSOQuickBuck,
 
         //---------
-        // CLUSTER
         //---------
         // OBSOLETE - The values below do not represent their respective entries anymore
         // Note: Need to label contributions
@@ -376,8 +346,6 @@
         StarN422281337,
         PreludeMP,
         V_LDAAssaultdrone,
-
-
 
         /*
         DefBattleTower,

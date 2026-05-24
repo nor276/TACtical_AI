@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Movement.AICores;
 
@@ -51,7 +51,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived in safety of the base.");
                     helper.AvoidStuff = false;
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                 }
                 else if (helper.recentSpeed < 3)
                 {
@@ -63,7 +63,6 @@ namespace TAC_AI.AI.AlliedOperations
                 return;
             }
 
-            // VALIDATION CHECKS OF BLOCK HOLD FILL STATUS
             if (helper.CollectedTarget)
             {   // Unload all contents
                 helper.CollectedTarget = false;
@@ -110,7 +109,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from blocks...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 helper.foundBase = AIECore.FetchClosestBlockReceiver(tank.rootBlockTrans.position, helper.JobSearchRange + AIGlobals.FindBaseScanRangeExtension, out helper.lastBasePos, out helper.theBase, tank.Team);
@@ -149,7 +148,7 @@ namespace TAC_AI.AI.AlliedOperations
                                 //blockHeld.centrePosition = helper.lastBasePos.position + (Vector3.up * AIECore.ExtremesAbs(blockHeld.block.BlockCellBounds.extents));
                             }
                             catch { }
-                            helper.actionPause -= KickStart.AIClockPeriod / 5;
+                            { /* actionPause self-counts via its AITimer now */ }
                             helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
                         }
@@ -185,7 +184,7 @@ namespace TAC_AI.AI.AlliedOperations
                             catch { }
                             direct.DriveToFacingTowards();
                             helper.AvoidStuff = false;
-                            helper.actionPause -= KickStart.AIClockPeriod / 5;
+                            { /* actionPause self-counts via its AITimer now */ }
                             helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
                         }
@@ -211,7 +210,7 @@ namespace TAC_AI.AI.AlliedOperations
                             direct.DriveToFacingTowards();
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Yielding base approach...");
                             helper.AvoidStuff = false;
-                            helper.actionPause -= KickStart.AIClockPeriod / 5;
+                            { /* actionPause self-counts via its AITimer now */ }
                             helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
                         }
@@ -228,7 +227,7 @@ namespace TAC_AI.AI.AlliedOperations
                         {
                             direct.DriveToFacingTowards();
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                            helper.actionPause -= KickStart.AIClockPeriod / 5;
+                            { /* actionPause self-counts via its AITimer now */ }
                             //helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
                             if (needsToSlowDown)
@@ -253,13 +252,15 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Base
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 if (!helper.foundGoal)
                 {
                     helper.EstTopSped = 1;//slow down the clock to reduce lagg
-                    helper.foundGoal = AIECore.FetchLooseBlocks(tank.rootBlockTrans.position, helper.JobSearchRange + AIGlobals.FindItemScanRangeExtension, out helper.theResource);
+                    helper.foundGoal = AIECore.FetchLooseBlocks(tank.rootBlockTrans.position, helper.JobSearchRange + AIGlobals.FindItemScanRangeExtension, out var tmpRes);
+                    helper.theResource = tmpRes;
+                    if (helper.foundGoal) helper.theResourceNode = tmpRes; // also tag the resource-node role
                     if (!helper.foundGoal)
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Scanning for loose blocks...");
@@ -324,8 +325,6 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.foundBase = false;
             }
         }
-
-
 
         public static void StopByBase(TankAIHelper helper, Tank tank, float dist, ref bool hasMessaged, ref EControlOperatorSet direct)
         {

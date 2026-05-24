@@ -93,7 +93,7 @@
     </Reference>
     <Reference Include="SafeSaves, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\Desktop\SafeSaves\SafeSaves\bin\Steam\SafeSaves.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\workshop\content\285920\2765217410\SafeSaves.dll</HintPath>
     </Reference>
     <Reference Include="System">
       <Private>False</Private>
@@ -115,7 +115,7 @@
     </Reference>
     <Reference Include="TerraTechETCUtil, Version=1.4.104.25, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\TTETCUtil\TerraTechETCUtil\TerraTechETCUtil\bin\Steam\TerraTechETCUtil.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\workshop\content\285920\2765217410\TerraTechETCUtil.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine">
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\TerraTech\TerraTechWin64_Data\Managed\UnityEngine.dll</HintPath>
@@ -183,7 +183,7 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="TerraTechETCUtil">
-      <HintPath>..\..\TTETCUtil\TerraTechETCUtil\TerraTechETCUtil\obj\Release\TerraTechETCUtil.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\workshop\content\285920\2765217410\TerraTechETCUtil.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup Condition="'$(Configuration)'=='Steam'OR'$(Configuration)'=='SteamDev'">
@@ -265,6 +265,7 @@
     <Compile Include="AILOC.cs" />
     <Compile Include="AIStates.cs" />
     <Compile Include="AIGlobals.cs" />
+    <Compile Include="TimingPrimitives.cs" />
     <Compile Include="AIWiki.cs" />
     <Compile Include="AI\AIEBases.cs" />
     <Compile Include="AI\TankAIHelper.cs" />
@@ -287,6 +288,8 @@
     <Compile Include="AI\Movement\AICores\StaticAICore.cs" />
     <Compile Include="AI\Movement\AICores\VehicleUtils.cs" />
     <Compile Include="AI\Movement\AIControllerStatic.cs" />
+    <Compile Include="AI\Movement\MovementControllerBase.cs" />
+    <Compile Include="AI\Movement\MovementDispatch.cs" />
     <Compile Include="AI\Movement\AIEPathing.cs" />
     <Compile Include="AI\AIEBeam.cs" />
     <Compile Include="AI\AIERepair.cs" />
@@ -301,7 +304,6 @@
     <Compile Include="AI\Movement\AICores\HelicopterAICore.cs" />
     <Compile Include="AI\Movement\AICores\HelicopterUtils.cs" />
     <Compile Include="AI\Movement\AICores\IMovementAICore.cs" />
-    <Compile Include="AI\Movement\AICores\VehicleAICore.cs" />
     <Compile Include="AI\Movement\AICores\VtolAICore.cs" />
     <Compile Include="AI\Movement\AIEPathMapper.cs" />
     <Compile Include="AI\TankAIManager.cs" />
@@ -311,7 +313,6 @@
     <Compile Include="CustomAttract.cs" />
     <Compile Include="DebugTAC_AI.cs" />
     <Compile Include="Enemy\EnemyOperations\RGuardian.cs" />
-    <Compile Include="Enemy\EnemyOperations\RPart.cs" />
     <Compile Include="Enemy\EnemyOperations\RScavenger.cs" />
     <Compile Include="AIEnums.cs" />
     <Compile Include="AI\AlliedOperations\BAstrotech.cs" />
@@ -420,7 +421,7 @@ xcopy /S /Y /R "!e:~0,-1!" !modpath!
 )
 )
 
-set modpath2="C:\Users\Legionite\Desktop\Advanced AI\Assets\Mods\Advanced AI"
+set modpath2="$(USERPROFILE)\Desktop\Advanced AI\Assets\Mods\Advanced AI"
 
 if exist !modpath2! (
 if $(ConfigurationName) == Steam (

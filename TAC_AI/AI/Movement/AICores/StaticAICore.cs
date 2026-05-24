@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -42,7 +42,12 @@ namespace TAC_AI.AI.Movement.AICores
 
                 if (!TryAdjustForCombat(true, ref controller.AimTarget, ref core))
                 {
-                    controller.AimTarget = helper.lastDestinationCore;
+                    // No live enemy: return to & hold the turret's mounted/rest facing. Previously this
+                    // aimed at lastDestinationCore (a *movement* waypoint, not a threat bearing), which
+                    // made idle turrets point the wrong way entirely. Keep DriveDir live so the chassis
+                    // can settle onto the rest facing; the StaticTurner deadband then stops the steering.
+                    controller.AimTarget = tank.boundsCentreWorldNoCheck + controller.RestFacing * 100f;
+                    core.DriveDir = EDriveFacing.Forwards;
                 }
             }
             catch (Exception e)
@@ -77,8 +82,19 @@ namespace TAC_AI.AI.Movement.AICores
         }
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
         {
+            // P08 B-NEW5-6 / G.5: RTS-controlled enemy turret should honor the player-set
+            // waypoint as its aim target. If no RTS waypoint set (`!IsGoingToPositionalRTSDest`),
+            // fall through to normal enemy combat targeting.
+            var helper = controller.Helper;
+            if (helper.IsGoingToPositionalRTSDest)
+            {
+                helper.ThrottleState = AIThrottleState.PivotOnly;
+                controller.AimTarget = helper.RTSDestination;
+                controller.HoldHeight = ManWorld.inst.ProjectToGround(tank.boundsCentreWorldNoCheck, true).y + (helper.lastTechExtents * 2);
+                core.lastDestination = controller.AimTarget;
+                return true;
+            }
             DriveDirectorEnemy(mind, ref core);
-            // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " drive was called");DriveDirector()
             return true;
         }
 
@@ -98,7 +114,9 @@ namespace TAC_AI.AI.Movement.AICores
 
             if (!TryAdjustForCombatEnemy(mind, ref controller.AimTarget, ref core))
             {
-                controller.AimTarget = tank.boundsCentreWorldNoCheck + (controller.IdleFacingDirect * 200).ToVector3XZ(0);
+                if (tank.rootBlockTrans != null)
+                    controller.AimTarget = tank.boundsCentreWorldNoCheck + tank.rootBlockTrans.forward * 200f;
+                // else: leave controller.AimTarget unchanged
             }
             core.lastDestination = controller.PathPoint;
             return true;
@@ -121,12 +139,32 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 Vector3 TurnVal = Vector3.zero;
 
-
                 Vector3 destDirect = controller.AimTarget - tank.boundsCentreWorldNoCheck;
                 helper.DriveControl = 0;
                 if (helper.DoSteerCore)
                 {
-                    VehicleUtils.Turner(helper, destDirect, 0, ref core);
+                    // Use the static-specific turner (convergent damping + alignment deadband) instead
+                    // of VehicleUtils.Turner. The mobile turner, called with drive=0, never hit its
+                    // "aligned -> stop" early-out (which needs drive >= MaxThrottleToTurnFull) and floored
+                    // steering at ~log10(4)≈0.6 even when aligned, so an anchored/turret chassis hunted
+                    // (the twitch). StaticTurner decays turnVal to 0 near alignment and returns false
+                    // inside the deadband, so the chassis settles.
+                    if (StaticTurner(tank.control, helper, destDirect, ref core, out float staticTurn))
+                    {
+                        // REVERSAL-FLIP fix: mirror the aim vector when the chassis is being treated as
+                        // "reversing", exactly as VehicleUtils.Turner / Sea / Space / Helicopter cores do.
+                        // FaceDirection (inside SteerControl) inverts its yaw when the committed drive is
+                        // reverse; an anchored turret's position-hold drive-z flips sign every few frames
+                        // from weapon recoil + anchor-spring jitter, so without this guard the turret
+                        // intermittently tracks BACKWARDS, independent of enemy motion. Keyed on the same
+                        // committed drive value (CurState.m_InputMovement.z) that FaceDirection itself reads.
+                        // (The land path was the only SteerControl in the codebase missing this guard; the
+                        // prior VehicleUtils.Turner was called with drive=0, so its own guard never fired.)
+                        if (helper.FixControlReversal(tank.control.CurState.m_InputMovement.z))
+                            helper.SteerControl(new Vector3(-destDirect.x, destDirect.y, -destDirect.z), staticTurn);
+                        else
+                            helper.SteerControl(destDirect, staticTurn);
+                    }
                 }
                 if (AIGlobals.ShowDebugFeedBack)
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 1, destDirect * helper.lastTechExtents, new Color(1, 0, 1));
@@ -136,6 +174,13 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     InputLineVal = tank.rootBlockTrans.InverseTransformVector(tank.boundsCentreWorldNoCheck - controller.PathPoint);
                     InputLineVal /= AIGlobals.StationaryMoveDampening;
+                    // REVERSAL-FLIP fix (root): never emit a forward/back position-hold drive. An anchored
+                    // turret is held by its anchor, not by driving; this z is pure recoil/anchor jitter that
+                    // flips sign every few frames. A negative committed m_InputMovement.z makes the engine's
+                    // FaceDirection treat the chassis as reversing and invert its yaw -> intermittent backwards
+                    // tracking. Zeroing it removes the trigger at the source (the FixControlReversal mirror
+                    // guard on the steer call still covers an explicit reverse-throttle block via GetThrottle).
+                    InputLineVal.z = 0f;
                 }
 
                 if (tank.control.AnyThrottleInAxes(Vector3.one))
@@ -173,7 +218,6 @@ namespace TAC_AI.AI.Movement.AICores
 
             float driveMultiplier = 0;
 
-            //AI Steering Rotational
             Vector3 distDiff = controller.PathPoint - tank.boundsCentreWorldNoCheck;
             Vector3 turnVal;
             Vector3 forwardFlat = tank.rootBlockTrans.forward;
@@ -187,7 +231,6 @@ namespace TAC_AI.AI.Movement.AICores
                 //DebugTAC_AI.Log(KickStart.ModID + ": Forwards");
                 if (!helper.FullMelee && Vector3.Dot(helper.Navi3DDirect, tank.rootBlockTrans.forward) < 0.6f)
                 {
-                    //If overtilt then try get back upright again
                     turnVal.x = turnValUp.x;
                     turnVal.x = -AIGlobals.AngleUnsignedToSigned(turnVal.x) / 180f;
                 }
@@ -202,7 +245,6 @@ namespace TAC_AI.AI.Movement.AICores
             {   //Using broadside tilting
                 if (!helper.FullMelee && Vector3.Dot(helper.Navi3DUp, tank.rootBlockTrans.up) < 0.6f)
                 {
-                    //If overtilt then try get back upright again
                     turnVal.z = turnValUp.z;
                     turnVal.z = -AIGlobals.AngleUnsignedToSigned(turnVal.z) / 180f;
                     //DebugTAC_AI.Log(KickStart.ModID + ": Broadside overloaded with value " + Vector3.Dot(helper.Navi3DUp, tank.rootBlockTrans.up));
@@ -210,13 +252,12 @@ namespace TAC_AI.AI.Movement.AICores
                 else
                 {
                     //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Z-tilt active");
-                    turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.x) / 60f, -1, 1);
+                    turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.z) / 60f, -1, 1);
                 }
                 turnVal.x = turnValUp.x;
                 turnVal.x = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.x) / 60f, -1, 1);
             }
 
-            //Convert turnVal to runnable format
             turnVal.y = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.y) / 60f, -1, 1);
 
             //DebugTAC_AI.Log(KickStart.ModID + ": TurnVal AIM " + turnVal);
@@ -233,13 +274,12 @@ namespace TAC_AI.AI.Movement.AICores
                 }
                 else
                 {
-                    helper.SteerControl(controller.AimTarget, 1);
+                    helper.SteerControl(controller.AimTarget - tank.boundsCentreWorldNoCheck, 1);
                 }
             }
             else
                 TurnVal = Vector3.zero;
 
-            //AI Drive Translational
             Vector3 driveVal;
             if (helper.techIsApproaching)
             {
@@ -309,8 +349,6 @@ namespace TAC_AI.AI.Movement.AICores
             }
             Vector3 DriveVal = Vector3.zero;
 
-
-            // PREVENT GROUND CRASHING
             if (EmergencyUp)
             {
                 DriveVal = (tank.rootBlockTrans.InverseTransformVector(Vector3.up) * 2).Clamp01Box();
@@ -326,7 +364,6 @@ namespace TAC_AI.AI.Movement.AICores
                 return;
             }
             //helper.MinimumRad
-            // Prevent drifting
             Vector3 final = (driveVal * Mathf.Clamp(distDiff.magnitude / AIGlobals.StationaryMoveDampening, 0, 1) * driveMultiplier).Clamp01Box();
 
             if (core.DriveDir > EDriveFacing.Neutral)
@@ -356,14 +393,13 @@ namespace TAC_AI.AI.Movement.AICores
 
             if (AIGlobals.ShowDebugFeedBack)
             {
-                // DEBUG FOR DRIVE ERRORS
                 if (tank.IsAnchored)
                 {
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, distDiff, new Color(0, 1, 1));
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 1, driveVal * helper.lastTechExtents, new Color(0, 0, 1));
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 2, DriveVal * helper.lastTechExtents, new Color(1, 0, 0));
                 }
-                else if (helper.AttackEnemy && helper.lastEnemyGet)
+                else if (helper.WantsToFight && helper.lastEnemyGet)
                 {
                     if (ManBaseTeams.IsEnemy(tank.Team, helper.lastEnemyGet.tank.Team))
                         DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, helper.lastEnemyGet.centrePosition - tank.trans.position, new Color(0, 1, 1));
@@ -409,16 +445,23 @@ namespace TAC_AI.AI.Movement.AICores
             return output;
         }
 
-
-
         private const float ignoreTurning = 0.875f;
         private const float MinThrottleToTurnFull = 0.75f;
         private const float MaxThrottleToTurnAccurate = 0.25f;
+        // cos(~2deg): once the chassis is this closely aligned with the aim bearing, stop issuing
+        // steering so an anchored/turret chassis settles instead of hunting around the heading.
+        private const float StaticAimDeadband = 0.9994f;
         public static bool StaticTurner(TankControl thisControl, TankAIHelper helper, Vector3 destinationVec, ref EControlCoreSet core, out float turnVal)
         {
             turnVal = 1;
-            float forwards = Vector2.Dot(destinationVec.normalized.ToVector2XZ(), helper.tank.rootBlockTrans.forward.ToVector2XZ());
+            Vector2 destXZ = destinationVec.ToVector2XZ();
+            Vector2 forwardXZ = helper.tank.rootBlockTrans.forward.ToVector2XZ();
+            if (destXZ.sqrMagnitude < 1e-6f || forwardXZ.sqrMagnitude < 1e-6f)
+                return false;  // target overhead OR chassis forward is vertical — no meaningful yaw error
+            float forwards = Vector2.Dot(destXZ.normalized, forwardXZ.normalized);
 
+            if (forwards >= StaticAimDeadband)
+                return false;  // essentially aligned — hold, don't twitch (throttle-independent; static techs never throttle)
             if (forwards > ignoreTurning && thisControl.CurState.m_InputMovement.z >= MinThrottleToTurnFull)
                 return false;
             else

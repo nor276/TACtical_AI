@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,8 +10,6 @@ namespace TAC_AI
 	{				
 		// No I do not make any of the corps below (exclusing some of TAC and EFF) 
 		//  - but these are needed to allow the AI to spawn the right bases with 
-		//    the right block ranges
-		// OFFICIAL
 		NULL,	// not a corp, really, probably the most unique of all lol
 		GSO,	// Galactic Survey Organization
 		GC,		// GeoCorp
@@ -24,7 +22,6 @@ namespace TAC_AI
 		LEG,    // Legion
 
 		// Below is currently mostly unused as Custom Corps already address this.
-		// Community
 		AER = 256,    // Aerion
 		BL = 257,     // Black Labs (EXT OF HE)
 		CC = 258,     // CrystalCorp
@@ -39,7 +36,6 @@ namespace TAC_AI
 		TC = 267,     // Tofuu Corp
 		TAC = 268,    // Technocratic AI Colony
 
-		// idk
 		EFF = 269,    // Emperical Forge Fabrication
 		MCC = 270,    // Mechaniccoid Cooperative Confederacy 
 		BLN = 271,    // BuLwark Nation (Bulin)

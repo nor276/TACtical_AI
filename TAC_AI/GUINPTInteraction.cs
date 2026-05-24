@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -44,7 +44,6 @@ namespace TAC_AI.AI
         private static GameObject GUIWindow;
         private static Rect HotWindow = new Rect(0, 0, 200, 160);   // the "window"
 
-        // Tech Tracker
         private static string teamName = "Unknown";
         private static int techCost = 0;
         private static int teamCost = 0;
@@ -76,10 +75,8 @@ namespace TAC_AI.AI
                 "You cannot stay",
             };
 
-
         private static float windowTimer = 0;
         private const int EvictionID = 8008;
-
 
         internal static void Initiate()
         {
@@ -227,8 +224,6 @@ namespace TAC_AI.AI
             catch { }
         }
 
-
-
         private static int playerTeam => ManPlayer.inst.PlayerTeam;
         private static void GUIOwnTeam()
         {
@@ -242,7 +237,6 @@ namespace TAC_AI.AI
             if (!GUI.tooltip.NullOrEmpty())
                 GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
-
 
         private static void GUIAlliedAutoTeam()
         {
@@ -275,7 +269,6 @@ namespace TAC_AI.AI
             if (!GUI.tooltip.NullOrEmpty())
                 GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
-
 
         private static void GUIBaseTeamStatic()
         { // Bases that store BB
@@ -412,7 +405,7 @@ namespace TAC_AI.AI
                         canPursuade ? AltUI.ButtonRed : AltUI.ButtonGrey))
                     {
                         ManSFX.inst.PlayUISFX(ManSFX.UISfxType.PayloadIncoming);
-                        var mind = lastTank?.GetComponent<EnemyMind>();
+                        var mind = lastTank != null ? lastTank.GetComponent<EnemyMind>() : null;
                         if (!ManBaseTeams.IsEnemyBaseTeam(lastTeam))
                         {
                             if (ETD.DegradeRelations(playerTeam))
@@ -440,7 +433,6 @@ namespace TAC_AI.AI
             }
 
         }
-
 
         private static void GUIBaseTeamTech()
         {
@@ -540,7 +532,6 @@ namespace TAC_AI.AI
             }
         }
 
-
         private static void GUILoneTech()
         {
             GUILayout.Label("<b>" + teamName + "</b>");//¥¥
@@ -588,15 +579,6 @@ namespace TAC_AI.AI
                 GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
 
-
-
-        /// <summary>
-        /// To be called on the requesting client to inform the server of changes.
-        /// </summary>
-        /// <param name="player">Sending player (from their own client)</param>
-        /// <param name="targetTech">The targeted Tech</param>
-        /// <param name="bribeAmount">Set to 0 to toggle team automation.  
-        /// Any value above zero will be given to the targeted Tech's team's Build Bucks</param>
         public static void TrySendNPTBribe(NetPlayer player, Tank targetTech, int bribeAmount)
         {
             if (netHook.CanBroadcast() && !ManNetwork.IsHost)
@@ -665,7 +647,7 @@ namespace TAC_AI.AI
                 }
                 else
                 {
-                    var mind = tech?.GetComponent<EnemyMind>();
+                    var mind = tech != null ? tech.GetComponent<EnemyMind>() : null;
                     if (mind)
                     {
                         bool wasProvoked = false;
@@ -690,8 +672,6 @@ namespace TAC_AI.AI
             }
         }
         
-
-
         internal static void LaunchSubMenuClickable()
         {
             if (!KickStart.EnableBetterAI)

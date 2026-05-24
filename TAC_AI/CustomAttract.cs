@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -8,10 +8,6 @@ using TAC_AI.Templates;
 
 namespace TAC_AI
 {
-    /// <summary>
-    /// This is a VERY big mod.
-    ///   We must make it look big like it is.
-    /// </summary>
     public static class CustomAttract
     {
         private static readonly FieldInfo state = typeof(ModeAttract).GetField("m_State", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -241,7 +237,6 @@ namespace TAC_AI
             spawnIndex = (spawnIndex + 1) % __instance.spawns.Length;
             return false;
         }
-
 
     }
 }

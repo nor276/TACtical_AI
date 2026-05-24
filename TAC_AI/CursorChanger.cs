@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -21,7 +21,6 @@ namespace TAC_AI
             SkinTechPainting,
             SkinTechPaintingOverPaintable,
             Disabled
-            // NEW
             AIOrderAttack   0
             AIOrderEmpty    1
             AIOrderMove     2
@@ -33,19 +32,6 @@ namespace TAC_AI
         */
         public static CursorChangeHelper.CursorChangeCache Cache;
         public static bool AddedNewCursors = false;
-        /// <summary>
-        /// ZERO INDEXED
-        /// <list type="number">
-        /// <item>AIOrderAttack</item>
-        /// <item>AIOrderEmpty</item>
-        /// <item>AIOrderMove</item>
-        /// <item>AIOrderSelect</item>
-        /// <item>AIOrderBlock</item>
-        /// <item>AIOrderMine</item>
-        /// <item>AIOrderAegis</item>
-        /// <item>AIOrderScout</item>
-        /// </list>
-        /// </summary>
         public static CursorChangeHelper.CursorChangeCache CursorIndexCache => Cache.CursorIndexCache;
 
         public static void AddNewCursors()
@@ -72,4 +58,3 @@ namespace TAC_AI
         }
     }
 }
-

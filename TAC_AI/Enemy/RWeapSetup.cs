@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -6,24 +6,18 @@ using System.Reflection;
 
 namespace TAC_AI.AI.Enemy
 {
-    /// <summary>
-    /// Sets up all important AI statistics based on AI core
-    /// </summary>
     public static class RWeapSetup
     {
         private static FieldInfo deals => EWeapSetup.deals;
         private static FieldInfo bDPS => EWeapSetup.bDPS;
         private static FieldInfo burn => EWeapSetup.burn;
 
-
         // Bully-like
         private const int OHKOCapableDamage = EWeapSetup.OHKOCapableDamage;
 
-        // Spyper AI
         private const int SnipeVelo = EWeapSetup.SnipeVelo;
         private const int RangedRange = EWeapSetup.RangedRange;
 
-        // Circle AI
         private const int CircleRange = EWeapSetup.CircleRange;
         private const int MinCircleSpeed = EWeapSetup.MinCircleSpeed;
 
@@ -334,6 +328,7 @@ namespace TAC_AI.AI.Enemy
                     }
                     break;
             }
+            mind.AIControl.TurretFraction = count > 0 ? (float)circleWeaps / count : 0f;
             return attack;
         }
     }

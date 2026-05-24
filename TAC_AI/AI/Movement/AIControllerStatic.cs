@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -8,73 +8,36 @@ using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI
 {
-    /// <summary>
-    /// Handles all anchored operations 
-    /// </summary>
-    internal class AIControllerStatic : MonoBehaviour, IMovementAIController
+    internal class AIControllerStatic : MovementControllerBase
     {
-        private Tank _tank;
-        public Tank Tank
-        {
-            get => _tank;
-            internal set => _tank = value;
-        }
-        private TankAIHelper _helper;
-        public TankAIHelper Helper
-        {
-            get => _helper;
-            internal set => _helper = value;
-        }
-        private IMovementAICore _AI;
-        public IMovementAICore AICore
-        {
-            get => _AI;
-            internal set => _AI = value;
-        }
-        private EnemyMind _mind;
-        public EnemyMind EnemyMind
-        {
-            get => _mind;
-            internal set => _mind = value;
-        }
-
         public Vector3 AimTarget = Vector3.zero;
         public WorldPosition SceneStayPos = WorldPosition.FromGameWorldPosition(Vector3.zero);
         public float HoldHeight = 0;
 
-        public Vector3 PathPoint => SceneStayPos.ScenePosition.SetY(HoldHeight);
+        public override Vector3 PathPoint => SceneStayPos.ScenePosition.SetY(HoldHeight);
         public Vector2 IdleFacingDirect = Vector2.up;
-        public float GetDrive => _AI.GetDrive;
+        // World-space direction the tech was anchored facing. Used as the rest aim when there is
+        // no live enemy so an idle turret returns to its mounted facing instead of yawing toward a
+        // stale movement waypoint (lastDestinationCore). A direction, so world-origin shifts don't affect it.
+        public Vector3 RestFacing = Vector3.forward;
 
-        public void Initiate(Tank tank, TankAIHelper helper, EnemyMind mind = null)
+        protected override IMovementAICore SelectCore(EnemyMind mind) => new StaticAICore();
+
+        protected override void OnPreInitiate()
         {
-            Tank = tank;
-            Helper = helper;
-            EnemyMind = mind;
+            HoldHeight = Tank.boundsCentreWorld.y;
+            SceneStayPos = WorldPosition.FromScenePosition(Tank.boundsCentreWorld);
+            IdleFacingDirect = Vector2.up;
+            RestFacing = Tank.rootBlockTrans.forward;
+            AimTarget = Tank.boundsCentreWorld + Tank.rootBlockTrans.forward * 100f;
+        }
 
-            HoldHeight = tank.boundsCentreWorld.y;
-            SceneStayPos = WorldPosition.FromScenePosition(tank.boundsCentreWorld);
-            /*
-            List<Tank> Techs = TankAIManager.GetNonEnemyTanks(Tank.Team);
-            Techs.Remove(tank);
-            if (Techs.Count > 0)
-            {
-                Vector3 PosWorld = Techs.OrderByDescending(x => x.IsAnchored).ThenBy(x => (x.boundsCentreWorld - tank.boundsCentreWorldNoCheck).sqrMagnitude).FirstOrDefault().boundsCentreWorld;
-                IdleFacingDirect = (tank.boundsCentreWorldNoCheck - PosWorld).ToVector2XZ().normalized;
-            }*/
-            IdleFacingDirect = Vector3.forward;
-            AICore = new StaticAICore();
-            AICore.Initiate(tank, this);
-
-
+        protected override void OnPostInitiate()
+        {
             DebugTAC_AI.LogAISetup(KickStart.ModID + ": Added static (anchored) AI for " + Tank.name);
         }
-        public void UpdateEnemyMind(EnemyMind mind)
-        {
-            EnemyMind = mind;
-        }
 
-        public void DriveDirector(ref EControlCoreSet core)
+        public override void DriveDirector(ref EControlCoreSet core)
         {
             if (Helper == null)
             {
@@ -100,7 +63,7 @@ namespace TAC_AI.AI
             }
         }
 
-        public void DriveDirectorRTS(ref EControlCoreSet core)
+        public override void DriveDirectorRTS(ref EControlCoreSet core)
         {   // Ignore player movement commands but follow attack commands
             if (Helper == null)
             {
@@ -122,35 +85,29 @@ namespace TAC_AI.AI
             }
             else//ENEMY
             {
-                AICore.DriveDirectorEnemy(EnemyMind, ref core);
+                // Deferred-10 fix: was calling the non-RTS enemy director (see AIControllerDefault).
+                AICore.DriveDirectorEnemyRTS(EnemyMind, ref core);
             }
         }
 
-        public void DriveMaintainer(ref EControlCoreSet core)
+        public override void DriveMaintainer(ref EControlCoreSet core)
         {
             AICore.DriveMaintainer(Helper, Tank, ref core);
         }
 
-        public void OnMoveWorldOrigin(IntVector3 move)
+        public override void OnMoveWorldOrigin(IntVector3 move)
         {
+            // AimTarget is an absolute world point; rebase it on floating-origin shifts so an idle
+            // turret doesn't briefly slew toward stale coordinates between director ticks.
+            AimTarget += move;
         }
-        public Vector3 GetDestination()
+        public override Vector3 GetDestination()
         {
             return PathPoint;
         }
 
-        public void Recycle()
-        {
-            AICore = null;
-            if (this.IsNotNull())
-            {
-                //DebugTAC_AI.Log(KickStart.ModID + ": Removed static AI from " + Tank.name);
-                DestroyImmediate(this);
-            }
-        }
-
         public bool IsTurretable => !Tank.Anchors.Fixed;
         public bool IsSkyAnchoredOnly => !Tank.Anchors.Fixed && Tank.IsSkyAnchored;
-       
+
     }
 }

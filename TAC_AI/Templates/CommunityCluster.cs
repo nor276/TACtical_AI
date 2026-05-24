@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -102,7 +102,6 @@ namespace TAC_AI.Templates
             RawTechExporter.SaveExternalRawTechListFileToDisk(clusterHold2, compressedSerial);
         }
 
-
         internal static string GetLocalToPublic()
         {
             Dictionary<string, RawTechTemplate> ClusterOut = new Dictionary<string, RawTechTemplate>();
@@ -122,7 +121,6 @@ namespace TAC_AI.Templates
             }
             return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);//, RawTechExporter.JSONDEV);
         }
-
 
         internal static void DeployUncompressed(string location)
         {
@@ -216,7 +214,6 @@ namespace TAC_AI.Templates
             return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);//, RawTechExporter.JSONDEV);
         }
 
-
         internal static void Organize(ref Dictionary<SpawnBaseTypes, RawTechTemplate> dict)
         {
             dict = dict.OrderBy(x => x.Value.curSessionFaction).ThenBy(x => x.Value.terrain)
@@ -232,9 +229,7 @@ namespace TAC_AI.Templates
                 .ThenBy(x => x.Value.techName).ToDictionary(x => x.Key, x => x.Value);
         }
 
-
         internal static Dictionary<SpawnBaseTypes, RawTechTemplate> ClusterF = new Dictionary<SpawnBaseTypes, RawTechTemplate>();
-
 
     }
 }

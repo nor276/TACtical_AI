@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Movement.AICores;
 
@@ -19,7 +19,6 @@ namespace TAC_AI.AI.AlliedOperations
             helper.AvoidStuff = true;
 
             BGeneral.ResetValues(helper, ref direct);
-
 
             TechEnergy.EnergyState state = tank.EnergyRegulator.Energy(TechEnergy.EnergyType.Electric);
             if (helper.CollectedTarget)
@@ -47,7 +46,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 helper.foundBase = AIECore.FetchChargedChargers(tank, helper.JobSearchRange * 2.5f, out helper.lastBasePos, out helper.theBase, tank.Team);
@@ -76,7 +75,7 @@ namespace TAC_AI.AI.AlliedOperations
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at nearest charger and recharging!");
                         helper.AvoidStuff = false;
-                        helper.actionPause -= KickStart.AIClockPeriod / 5;
+                        { /* actionPause self-counts via its AITimer now */ }
                         helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                     }
@@ -115,7 +114,7 @@ namespace TAC_AI.AI.AlliedOperations
                     else
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                        helper.actionPause -= KickStart.AIClockPeriod / 5;
+                        { /* actionPause self-counts via its AITimer now */ }
                         //helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                     }
@@ -135,13 +134,14 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Base
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 if (!helper.foundGoal)
                 {
                     helper.EstTopSped = 1;//slow down the clock to reduce lagg
-                    helper.foundGoal = AIECore.FindTarget(tank, helper, helper.theResource, out helper.theResource);
+                    helper.foundGoal = AIECore.FindTarget(tank, helper, helper.theResource, out var tmpRes);
+                    helper.theResource = tmpRes;
                     AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Scanning for enemies...");
                     if (!helper.foundGoal)
                     {
@@ -192,11 +192,10 @@ namespace TAC_AI.AI.AlliedOperations
             }
         }
 
-
         public static void ShootToDestroy(TankAIHelper helper, Tank tank)
         {
             // Determines the weapons actions and aiming of the AI, this one is more fire-precise and used for turrets
-            helper.AttackEnemy = false;
+            helper.WantsToFight = false;
             //helper.lastEnemySet = tank.Vision.GetFirstVisibleTechIsEnemy(tank.Team);
 
             if (helper.theResource)
@@ -212,9 +211,11 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.WeaponDelayClock += KickStart.AIClockPeriod;
                 if (helper.SideToThreat)
                 {
-                    if (Mathf.Abs((tank.rootBlockTrans.right - aimTo).magnitude) < 0.15f || Mathf.Abs((tank.rootBlockTrans.right - aimTo).magnitude) > -0.15f || helper.WeaponDelayClock >= 150)
+                    // Deferred-9 fix: dropped the always-true `Mathf.Abs(...) > -0.15f` clause.
+                    // Mirrors the non-SideToThreat tolerance gate below.
+                    if (Mathf.Abs((tank.rootBlockTrans.right - aimTo).magnitude) < 0.15f || helper.WeaponDelayClock >= 150)
                     {
-                        helper.AttackEnemy = true;
+                        helper.WantsToFight = true;
                         helper.WeaponDelayClock = 150;
                     }
                 }
@@ -222,7 +223,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     if (Mathf.Abs((tank.rootBlockTrans.forward - aimTo).magnitude) < 0.15f || helper.WeaponDelayClock >= 150)
                     {
-                        helper.AttackEnemy = true;
+                        helper.WantsToFight = true;
                         helper.WeaponDelayClock = 150;
                     }
                 }
@@ -230,7 +231,7 @@ namespace TAC_AI.AI.AlliedOperations
             else
             {
                 helper.WeaponDelayClock = 0;
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
             }
         }
     }

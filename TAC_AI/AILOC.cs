@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using TerraTechETCUtil;
 
 namespace TAC_AI
@@ -11,7 +11,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.US_English, "unknown" },
             { LocalisationEnums.Languages.Japanese, "未知"},
         });
-
 
         // -----------------------------------------------------------------------
 
@@ -38,8 +37,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese, "追跡カメラ"},
         });
 
-
-
         internal static LocExtStringMod NoAI = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English, "No AI Modules" },
@@ -50,7 +47,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.US_English, "AI Idle (Off)" },
             { LocalisationEnums.Languages.Japanese, "自動運転オフ"},
         });
-
 
         // -----------------------------------------------------------------------
 
@@ -141,7 +137,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese, "貨物"},
         });
 
-
         internal static LocExtStringMod Fighting = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English, "Fighting " },
@@ -188,7 +183,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese, "ダイブコード["},
         });
 
-
         internal static LocExtStringMod FaceTowards = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English,"turn to face "},
@@ -204,7 +198,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.US_English,"hide from "},
             { LocalisationEnums.Languages.Japanese, "から隠す:"},
         });
-
 
         internal static LocExtStringMod Gen_MoveTo = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
@@ -227,7 +220,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese, "に航海する:"},
         });
 
-
         internal static LocExtStringMod Gen_MoveFrom = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English,"Moving from "},
@@ -249,7 +241,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese, "から出航:"},
         });
 
-
         // -----------------------------------------------------------------------
 
         // -----------------------------------------------------------------------
@@ -265,7 +256,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese, "クラッシュした"},
         });
 
-
         internal static LocExtStringMod Fly_Dive = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English,"Dive - "},
@@ -276,7 +266,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.US_English,"diving!"},
             { LocalisationEnums.Languages.Japanese, "ターゲットに向かってダイビング!"},
         });
-
 
         internal static LocExtStringMod Fly_UTurn = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {

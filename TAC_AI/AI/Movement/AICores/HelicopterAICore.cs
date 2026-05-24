@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -7,7 +7,7 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
-    internal class HelicopterAICore : IMovementAICore
+    internal class HelicopterAICore : IAirMovementAICore
     {
         private AIControllerAir pilot;
         internal TankAIHelper Helper => pilot.Helper;
@@ -15,6 +15,9 @@ namespace TAC_AI.AI.Movement.AICores
         private float groundOffset => Helper.GroundOffsetHeight;
         private float groundOffsetEmerg => AIGlobals.GroundOffsetCrashWarnChopperDelta + Helper.GroundOffsetHeight;
         public float GetDrive => pilot.CurrentThrottle;
+        // IAirMovementAICore: a helicopter is a rotorcraft (vertical-lift), not fixed-wing.
+        public bool IsRotorcraft => true;
+        public bool IsFixedWing => false;
 
         public void Initiate(Tank tank, IMovementAIController pilotSet)
         {
@@ -44,26 +47,25 @@ namespace TAC_AI.AI.Movement.AICores
         {
             if (pilot.Grounded)
             {   //Become a ground vehicle for now
-                //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " is GROUNDED!!!");
                 if (!AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents))
                 {
                     DriveMaintainerEmergLand(helper, tank, ref core);
                     return false;
                 }
-                //WIP - Try fighting the controls to land safely
-                if (helper.SafeVelocity.y > 0.1f)
-                {
-                    pilot.ErrorsInTakeoff = 0;
-                    pilot.Grounded = false;
-                }
-                else
-                {
-                    pilot.ForcePitchUp = true;
-                    pilot.MainThrottle = HelicopterUtils.ModerateUpwardsThrust(tank, helper, pilot, 500000, true);
-                    HelicopterUtils.UpdateThrottleCopter(pilot);
-                    HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core, true);
-                    return true;
-                }
+                // P08 G.7: Grounded is sticky-until-repair. The only live entry is OnAttach →
+                // TestForMayday; the old `SafeVelocity.y > 0.1f` exit was a false-positive
+                // generator (transient updrafts un-grounding damaged techs). Always attempt
+                // controlled descent: target ground height so ModerateUpwardsThrust modulates
+                // thrust DOWN for safe landing rather than maxing out climb at the old `500000`.
+                // P08 G.8: do NOT set `pilot.ForcePitchUp = true` here. ForcePitchUp triggers
+                // MaxProps() in UpdateThrottleCopter, pinning rotors at max RPM regardless of
+                // MainThrottle's modulated value — which defeats the controlled descent. Let
+                // MainThrottle modulation alone govern descent.
+                AIEPathMapper.GetAltitudeLoadedOnly(tank.boundsCentreWorldNoCheck, out float groundHeight);
+                pilot.MainThrottle = HelicopterUtils.ModerateUpwardsThrust(tank, helper, pilot, groundHeight, false);
+                HelicopterUtils.UpdateThrottleCopter(pilot);
+                HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core, true);
+                return true;
             }
 
             if (tank.beam.IsActive)
@@ -130,10 +132,16 @@ namespace TAC_AI.AI.Movement.AICores
                 pilot.ForcePitchUp = false;
                 pilot.ErrorsInTakeoff = 0;
             }
-            /*
+            // P08 G.7 revive: progressive Grounded-after-N-failed-takeoffs. ErrorsInTakeoff
+            // accumulates while pitched-up-but-sinking; once past MaxTakeoffFailiures the tech
+            // is marked Grounded so the Maintainer Grounded branch takes over with controlled
+            // descent. Recovery still requires OnAttach repair (TestForMayday).
+            // P08 G.8: bleed the counter when actually climbing (Vy >= 0.1). Original code only
+            // reset to 0 in the upright-and-stable branch above, which left a 0.275..0.35 upVal
+            // dead-band where a banking-but-healthy chopper could silently accumulate to a false
+            // Grounded verdict. Soft bleed keeps healthy techs near zero.
             if (pilot.ForcePitchUp && Helper.SafeVelocity.y < 0.1f)
             {
-                // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + pilot.Tank.name + "  Avoiding Ground!");
                 pilot.ErrorsInTakeoff += KickStart.AIDodgeCheapness;
                 if (pilot.ErrorsInTakeoff > AIGlobals.MaxTakeoffFailiures)
                 {
@@ -142,16 +150,12 @@ namespace TAC_AI.AI.Movement.AICores
                     pilot.Grounded = true;
                 }
             }
-            */
+            else if (Helper.SafeVelocity.y >= 0.1f && pilot.ErrorsInTakeoff > 0)
+            {
+                pilot.ErrorsInTakeoff = Mathf.Max(0, pilot.ErrorsInTakeoff - KickStart.AIDodgeCheapness);
+            }
         }
 
-        /// <summary>
-        /// A very limited version of the VehicleAICore DriveMaintainer for downed aircraft
-        /// </summary>
-        /// <param name="thisControl"></param>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
-        /// <returns></returns>
         public bool DriveMaintainerEmergLand(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
             TankControl.ControlState control3D = (TankControl.ControlState)VehicleUtils.controlGet.GetValue(tank.control);
@@ -159,8 +163,7 @@ namespace TAC_AI.AI.Movement.AICores
             control3D.m_State.m_InputRotation = Vector3.zero;
             control3D.m_State.m_InputMovement = Vector3.zero;
             VehicleUtils.controlGet.SetValue(tank.control, control3D);
-            Vector3 destDirect = helper.lastDestinationOp - tank.boundsCentreWorldNoCheck;
-            // DEBUG FOR DRIVE ERRORS
+            Vector3 destDirect = helper.lastDestinationCore - tank.boundsCentreWorldNoCheck;
             if (AIGlobals.ShowDebugFeedBack)
                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, destDirect, new Color(0, 1, 1));
 
@@ -248,7 +251,6 @@ namespace TAC_AI.AI.Movement.AICores
             else
                 helper.DriveControl = 0;
 
-            // Overrides to translational drive
             if (core.DriveDir == EDriveFacing.Stop)
             {
                 helper.DriveControl = 0f;
@@ -260,7 +262,6 @@ namespace TAC_AI.AI.Movement.AICores
                 return true;
             }
 
-            // Operate normally
             switch (helper.ThrottleState)
             {
                 case AIThrottleState.PivotOnly:
@@ -288,7 +289,6 @@ namespace TAC_AI.AI.Movement.AICores
                     break;
                 case AIThrottleState.ForceSpeed:
                     helper.DriveControl = helper.DriveVar;
-                    // Downed Aircraft can't boost as their engines are damaged
                     if (helper.FullBoost || helper.LightBoost)
                         helper.DriveControl = 1;
                     break;
@@ -374,9 +374,13 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 Helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(pilot.Tank.Team),
                     pilot.Tank.boundsCentreWorldNoCheck, Helper.MaxCombatRange * Helper.MaxCombatRange, out _, pilot.Helper).visible;
-                TryAdjustForCombat(true, ref pilot.PathPointSet, ref core);
-                if (Helper.lastCombatRange > Helper.MaxCombatRange)
+                Helper.theGuardedAlly = Helper.theResource;
+                // P08 G.6: canonical Aegis pattern (see AirplaneAICore for full explanation).
+                // P08 G.8: restore lastCombatRange invariant when the OR short-circuits (see Airplane).
+                bool aegisOutOfRange = Helper.lastOperatorRange > Helper.MaxCombatRange;
+                if (aegisOutOfRange || !TryAdjustForCombat(true, ref pilot.PathPointSet, ref core))
                 {
+                    if (aegisOutOfRange) Helper.IgnoreEnemyDistance();
                     if (Helper.theResource.IsNotNull())
                     {
                         Helper.theResource.tank.GetHelperInsured().MultiTechsAffiliated.Add(Helper.tank);
@@ -389,10 +393,6 @@ namespace TAC_AI.AI.Movement.AICores
                         {
                             core.DriveDir = EDriveFacing.Forwards;
                             pilot.PathPointSet = Helper.AvoidAssist(Helper.theResource.tank.transform.position);
-                        }
-                        else
-                        {
-                            //DebugTAC_AI.Log(KickStart.ModID + ": AI IDLE");
                         }
                     }
                 }
@@ -533,7 +533,6 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     return false;
                 }
-                //Try fighting the controls to land safely
 
                 return true;
             }
@@ -577,7 +576,6 @@ namespace TAC_AI.AI.Movement.AICores
 
         public Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset)
         {
-            //The method to determine if we should avoid an ally nearby while navigating to the target
             TankAIHelper helper = pilot.Helper;
             Tank tank = pilot.Tank;
 
@@ -604,8 +602,14 @@ namespace TAC_AI.AI.Movement.AICores
 
                 }
                 lastCloseAlly = AIEPathing.ClosestAllyPrecision(AlliesAlt, predictionOffset, out lastAllyDist, pilot.Helper);
+                // Deferred-7 fix: previously logged but fell through, then dereferenced the null
+                // lastCloseAlly. The catch below would swallow the NRE and return targetIn anyway;
+                // returning here keeps that fallback but skips the noisy AvoidAssist crash log.
                 if (lastCloseAlly == null)
+                {
                     DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
+                    return targetIn;
+                }
                 if (lastAllyDist < helper.lastTechExtents + lastCloseAlly.GetCheapBounds() + 12 + (predictionOffset - tank.boundsCentreWorldNoCheck).magnitude)
                 {
                     IntVector3 ProccessedVal = helper.GetOtherDir(lastCloseAlly);
@@ -625,7 +629,6 @@ namespace TAC_AI.AI.Movement.AICores
             return targetIn;
         }
 
-
         public bool TryAdjustForCombat(bool between, ref Vector3 pos, ref EControlCoreSet core)
         {
             TankAIHelper helper = pilot.Helper;
@@ -635,7 +638,10 @@ namespace TAC_AI.AI.Movement.AICores
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
-                if (between && helper.theResource?.tank)
+                // P08 B-NEW5-8: was relying on C# implicit Unity-object truthiness against `?.tank`
+                // — if `theResource` is non-null but its `tank` is a destroyed Unity object, the
+                // dereference at line below would NRE. Use IsNotNull() to handle the destroyed case.
+                if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);
                 }
@@ -775,7 +781,6 @@ namespace TAC_AI.AI.Movement.AICores
                 helper.IgnoreEnemyDistance();
             return output;
         }
-
 
         public Vector3 Between(Vector3 Target, Vector3 other)
         {

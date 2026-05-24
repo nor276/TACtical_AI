@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -18,7 +18,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleAIBot);
 
-            //ImproveAI
             private static void OnAttached_Postfix(ModuleAIBot __instance)
             {
                 if (ModuleAIExtension.CanAdd(__instance))
@@ -45,15 +44,58 @@ namespace TAC_AI
                             case AIWeaponState.Normal:
                                 break;
                             case AIWeaponState.Enemy:
+                                // P12 BUG-7 / TD-4: vanilla applies NO velocity lead (only gravity-drop),
+                                // and AutoAim guns ignore tank.control.TargetPositionWorld - so without this,
+                                // every direct-fire AI weapon trails a moving target by the full time-of-flight.
+                                // Lead per-weapon using THIS gun's muzzle velocity (retiring the single global
+                                // 0.01f lead constant for aiming), composed through the existing gravity-drop
+                                // AimDelegate so arc weapons still solve elevation for the led point.
+                                if (___m_TargetAimer && AICommand.lastEnemyGet?.tank?.rbody != null &&
+                                    ___m_WeaponComponent is ModuleWeaponGun leadGun)
+                                {
+                                    float muzzleVel = leadGun.GetVelocity();
+                                    if (muzzleVel > 1f)
+                                    {
+                                        Tank leadTgt = AICommand.lastEnemyGet.tank;
+                                        Vector3 firePos = ___m_WeaponComponent.GetFireTransform().position;
+                                        Vector3 tgtPos = leadTgt.boundsCentreWorldNoCheck;
+                                        Vector3 tgtVel = leadTgt.rbody.velocity;
+                                        if (!float.IsNaN(tgtVel.x) && !float.IsInfinity(tgtVel.x))
+                                        {
+                                            // iterative time-of-flight (2 passes converge for near-constant velocity)
+                                            float tof = (tgtPos - firePos).magnitude / muzzleVel;
+                                            tof = (tgtPos + (tgtVel * tof) - firePos).magnitude / muzzleVel;
+                                            tof = Mathf.Min(tof, AIGlobals.LeadPredictionMaxTOF);
+                                            Vector3 lead = tgtPos + (tgtVel * tof);
+                                            Func<Vector3, Vector3> leadFunc = (Func<Vector3, Vector3>)targDeli.GetValue(___m_TargetAimer);
+                                            ___m_TargetAimer.AimAtWorldPos(leadFunc != null ? leadFunc(lead) : lead, __instance.RotateSpeed);
+                                            return false;
+                                        }
+                                    }
+                                }
                                 break;
                             case AIWeaponState.HoldFire:
                                 ___m_TargetAimer.AimAtWorldPos(___m_WeaponComponent.GetFireTransform().position +
                                     __instance.block.trans.TransformDirection(new Vector3(0, -0.5f, 1)), __instance.RotateSpeed);
                                 return false;
                             case AIWeaponState.Obsticle:
+                                // P09 B-4-1: guard against null/destroyed Obst. SettleDown nulls Obst but
+                                // doesn't always clear ActiveAimState — and even when both are cleared,
+                                // a destroyed-mid-frame Unity Transform satisfies != null but NREs on .position.
+                                // Mirror TankAIManager.cs:639-642's invariant on the consumer side.
+                                if (AICommand.Obst.IsNull())
+                                {
+                                    AICommand.Obst = null;
+                                    AICommand.ActiveAimState = AIWeaponState.Normal;
+                                    return true; // fall through to vanilla aim
+                                }
                                 Visible obstVis = AICommand.Obst.GetComponent<Visible>();
                                 if (obstVis && !obstVis.isActive)
+                                {
                                     AICommand.Obst = null;
+                                    AICommand.ActiveAimState = AIWeaponState.Normal;
+                                    return true; // fall through to vanilla aim
+                                }
                                 if (___m_TargetAimer)
                                 {
                                     Func<Vector3, Vector3> func = (Func<Vector3, Vector3>)targDeli.GetValue(___m_TargetAimer);
@@ -78,11 +120,9 @@ namespace TAC_AI
                 return true;
             }
             
-
             static readonly FieldInfo aimers = typeof(ModuleWeapon).GetField("m_TargetAimer", BindingFlags.NonPublic | BindingFlags.Instance),
                 aimerTargPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance),
                 WeaponTargPos = typeof(ModuleWeapon).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
-            //PatchAimingSystemsToHelpAI
             private static void UpdateAutoAimBehaviour_Postfix(ModuleWeapon __instance, ref TargetAimer ___m_TargetAimer, ref Vector3 ___m_TargetPosition)
             {
                 if (!KickStart.EnableBetterAI)
@@ -100,7 +140,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleItemPickup);
 
-            //MarkReceiver
             private static void OnAttached_Postfix(ModuleItemPickup __instance)
             {
                 var valid = __instance.GetComponent<ModuleItemHolder>();
@@ -123,7 +162,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleRemoteCharger);
 
-            //MarkChargers
             internal static void OnAttached_Postfix(ModuleRemoteCharger __instance)
             {
                 var ModuleAdd = __instance.gameObject.GetComponent<ModuleChargerTracker>();
@@ -141,7 +179,6 @@ namespace TAC_AI
             static readonly FieldInfo progress = typeof(ModuleItemConsume).GetField("m_ConsumeProgress", BindingFlags.NonPublic | BindingFlags.Instance);
             static readonly FieldInfo sellStolen = typeof(ModuleItemConsume).GetField("m_OperateItemInterceptedBy", BindingFlags.NonPublic | BindingFlags.Instance);
             private static Dictionary<ModuleItemConsume, int> ReservedSell = new Dictionary<ModuleItemConsume, int>();
-            //LetNPCsSellStuff
             internal static bool InitRecipeOutput_Prefix(ModuleItemConsume __instance)
             {
                 int team = 0;
@@ -187,7 +224,6 @@ namespace TAC_AI
             internal static Type target = typeof(ModuleHeart);
 
             static readonly FieldInfo PNR = typeof(ModuleHeart).GetField("m_EventHorizonRadius", BindingFlags.NonPublic | BindingFlags.Instance);
-            //LetNPCsSCUStuff
             internal static void UpdatePickupTargets_Prefix(ModuleHeart __instance)
             {
                 var valid = __instance.GetComponent<ModuleItemHolder>();
@@ -219,7 +255,6 @@ namespace TAC_AI
                 }
             }
 
-            //SpawnTraderTroll
             internal static void OnAttached_Postfix(ModuleHeart __instance)
             {
                 if (__instance.block.tank.IsNull())
@@ -241,10 +276,10 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleTechController);
 
-            // Where it all happens
-            //PatchControlSystem
             internal static bool ExecuteControl_Prefix(ModuleTechController __instance, ref bool __result)
             {
+                DebugTAC_AI.FirstFire("ModuleTechController.ExecuteControl_Prefix",
+                    "per-tick movement maintainer hook — drives DriveMaintainer on every vanilla tick");
                 if (KickStart.EnableBetterAI)
                 {
                     //DebugTAC_AI.Log(KickStart.ModID + ": AIEnhanced enabled");
@@ -256,7 +291,7 @@ namespace TAC_AI
                             var helper = tank.gameObject.GetComponent<TankAIHelper>();
                             if (helper)
                             {
-                                if (helper.ControlTech(__instance.block.tank.control))
+                                if (helper.RunMovementBridge(__instance.block.tank.control))
                                 {
                                     __result = true;
                                     return false;
@@ -267,14 +302,13 @@ namespace TAC_AI
                     }
                     catch (Exception e)
                     {
-                        DebugTAC_AI.Log(KickStart.ModID + ": TankAIHelper.ControlTech() - Failure on handling AI!");
+                        DebugTAC_AI.Log(KickStart.ModID + ": TankAIHelper.RunMovementBridge() - Failure on handling AI!");
                         DebugTAC_AI.Log(e);
                     }
                 }
                 return true;
             }
         }
-
 
         // Resources/Collection
         internal static class ResourceDispenserPatches
@@ -285,33 +319,28 @@ namespace TAC_AI
             {
                 try
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Added resource to list (InitState)");
                     var dmg = __instance.GetComponent<Damageable>();
                     if (dmg && !dmg.Invulnerable && !AIECore.Minables.Contains(__instance.visible))
                         AIECore.Minables.Add(__instance.visible);
-                    //else
-                    //    DebugTAC_AI.Log(KickStart.ModID + ": RESOURCE WAS ALREADY ADDED! (InitState)");
                 }
-                catch { } // null call
+                // Risk-2 fix: surface the first occurrence per hook so silent Minables-list
+                // corruption is diagnosable (was: `catch { } // null call`).
+                catch (Exception e) { DebugTAC_AI.LogWarnPlayerOncePerKey("ResourceDispenser.OnSpawn:" + (__instance ? __instance.GetType().Name : "<null>"), "ResourceDispenser.OnSpawn hook failed; Minables list may have stale entries", e); }
             }
             private static void InitState_Postfix(ResourceDispenser __instance)
             {
                 try
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Added resource to list (InitState)");
                     var dmg = __instance.GetComponent<Damageable>();
                     if (dmg && !dmg.Invulnerable && !AIECore.Minables.Contains(__instance.visible))
                         AIECore.Minables.Add(__instance.visible);
-                    //else
-                    //    DebugTAC_AI.Log(KickStart.ModID + ": RESOURCE WAS ALREADY ADDED! (InitState)");
                 }
-                catch { } // null call
+                catch (Exception e) { DebugTAC_AI.LogWarnPlayerOncePerKey("ResourceDispenser.InitState:" + (__instance ? __instance.GetType().Name : "<null>"), "ResourceDispenser.InitState hook failed; Minables list may have stale entries", e); }
             }
             private static void Restore_Postfix(ResourceDispenser __instance, ref ResourceDispenser.PersistentState state)
             {
                 try
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Added resource to list (Restore)");
                     if (!state.removedFromWorld && state.health > 0)
                     {
                         if (!AIECore.Minables.Contains(__instance.visible))
@@ -322,16 +351,13 @@ namespace TAC_AI
                         if (AIECore.Minables.Contains(__instance.visible))
                             AIECore.Minables.Remove(__instance.visible);
                     }
-                    //else
-                    //    DebugTAC_AI.Log(KickStart.ModID + ": RESOURCE WAS ALREADY ADDED! (Restore)");
                 }
-                catch { } // null call
+                catch (Exception e) { DebugTAC_AI.LogWarnPlayerOncePerKey("ResourceDispenser.Restore:" + (__instance ? __instance.GetType().Name : "<null>"), "ResourceDispenser.Restore hook failed; Minables list may be out of sync with save state", e); }
             }
             private static void Die_Prefix(ResourceDispenser __instance)
             {
                 try
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Removed resource from list (Die)");
                     if (AI.AIECore.Minables.Contains(__instance.visible))
                     {
                         AI.AIECore.Minables.Remove(__instance.visible);
@@ -339,7 +365,7 @@ namespace TAC_AI
                     else
                         DebugTAC_AI.Log(KickStart.ModID + ": RESOURCE WAS ALREADY REMOVED! (Die)");
                 }
-                catch { } // null call
+                catch (Exception e) { DebugTAC_AI.LogWarnPlayerOncePerKey("ResourceDispenser.Die:" + (__instance ? __instance.GetType().Name : "<null>"), "ResourceDispenser.Die hook failed; Minables list may retain a dead resource", e); }
             }
             private static void OnRecycle_Prefix(ResourceDispenser __instance)
             {
@@ -356,16 +382,12 @@ namespace TAC_AI
             {
                 try
                 {
-                    //DebugTAC_AI.Log(KickStart.ModID + ": Removed resource from list (Deactivate)");
                     if (AIECore.Minables.Contains(__instance.visible))
                     {
                         AIECore.Minables.Remove(__instance.visible);
                     }
-                    //else
-                    //    DebugTAC_AI.Log(KickStart.ModID + ": RESOURCE WAS ALREADY REMOVED! (Deactivate)");
-
                 }
-                catch { } // null call
+                catch (Exception e) { DebugTAC_AI.LogWarnPlayerOncePerKey("ResourceDispenser.Deactivate:" + (__instance ? __instance.GetType().Name : "<null>"), "ResourceDispenser.Deactivate hook failed; Minables list may retain a despawned resource", e); }
             }
         }
     }

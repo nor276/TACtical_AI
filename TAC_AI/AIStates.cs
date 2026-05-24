@@ -1,13 +1,10 @@
-﻿
+
 namespace TAC_AI
 {
     public enum AIRunState
     {
-        /// <summary> Nothing at all, for external use </summary>
         Off,
-        /// <summary> Use Vanilla AI </summary>
         Default,
-        /// <summary> Use this mod's AI </summary>
         Advanced,
     }
     public enum AIAlignment
@@ -21,15 +18,12 @@ namespace TAC_AI
 
     public enum AIWeaponType
     {
-        /// <summary>  We don't know yet</summary>
         Unknown, 
-        /// <summary>  We need line of sight to fire </summary>
         Direct,
-        /// <summary>  We can fire from anywhere </summary>
         Indirect,
     }
     public enum AIWeaponState
-    { // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic
+    { // 0 Normal, 1 Enemy, 2 HoldFire, 3 Obsticle, 4 Mimic
         Normal,
         Enemy,
         HoldFire,
@@ -47,9 +41,6 @@ namespace TAC_AI
         Unanchor,
     }
 
-    /// <summary>
-    /// Update later
-    /// </summary>
     public enum AIDriveState
     {
         None,
@@ -57,18 +48,17 @@ namespace TAC_AI
         NonPlayer,
         Neutral,
     }
+    /// <summary>
+    /// Throttle application mode. Declaration order is NOT load-bearing — all consumers use
+    /// named values via switch or `==`/`!=`. Free to reorder if needed.
+    /// </summary>
     public enum AIThrottleState
     {
-        /// <summary>  Only aim at target </summary>
         PivotOnly,
-        /// <summary>  Slow down and moderate top speed. For aircraft, we perform dodge manuvers. </summary>
         Yield,
-        /// <summary>  Dynamically adjust speed, prefer top </summary>
         FullSpeed,
-        /// <summary>  Force the drive (cab forwards!) to a specific set value </summary>
         ForceSpeed
     }
-
 
     public enum NP_Types
     {

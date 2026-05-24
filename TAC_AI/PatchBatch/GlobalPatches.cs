@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Reflection;
@@ -13,13 +13,11 @@ namespace TAC_AI
 {
     internal class GlobalPatches
     {
-        // GAME
 #if DEBUG
         internal static class SnapshotServiceDesktopPatches
         {
             internal static Type target = typeof(SnapshotServiceDesktop);
 
-            //Redirect to our tech population
             private static void GetFilePath_Prefix(ref string relativePath)
             {
                 if (relativePath == "Snapshots")
@@ -51,7 +49,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ManPlayer);
 
-            /// <summary> CatchPlayerInitCheats </summary>
             internal static void SetPlayerHasEnabledCheatCommands_Prefix(ManPlayer __instance)
             {
                 DebugRawTechSpawner.CanOpenDebugSpawnMenu = true;
@@ -87,7 +84,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModeMain);
 
-            //OverridePlayerTechOnWaterLanding
             private static void PlayerRespawned_Postfix()
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": Player respawned");
@@ -106,7 +102,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(NetTech);
 
-            //DontSaveWhenNotNeeded
             private static bool SaveTechData_Prefix(NetTech __instance)
             {
                 if (AIERepair.BulkAdding)
@@ -129,12 +124,13 @@ namespace TAC_AI
                 catch
                 { }
             }*/
-            //SetMTAIAuto
             private static void CopySchemesFrom_Prefix(TankControl __instance, ref TankControl other)
             {
+                DebugTAC_AI.FirstFire("TankControl.CopySchemesFrom_Prefix",
+                    "tech-split splice point — wires AIESplitHandler onto every fragment");
                 try
                 {
-                    other.gameObject.AddComponent<AIESplitHandler>().Setup(other.Tech, __instance.Tech);
+                    __instance.gameObject.AddComponent<AIESplitHandler>().Setup(__instance.Tech, other.Tech);
                 }
                 catch
                 { }
@@ -150,8 +146,18 @@ namespace TAC_AI
             //PatchTankBeamToHelpAI - Give the AI some untangle help
             private static void OnUpdate_Postfix(TankBeam __instance)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": Patched TankBeam Update(TankAIHelper)");
-                if (__instance.IsActive && !ManNetwork.IsNetworked && !ManGameMode.inst.IsCurrent<ModeSumo>())
+                // P09 T-7-1: fail-fast log on reflection-null (mirrors GlobalPatches.cs:129 FirstFire pattern).
+                if (beamPush == null || beamRot == null)
+                {
+                    DebugTAC_AI.FirstFire("TankBeamPatches.OnUpdate_Postfix.reflectionNull",
+                        "TankBeam.m_NudgeStrafe/m_NudgeRotate not found (vanilla API change?) - beam-assisted unjam disabled");
+                    return;
+                }
+                // P09 B-9-5: dropped `!ManNetwork.IsNetworked` gate. BeamMaintainer doesn't MP-gate,
+                // so beam DOES enable for AI techs on host in MP - leaving the vanilla world-east push
+                // bug active in MP. Patch only mutates local TankBeam fields (not networked); client
+                // can't accidentally fire because BeamMaintainer doesn't enable beam for AI techs on client.
+                if (__instance.IsActive && !ManGameMode.inst.IsCurrent<ModeSumo>())
                 {
                     var helper = __instance.GetComponent<TankAIHelper>();
                     if (helper != null && (!helper.tank.PlayerFocused || KickStart.AutopilotPlayer))
@@ -201,21 +207,30 @@ namespace TAC_AI
                             if (helper.DriveVar != 0)
                             {
                                 forceVal = helper.DriveVar;
+                                // Was (new Vector2(1, 0) * forceVal): hardcoded world-east push that ignored
+                                // headingVec entirely. Since this branch fires during the stuck-recovery
+                                // ForceSetBeam window (DriveVar = +/-1), it was shoving the tech east every
+                                // time the beam triggered — the "random direction" loop the player sees.
+                                // P09 B-8-1: was passing Vector2 to InverseTransformDirection. C# implicit
+                                // Vector2→Vector3 conversion produces (worldX, worldZ, 0) — the world-Z
+                                // component lands in the local-Y slot, then the TankBeam consumer SetY(0)'s
+                                // it, losing forward push entirely. ToVector3XZ() correctly lifts
+                                // Vector2(x,y) → Vector3(x, 0, y), restoring goal-aligned local-space push.
                                 beamPush.SetValue(__instance,
-                                    helper.tank.rootBlockTrans.InverseTransformDirection((new Vector2(1, 0) * forceVal).
-                                    Clamp(-Vector2.one, Vector2.one)));
+                                    helper.tank.rootBlockTrans.InverseTransformDirection(((headingVec * forceVal).
+                                    Clamp(-Vector2.one, Vector2.one)).ToVector3XZ()));
                                 return;
                             }
                             else if (helper.IsDirectedMoving)
                                 forceVal = 1.41f;
                             if (ReversedMove)
                                 beamPush.SetValue(__instance,
-                                    helper.tank.rootBlockTrans.InverseTransformDirection((-headingVec * forceVal).
-                                    Clamp(-Vector2.one, Vector2.one)));
+                                    helper.tank.rootBlockTrans.InverseTransformDirection(((-headingVec * forceVal).
+                                    Clamp(-Vector2.one, Vector2.one)).ToVector3XZ()));
                             else
                                 beamPush.SetValue(__instance,
-                                    helper.tank.rootBlockTrans.InverseTransformDirection((headingVec * forceVal).
-                                    Clamp(-Vector2.one, Vector2.one)));
+                                    helper.tank.rootBlockTrans.InverseTransformDirection(((headingVec * forceVal).
+                                    Clamp(-Vector2.one, Vector2.one)).ToVector3XZ()));
                         }
                     }
                 }
@@ -225,7 +240,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(TankCamera);
 
-            //MakeCameraIgnoreAutopilotLockOn
             //static readonly FieldInfo targPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
             private static void TryKeepManualTargetInView_Postfix(ref Tank tankToFollow, ref bool __result)
             {
@@ -279,6 +293,8 @@ namespace TAC_AI
             //ForceAIToComplyAnchorCorrectly - (Allied AI state changing remotes) On Auto Setting Tech AI
             private static void UpdateAICategory_Postfix(TechAI __instance)
             {
+                DebugTAC_AI.FirstFire("TechAI.UpdateAICategory_Postfix",
+                    "vanilla AI re-routing — slams back to Escort when AnchorStateAIInsure && Player alignment");
                 var tAI = __instance.gameObject.GetComponent<AI.TankAIHelper>();
                 if (tAI.IsNotNull())
                 {
@@ -320,6 +336,8 @@ namespace TAC_AI
             //EmergencyOverrideOnTechLanding - BEFORE enemy spawn
             private static void TrySpawn_Prefix(ref ManSpawn.ObjectSpawnParams objectSpawnParams, ref ManFreeSpace.FreeSpaceParams freeSpaceParams)
             {
+                DebugTAC_AI.FirstFire("ObjectSpawner.TrySpawn_Prefix",
+                    "spawn override — intercepts vanilla ManPop choice and swaps TechData via SpecialAISpawner.OverrideSpawning");
                 if (objectSpawnParams != null)
                 {
                     if (objectSpawnParams is ManSpawn.TechSpawnParams TSP)
@@ -332,8 +350,8 @@ namespace TAC_AI
                         }
                         catch (Exception e)
                         {
-                            DebugTAC_AI.FatalError("A serious crash occurred whilist Advanced AI was spawning a Tech!");
-                            throw e;
+                            DebugTAC_AI.LogWarnPlayerOnce("Advanced AI spawn override threw — falling back to vanilla spawn for this attempt", e);
+                            // Don't re-throw: TSP.m_TechToSpawn is unchanged, so vanilla can still spawn the original.
                         }
                     }
                 }
@@ -341,4 +359,3 @@ namespace TAC_AI
         }
     }
 }
-

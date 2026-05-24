@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -9,7 +9,6 @@ namespace TerraTechETCUtil
 {
     public static class AltUI
     {
-        // INIT
         internal static GUISkin MenuGUI;
         internal static float UIAlpha = 0.65f;
         internal static string UIAlphaText = "<color=#454545ff>";
@@ -35,7 +34,6 @@ namespace TerraTechETCUtil
         private static Texture2D ButtonTexDisabledHover;
         private static GUIStyleState ButtonStyleDisabled;
         private static GUIStyleState ButtonStyleDisabledHover;
-
 
         internal static GUIStyle ButtonGrey;
         private static Texture2D ButtonTexInactive;
@@ -96,8 +94,6 @@ namespace TerraTechETCUtil
                     return;
                 }
 
-
-                // Setup Menu
                 MenuLeft = new GUIStyle(GUI.skin.window);
                 try
                 {
@@ -128,7 +124,6 @@ namespace TerraTechETCUtil
                 }
                 catch { }
 
-                // Setup Button Default
                 ButtonBlue = new GUIStyle(ButtonBase);
                 ButtonStyle = new GUIStyleState() { background = ButtonTexMain, textColor = new Color(1, 1, 1, 1), };
                 ButtonStyleHover = new GUIStyleState() { background = ButtonTexHover, textColor = new Color(1, 1, 1, 1), };
@@ -141,7 +136,6 @@ namespace TerraTechETCUtil
                 ButtonBlue.onActive = ButtonStyle;
                 ButtonBlue.onFocused = ButtonStyle;
 
-                // Setup Button Accept
                 ButtonGreen = new GUIStyle(ButtonBase);
                 ButtonStyleAccept = new GUIStyleState() { background = ButtonTexAccept, textColor = new Color(1, 1, 1, 1), };
                 ButtonStyleAcceptHover = new GUIStyleState() { background = ButtonTexAcceptHover, textColor = new Color(1, 1, 1, 1), };
@@ -154,7 +148,6 @@ namespace TerraTechETCUtil
                 ButtonGreen.onActive = ButtonStyleAccept;
                 ButtonGreen.onFocused = ButtonStyleAccept;
 
-                // Setup Button Disabled
                 ButtonRed = new GUIStyle(ButtonBase);
                 ButtonStyleDisabled = new GUIStyleState() { background = ButtonTexDisabled, textColor = new Color(1, 1, 1, 1), };
                 ButtonStyleDisabledHover = new GUIStyleState() { background = ButtonTexDisabledHover, textColor = new Color(1, 1, 1, 1), };
@@ -167,7 +160,6 @@ namespace TerraTechETCUtil
                 ButtonRed.onActive = ButtonStyleDisabled;
                 ButtonRed.onFocused = ButtonStyleDisabled;
 
-                // Setup Button Not Active
                 ButtonGrey = new GUIStyle(ButtonBase);
                 ButtonStyleInactive = new GUIStyleState() { background = ButtonTexInactive, textColor = new Color(1, 1, 1, 1), };
                 ButtonGrey.normal = ButtonStyleInactive;
@@ -179,8 +171,6 @@ namespace TerraTechETCUtil
                 ButtonGrey.onActive = ButtonStyleInactive;
                 ButtonGrey.onFocused = ButtonStyleInactive;
 
-
-                // Setup Button Active
                 ButtonBlueActive = new GUIStyle(ButtonBase);
                 ButtonStyleActive = new GUIStyleState() { background = ButtonTexSelect, textColor = new Color(1, 1, 1, 1), };
                 ButtonBlueActive.normal = ButtonStyleActive;
@@ -192,7 +182,6 @@ namespace TerraTechETCUtil
                 ButtonBlueActive.onActive = ButtonStyleActive;
                 ButtonBlueActive.onFocused = ButtonStyleActive;
 
-                // Setup Button Green Active
                 ButtonGreenActive = new GUIStyle(ButtonBase);
                 ButtonStyleGActive = new GUIStyleState() { background = ButtonTexSelectGreen, textColor = new Color(1, 1, 1, 1), };
                 ButtonGreenActive.normal = ButtonStyleGActive;
@@ -204,7 +193,6 @@ namespace TerraTechETCUtil
                 ButtonGreenActive.onActive = ButtonStyleGActive;
                 ButtonGreenActive.onFocused = ButtonStyleGActive;
 
-                // Setup Button Red Active
                 ButtonRedActive = new GUIStyle(ButtonBase);
                 ButtonStyleRActive = new GUIStyleState() { background = ButtonTexSelectRed, textColor = new Color(1, 1, 1, 1), };
                 ButtonRedActive.normal = ButtonStyleRActive;
@@ -266,11 +254,6 @@ namespace TerraTechETCUtil
             GUI.skin = cache;
         }
 
-
-
-        /// <summary>
-        /// For the Popups that appear like the BB sold thing
-        /// </summary>
         static readonly FieldInfo 
             textInput = typeof(FloatingTextPanel).GetField("m_AmountText", BindingFlags.NonPublic | BindingFlags.Instance),
             listOverlays = typeof(ManOverlay).GetField("m_ActiveOverlays", BindingFlags.NonPublic | BindingFlags.Instance),
@@ -279,7 +262,6 @@ namespace TerraTechETCUtil
             scale = typeof(FloatingTextPanel).GetField("m_scaler", BindingFlags.NonPublic | BindingFlags.Instance),
             canvas = typeof(FloatingTextPanel).GetField("m_CanvasGroup", BindingFlags.NonPublic | BindingFlags.Instance),
             CaseThis = typeof(ManOverlay).GetField("m_ConsumptionAddMoneyOverlayData", BindingFlags.NonPublic | BindingFlags.Instance);
-
 
         internal static GameObject CreateCustomPopupInfo(string name, Color colorToSet, out FloatingTextOverlayData CallToShow)
         {

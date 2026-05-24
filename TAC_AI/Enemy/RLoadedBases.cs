@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,11 +17,14 @@ namespace TAC_AI.AI.Enemy
         internal static int MaxDefenses { get { return (int)(KickStart.MaxBasesPerTeam * (float)(2f / 3f)); } }
         internal static int MaxAutominers { get { return KickStart.MaxBasesPerTeam / 2; } }
 
-
         public static List<EnemyBaseFunder> AllEnemyBases = new List<EnemyBaseFunder>();
 
-
         internal static StringBuilder SB = new StringBuilder();
+
+        // Per-team minimum spacing for InsureHarvester re-issue. A still-assembling BookmarkBuilder
+        // doesn't yet count as a Miner, so without this guard the next 30s tick would request another
+        // harvester for the same team. 2x DelayBetweenBuilding is conservative.
+        private static readonly Dictionary<int, float> lastHarvesterBuildTime = new Dictionary<int, float>();
 
         public static int TeamActiveMobileTechCount(int Team)
         {
@@ -52,12 +55,6 @@ namespace TAC_AI.AI.Enemy
         {
             return TeamActiveMobileTechCount(Team) + ManEnemyWorld.UnloadedMobileTechCount(Team);
         }
-        // Base handling
-        /// <summary>
-        /// Does NOT count Defenses!!!
-        /// </summary>
-        /// <param name="Team"></param>
-        /// <returns></returns>
         public static int TeamGlobalMakerBaseCount(int Team)
         {
             return TeamActiveMakerBaseCount(Team) + ManEnemyWorld.UnloadedBaseCount(Team);
@@ -78,8 +75,8 @@ namespace TAC_AI.AI.Enemy
             return null;
         }
         public static Func<int,int> GetTeamFunds => ManBaseTeams.GetTeamMoney;
-        public static IEnumerable<EnemyBaseFunder> IterateTeamBaseFunders(int Team) => 
-            AllEnemyBases.TakeWhile(delegate (EnemyBaseFunder cand) { return cand.Team == Team && cand._tank.blockman.blockCount > 0; });
+        public static IEnumerable<EnemyBaseFunder> IterateTeamBaseFunders(int Team) =>
+            AllEnemyBases.Where(delegate (EnemyBaseFunder cand) { return cand.Team == Team && cand._tank.blockman.blockCount > 0; });
         public static int GetAllTeamsEnemyHQCount()
         {
             return AllEnemyBases.Count(delegate (EnemyBaseFunder funds) { return funds.IsHQ; });
@@ -133,7 +130,7 @@ namespace TAC_AI.AI.Enemy
             }
             else if (purpose == BasePurpose.HasReceivers && FetchNearbyResourceCounts(Team) < AIGlobals.MinResourcesReqToCollect)
             {
-                thisIsTrue = false;
+                thisIsTrue = true;
                 DebugTAC_AI.Log(KickStart.ModID + ": HasTooMuchOfType - Team " + Team + " Does not have enough mineables in range to build Reciever bases.");
             }
             else
@@ -179,7 +176,6 @@ namespace TAC_AI.AI.Enemy
             return compressed;
         }
 
-        // Bases funds
         public static bool PurchasePossible(int BBCost, int Team)
         {
             if (ManBaseTeams.TryGetBaseTeamDynamicOnly(Team, out var ETD))
@@ -237,8 +233,6 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
-
-        // Utilities
         public static string GetActualNameDef(string name)
         {
             foreach (char ch in name)
@@ -288,8 +282,6 @@ namespace TAC_AI.AI.Enemy
             return InRange;
         }
 
-
-        // Team requests
         public static void AllTeamTechsBuildRequest(int Team)
         {
             if (!BaseFunderManager.TeamsBuildRequested.Contains(Team))
@@ -316,13 +308,6 @@ namespace TAC_AI.AI.Enemy
                 BaseFunderManager.targetingRequestsNPT.Add(Team, new TargetingRequest(priority, Target, mind.CanCallRetreat));
         }
 
-
-        /// <summary>
-        /// This is VERY lazy.  There's only a small chance it will actually transfer the funds to the real strongest base.
-        /// <para>This is normally handled automatically by the manager, but you can call this if you want to move the cash NOW</para>
-        /// </summary>
-        /// <param name="funds">The EnemyBaseFunder that contains the money to move</param>
-        /// <returns>True if it actually moved the money</returns>
         public static bool SetHQToStrongestOrRandomBase(this EnemyBaseFunder funds)
         {
             if (!(bool)funds)
@@ -646,14 +631,10 @@ namespace TAC_AI.AI.Enemy
             public int BlockCount => _tank.blockman.blockCount;
             public bool valid => this && _tank;
 
-
-            /// <summary> This tech will occationally gather funds.  Use this to get the team Tech with all the Build Bucks. </summary>
             public bool IsHQ => ManBaseTeams.IsTeamHQ(this);
             public bool hasTerminal = false;
-            /// <summary> If this Tech has a terminal, it can build any tech from the population </summary>
             public bool HasTerminal => hasTerminal;
             public bool bankrupt = false;
-            /// <summary> This base has not enough Build Bucks </summary>
             public bool Bankrupt => bankrupt;
 
             public void Initiate(Tank tank)
@@ -681,7 +662,6 @@ namespace TAC_AI.AI.Enemy
             }
             public void OnRecycle(Tank tank)
             {
-                // Make sure the money is safe
 
                 //DebugTAC_AI.Log(KickStart.ModID + ": Base " + tank.name + " scrambling money to next possible base"
                 //    + " worked? " + EmergencyMoveMoney(this));
@@ -820,8 +800,6 @@ namespace TAC_AI.AI.Enemy
                 }
             }
 
-
-            // EnemyPurchase
             public bool PurchasePossible(int BBCost)
             {
                 if (ManBaseTeams.TryGetBaseTeamDynamicOnly(Team, out var ETD))
@@ -885,16 +863,10 @@ namespace TAC_AI.AI.Enemy
             return Output;
         }
 
-
-
-        // MAIN enemy bootup base handler
         public static bool SetupBaseAI(TankAIHelper helper, Tank tank, EnemyMind mind)
         {   // iterate if there's key characters in the name of the Tech
             string name = tank.name;
             bool DidFire = false;
-
-            // Enemy base tech purchese spawn
-
 
             if (name == "TEST_BASE")
             {   //It's a base spawned by this mod
@@ -1095,8 +1067,6 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
-
-        // Base Operations
         public static void UpdateBaseOperations(EnemyMind mind)
         {
             try
@@ -1114,13 +1084,12 @@ namespace TAC_AI.AI.Enemy
                         int addBucks = 0;
                         foreach (var item in IterateTeamBaseFunders(mind.Tank.Team))
                         {
-                            addBucks += AIGlobals.MPEachBaseProfits * (40 / KickStart.AIClockPeriod);
+                            addBucks += (int)(AIGlobals.MPEachBaseProfits * (40f / KickStart.AIClockPeriod));
                         }
                         if (addBucks > 0)
                             funder.AddBuildBucks(addBucks);
                     }
 
-                    // Bribe
                     if ((bool)mind.AIControl.lastEnemyGet)
                     {
                         Tank lastTankGrab = mind.AIControl.lastEnemyGet.tank;
@@ -1168,7 +1137,6 @@ namespace TAC_AI.AI.Enemy
                         funder.BuildBucks < AIGlobals.MinimumBBToTryExpand)
                         return; // Reduce expansion lag
 
-
                     if (!mind.AIControl.PendingDamageCheck && UnityEngine.Random.Range(1, 100) <= AIGlobals.BaseExpandChance + (GetTeamFunds(mind.Tank.Team) / 10000))
                         ImTakingThatExpansion(mind, funder);
                     //if (UnityEngine.Random.Range(1, 100) < 7)
@@ -1182,9 +1150,6 @@ namespace TAC_AI.AI.Enemy
                 throw new Exception("UpdateBaseOperations FAILED ~ ", e);
             }
         }
-        /// <summary>
-        /// Will attempt to expand.  Returns false if we failed to spawn anything
-        /// </summary>
         public static bool ImTakingThatExpansion(EnemyMind mind, EnemyBaseFunder funds)
         {   // Expand the base!
             WorldPosition pos2 = Singleton.Manager<ManOverlay>.inst.WorldPositionForFloatingText(mind.AIControl.tank.visible);
@@ -1195,9 +1160,7 @@ namespace TAC_AI.AI.Enemy
                 if (AIGlobals.IsAttract)
                     return false; // no branching
 
-
                 Tank tech = mind.AIControl.tank;
-
 
                 FactionLevel lvl = RawTechLoader.TryGetPlayerLicenceLevel();
                 int grade = 99;
@@ -1252,7 +1215,6 @@ namespace TAC_AI.AI.Enemy
                     RTF.Progression = lvl;
                     RTF.TargetFactionGrade = grade;
                     RTF.MaxPrice = Cost;
-
 
                     DebugTAC_AI.Log(KickStart.ModID + ": ImTakingThatExpansion - Team " + tech.Team + ": That expansion is mine!  Type: " + reason + ", Faction: " + mind.MainFaction);
                     
@@ -1315,9 +1277,6 @@ namespace TAC_AI.AI.Enemy
                 return false;
             }
         }
-        /// <summary>
-        /// Will attempt to expand.  Returns false if we failed to spawn anything
-        /// </summary>
         public static bool ExpandBasePeaceful(EnemyMind mind, FactionLevel lvl, EnemyBaseFunder funds, int grade, int Cost)
         {   // Expand the base!
             try
@@ -1490,7 +1449,6 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
-
         public static void ExpandBaseLegacy(EnemyMind mind, FactionLevel lvl, EnemyBaseFunder funds, int grade, int Cost)
         {   // Expand the base!
             try
@@ -1574,12 +1532,16 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
-
         public static bool InsureHarvester(EnemyMind mind, FactionLevel lvl, EnemyBaseFunder funds,
             IEnumerable<EnemyBaseFunder> funders)
         {   // Make sure at least one harvester is on scene
             try
             {
+                // Per-team cooldown: closes the assembling-tech double-spawn race that ignored BB state.
+                if (lastHarvesterBuildTime.TryGetValue(funds.Team, out float lastTime)
+                    && Time.time - lastTime < AIGlobals.DelayBetweenBuilding * 2f)
+                    return false;
+
                 int harvestBases = GetCountOfPurpose(BasePurpose.HasReceivers, funders);
                 if (harvestBases > 0)
                 {
@@ -1612,7 +1574,19 @@ namespace TAC_AI.AI.Enemy
                                 SBT = RawTechLoader.GetEnemyBaseType(FactionSubTypes.GSO, lvl, new HashSet<BasePurpose> { BasePurpose.Harvesting, BasePurpose.NotStationary }, BaseTerrain.AnyNonSea, maxPrice: funds.BuildBucks);
                             }
                         }
-                        RawTechLoader.SpawnTechFragment(pos, funds.Team, RawTechLoader.GetBaseTemplate(SBT));
+                        // After the GSO cascade, the final SBT can still resolve to a Fallback
+                        // template (Hoarder). Abort instead of spawning a duplicate placeholder.
+                        if (RawTechLoader.IsFallback(SBT))
+                        {
+                            DebugTAC_AI.Log(KickStart.ModID + ": InsureHarvester - All cascades resolved to Fallback (would be Hoarder); aborting.");
+                            return false;
+                        }
+                        var template = RawTechLoader.GetBaseTemplate(SBT);
+                        RawTechLoader.SpawnTechFragment(pos, funds.Team, template);
+                        // Drain BB so repeated calls self-throttle. Without this, MinimumBBToTryExpand
+                        // stays satisfied forever and InsureHarvester respawns every 30s indefinitely.
+                        funds.TryMakePurchase(template.baseCost);
+                        lastHarvesterBuildTime[funds.Team] = Time.time;
                         return true;
                     }
                 }
@@ -1697,7 +1671,6 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
-        // AI Base building
         public static BasePurpose PickBuildBasedOnPriorities(EnemyMind mind, FactionLevel lvl, EnemyBaseFunder funds,
             IEnumerable<EnemyBaseFunder> funders)
         {   // Expand the base!
@@ -1716,7 +1689,6 @@ namespace TAC_AI.AI.Enemy
             if (GetCountOfPurpose(BasePurpose.Harvesting, funders) == 0)
                 return PickHarvestBase(mind, funds, funders);
 
-            // Fallback
             return PickBuildBasedOnPrioritiesLegacy(mind, lvl, funds);
         }
         public static BasePurpose PriorityDefense(EnemyMind mind, FactionLevel lvl, EnemyBaseFunder funds,
@@ -1739,7 +1711,6 @@ namespace TAC_AI.AI.Enemy
             else 
                 return BasePurpose.TechProduction;
         }
-
 
         public static BasePurpose PickBuildBasedOnPrioritiesLegacy(EnemyMind mind, FactionLevel lvl, EnemyBaseFunder funds)
         {   // Expand the base!
@@ -1831,10 +1802,6 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
-
-
-
-        // Utilities
         public static ChunkTypes[] TryGetBiomeResource(Vector3 scenePos)
         {   // make autominers mine deep based on biome
             switch (ManWorld.inst.GetBiomeWeightsAtScenePosition(scenePos).Biome(0).BiomeType)

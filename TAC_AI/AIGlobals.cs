@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -27,21 +27,7 @@ namespace TAC_AI
             catch { }
             return false;
         }
-        public static int GetRandomEntryWithError(this List<int> list)
-        {
-            int num = -1;
-            if (list.Count > 0)
-                num = UnityEngine.Random.Range(0, list.Count);
-
-            if (num < 0)
-                return -1;
-
-            return list[num];
-        }
     }
-    /// <summary>
-    /// Stores all global information for this mod. Edit at your own risk.
-    /// </summary>
     public class AIGlobals
     {
         // Note improve AI navigation around water - they keep driving into the water and get stuck
@@ -102,14 +88,17 @@ namespace TAC_AI
         public const float SleepRangeSpacing = 16;
         public static bool IsInSleepRange(Vector3 posScene)
         {
-            float sleepRange = (float)TankAIManager.rangeOverride.GetValue(ManTechs.inst);
+            // B3: fall back to vanilla 200f if reflection acquisition of m_SleepRangeFromCamera
+            // failed (vanilla API rename). Initiate already raised a FatalError; this just
+            // prevents per-frame NRE while running with the degraded value.
+            float sleepRange = TankAIManager.rangeOverride != null
+                ? (float)TankAIManager.rangeOverride.GetValue(ManTechs.inst) : 200f;
             return !ManNetwork.IsNetworked &&
-                (posScene - Singleton.cameraTrans.position).sqrMagnitude > 
+                (posScene - Singleton.cameraTrans.position).sqrMagnitude >
                 (sleepRange * sleepRange) - SleepRangeSpacing;
         }
 
         public const float EradicateEffectMaxDistanceSqr = 200 * 200;
-
 
         public static Rewired.Player controllerExt = null;
 
@@ -150,17 +139,12 @@ namespace TAC_AI
             return false;
         }
 
-
         public static bool PlayerIsOnLowQualitySettings => ManProfile.inst.GetCurrentUser().m_GraphicsSettings.m_QualityLevel <= 1;
 
-
         // AIERepair contains the self-repair stats
-        // EnemyWorldManager contains the unloaded enemy stats
 
         //-------------------------------------
-        //              CONSTANTS
         //-------------------------------------
-        // SPAWNING
         public const int SmolTechBlockThreshold = 24;
         public const int DefenderWeaponCount = 12;
         public const int HomingWeaponCount = 25;
@@ -169,7 +153,6 @@ namespace TAC_AI
         public const int MaxEradicatorTechs = 2;
         public const int MaxBlockLimitAttract = 128;
 
-        // BASES
         public static bool CancelOnErrorTech = true;
         public const short BaseAnchorMinimumTimeDelay = 20;
         public const int NaturalBaseSpacingFromOriginTiles = 2;
@@ -179,14 +162,17 @@ namespace TAC_AI
         public const float NaturalBaseDifficultyScalingWithCoordDist = 0.135f;
         public const float NaturalBaseFactionDifficultyScalingWithCoordDist = 0.2f;
 
-        // GENERAL AI PARAMETERS
         public const float DefaultMaxObjectiveRange = 750;
-        public const float TargetVelocityLeadPredictionMulti = 0.01f; // for projectiles of speed 100
+        public const float TargetVelocityLeadPredictionMulti = 0.01f; // DRIVE-only lead heuristic (RoughPredictTarget repositions the platform). Weapon AIM lead is now per-weapon (muzzle velocity) in ModuleWeaponPatches.UpdateAim_Prefix - see P12 BUG-7/TD-4.
+        public const float LeadPredictionMaxTOF = 3f; // P12 BUG-7: cap aim-lead time-of-flight (s) so slow rounds at long range don't aim wildly off-target.
         public const float StationaryMoveDampening = 6;
         public const int TeamRangeStart = 256;
         public const short NetAIClockPeriod = 30;
 
         public const float TargetCacheRefreshInterval = 1.5f;  // Seconds until we try to gather enemy Techs within range
+        // T5: shorter interval while Provoked / actively engaging — fast threats can't slip
+        // through the stale-cache window. Only paid by techs currently in combat.
+        public const float TargetCacheRefreshIntervalCombat = 0.4f;
 
         internal static GUIButtonMadness ModularMenu;
         private const int IDGUI = 8037315;
@@ -274,7 +260,6 @@ namespace TAC_AI
         }
 
         public static IntVector3 RTSDisabled => IntVector3.invalid;
-        // General 
         public const int LonerEnemyTeam = ManSpawn.NewEnemyTeam;
         public const int DefaultEnemyTeam = ManSpawn.FirstEnemyTeam;
         public const float YieldSpeed = 10;
@@ -283,7 +268,6 @@ namespace TAC_AI
         public const float defaultExpandRad = 24f;
         public const float defaultExpandRadRange = 192f;
 
-        // Elevation
         public const float GroundOffsetGeneralAir = 10;
         public const float GroundOffsetRTSAir = 24;
         public const float GroundOffsetAircraft = 22;
@@ -291,13 +275,10 @@ namespace TAC_AI
         public const float GroundOffsetChopperExtra = 5f;
         public const float GroundOffsetCrashWarnChopperDelta = -2.5f;
 
-        // Anchors
         public const float SafeAnchorDist = 50f;     // enemy too close to anchor
-        /// <summary> How much do we dampen anchor movements by? </summary>
         public const int AnchorAimDampening = 45;
         public const short MaxAnchorAttempts = 3;//12;
 
-        // Unjamming
         public const int UnjamUpdateFire = 25;
         public const int UnjamUpdateStart = 120;
         public const int UnjamUpdateTicks = 120;
@@ -306,10 +287,20 @@ namespace TAC_AI
         public const int UrgencyOverloadReconsideration = 180;//80
         public const int UnjamUpdateDrop = UnjamUpdateStart + UnjamUpdateTicks;
         public const int UnjamUpdateEnd = UnjamUpdateDrop + UnjamUpdateEndDelay;
+        // Yaw angular velocity (rad/sec) above which a pivoting tech counts as making progress for
+        // stuck-detection. ~28 deg/sec — slow but deliberate. Prevents bad-turn-radius twitches from
+        // racking up FrustrationMeter when the tech IS turning toward its goal.
+        public const float AngularProgressThreshold = 0.5f;
 
+        // Seconds between TankAIHelper.Subscribe() and the deferred DelayedSubscribe pass that
+        // finalises extents, driver type and dirty flags. Lets blockBounds/blockCount settle first.
+        public const float AISubscribeDelay = 0.1f;
 
+        // Seconds after EnemyMind.Initiate during which OnBlockAdd accepts late-attached blocks
+        // for AbortSelfDestruct — covers the gap between vanilla clearing FirstUpdateAfterSpawn
+        // and our subscribe pipeline finishing.
+        public const float EnemyInitGrace = 1.0f;
 
-        // Pathfinding
         internal static Bitfield<ObjectTypes> emptyBitMask = new Bitfield<ObjectTypes>();
         internal static Bitfield<ObjectTypes> blockBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[1] { ObjectTypes.Block });
         internal static Bitfield<ObjectTypes> techBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[1] { ObjectTypes.Vehicle });
@@ -324,28 +315,23 @@ namespace TAC_AI
         public const float AirborneDodgeStrengthMultiplier = 0.4f;  // The motivation in trying to move away from a tech in the way
         public const float FindItemScanRangeExtension = 50;
         public const float FindBaseScanRangeExtension = 500;
-        public const int ReverseDelay = 60;
-        public const int ReverseFromResourceDelay = 35;
+        public const int ReverseDelay = 500;             // 1.0s reverse-from-base hold via actionPause AITimer shim (was 60 = 0.12s, too short). See docs/21_timing-cadence.md
+        public const int ReverseFromResourceDelay = 300; // 0.6s reverse-from-resource hold (was 35 = 0.07s). See docs/21_timing-cadence.md
+        public const float BeamFlipTippedHoldSecs = 1.5f;// seconds a 3D-navi tech must stay continuously tipped before AIEBeam fires its flip beam
         public const float PlayerAISpeedPanicDividend = 8;//6;
         public const float EnemyAISpeedPanicDividend = 9;
-        /// <summary>Depth that land Techs are able to drive into</summary>
         public const float WaterDepthTechHeightPercent = 0.35f;
 
-        // Control the aircrafts and AI
         public const float PropLerpStrictness = 10f;// 10
         public const int MaxTakeoffFailiures = 240;
         public const float BoosterThrustBias = 0.5f;
-        /// <summary> TtWR = Thrust to Weight Ratio </summary>
         public const float ImmelmanTtWRThreshold = 1.5f;
         public static float ChopperDownAntiBounce = 0.5f;//1.25f;
         public static float ChopperThrottleDamper = 1.25f;//2.5f;
 
-
-        public const float AircraftPreCrashDetection = 1.6f;
         public const float AircraftDestSuccessRadius = 32;
         public const float AerofoilSluggishnessBaseValue = 30;
         public const float AircraftMaxDive = 0.75f;//0.6f;
-        public const float AircraftDangerDive = 0.675f;
         public const float AircraftChillFactorMulti = 4.5f;         // More accuraccy, less responsiveness
         public const float LargeAircraftChillFactorMulti = 1.25f;   // More responsiveness, less accuraccy
 
@@ -369,16 +355,12 @@ namespace TAC_AI
         public const float HovershipUpDriveMulti = 1f;
         public const float HovershipDownDriveMulti = 0.6f;
 
-
         public const int LargeAircraftSize = 15;            // The size of which we count an aircraft as large
-        /// <summary> IN m/s !!!</summary>
         public const float AirStallSpeed = 42;//25          // The speed of which most wings begin to stall at
         public const float GroundAttackStagingDistMain = 275;
         public static float GroundAttackStagingDist => IsNotAttract ? 120 : GroundAttackStagingDistMain;   // Distance to fly (in meters!) before turning back
         public const float TechSplitDelay = 0.5f;
 
-
-        // Item Handling
         public const float MinimumCloseInSpeedSqr = 2.56f;      // If we are closing in on our target slower than this (with wrong heading), we drive slowly
         public const float BlockAttachDelay = 0.75f;        // How long until we actually attach the block when playing the placement animation
         public const float MaxBlockGrabRange = 47.5f;       // Less than player range to compensate for precision
@@ -386,30 +368,51 @@ namespace TAC_AI
         public const float ItemGrabStrength = 1750;         // The max acceleration to apply when holding an item
         public const float ItemThrowVelo = 115;             // The max velocity to apply when throwing an item
         public const float AircraftHailMaryRange = 65f;     // Try throw things this far away for aircraft 
-        //  because we don't want to burn daylight trying to land and takeoff again
 
-        // Charger Parameters
         public const float minimumChargeFractionToConsider = 0.75f;
 
-        // Combat Parameters
         public const float TargetValidationDelay = 0.6f;//1.5f;
-        public const bool UseVanillaTargetFetching = false;
-        public const int DefaultMaxTargetingRange = 150;
-        public const float MaxRangeFireAll = 125;   // WEAPON AIMING RANGE
+        public const int DefaultMaxTargetingRange = 1500;
 
-        // Combat target switching
         public const int ProvokeTime = 200;         // Roughly around 200/40 = 5 seconds
         public const int ProvokeTimeShort = 80;
-        public const int DamageAlertThreshold = 45;// Above this damage we react to the threat
+        // B7: after Provoked expires, an in-range target that has gone behind cover
+        // (NeedsLineOfSight && BlockedLineOfSight) is held for this many seconds before
+        // EndPursuit fires. Prevents the "decay-to-zero → drop → re-acquire next tick"
+        // flicker when a target ducks behind terrain. Reset on re-provoke or LOS clear.
+        public const float LOSLostGraceTime = 3.0f;
+        public const int DamageAlertThreshold = 45;// Above this damage we react to the threat (single-shot fast path)
+        // B2/T2: cumulative-damage accumulator. Closes the low-DPS hole where each hit is
+        // below DamageAlertThreshold but sustained DPS (Tesla coils, micro-cannons,
+        // Storm pellets) was silently ignored. Per-attacker bucket; trips when the sum
+        // crosses CumulativeThreshold; bucket clears on trip. Linear decay at
+        // CumulativeThreshold / DecayWindowSeconds units/sec — bucket reaches 0 after
+        // DecayWindowSeconds of no incoming fire from that attacker.
+        public const float DamageAlertCumulativeThreshold = 60f;
+        public const float DamageAlertDecayWindowSeconds = 3.0f;
+        public const float DamageAlertDecayPerSec = DamageAlertCumulativeThreshold / DamageAlertDecayWindowSeconds;
         public const float ScanDelay = 0.5f;        // Seconds until we try to find a appropreate target
         public const float PestererSwitchDelay = 12.5f; // Seconds before Pesterers find a new random target
 
+        // B4+T1: target-retention hysteresis. Held target is only dropped past MaxCombatRange
+        // * CombatRangeRetentionMult. Unified across CheckEnemyAndAiming + FindEnemy + FindEnemyAir
+        // so the keep/drop boundary is symmetric — the asymmetric 1.5x linear vs sqr 1.21
+        // (~1.1x linear) split that caused single-tick flicker in the (1.1, 1.5] band is gone.
+        public const float CombatRangeRetentionMult = 1.5f;
+        public const float CombatRangeRetentionMultSqr = CombatRangeRetentionMult * CombatRangeRetentionMult; // 2.25
+        // T1: LOS hysteresis - consecutive blocked checks (at TargetValidationDelay cadence) before
+        // BlockedLineOfSight asserts. Cleared on any unblocked check.
+        public const int LosBlockedStreakThreshold = 2;
+        // B6: hard outer ceiling on PreserveEnemyTarget retention. Even an RTS-locked or
+        // KeepEnemyFocus-held target is dropped past MaxCombatRange * this multiplier.
+        // 2.5x gives commanders ~2.5x normal engagement leash to chase a fleeing target across
+        // a base or hill, but prevents cross-map perma-chase in multiplayer RTS scenarios.
+        public const float RTSLockMaxRangeMultiplier = 2.5f;
+        public const float RTSLockMaxRangeMultiplierSqr = RTSLockMaxRangeMultiplier * RTSLockMaxRangeMultiplier; // 6.25
 
-        // ENEMY AI PARAMETERS
-        // Active Enemy AI Techs
         public const float EnemyTeamAwarenessUpdateDelay = 6;
         public const float DamageAngerDropRelations = 2500;//2500
-        public const float DamageAngerCoolPerSec = 25 * EnemyTeamAwarenessUpdateDelay;
+        public const float DamageAngerCoolRatePerSec = 25;   // anger drained per real second; multiplied by the tick delay at the call site (was DamageAngerCoolPerSec = 25*delay, a per-tick lump whose name read as per-second)
         public const int DefaultEnemyScanRange = 150;
         public const int TileFringeDist = 96;
         public const float BatteryRetreatPercent = 0.25f;
@@ -422,13 +425,21 @@ namespace TAC_AI
         public const int InvaderMaxCombatRange = 250;        // 
         public const float SpyperMaxCombatRange = 175;    // 
 
-        // Combat Minimum Spacing Ranges
         public const float MinCombatRangeDefault = 12;
         public const float MinCombatRangeSpyper = 60;
         public const float SpacingRangeSpyperAir = 72;
         public const float SpacingRangeAircraft = 24;
         public const float SpacingRangeChopper = 12;
         public const float SpacingRangeHoverer = 18;
+        // B5: bomber drop-zone tolerance added to (lastTechExtents + enemyExt) spacing.
+        // Per-tech size scaling is already in `spacing` upstream — do NOT add lastTechExtents here
+        // (double-counts). 8u is a small but non-knife-edge convergence band so bomb-runs commit.
+        public const float BomberDropZoneTolerance = 8;
+        // B2: GC-faction ram bias. Subtracted from (lastTechExtents + enemyExt) in RWheeled / RNaval
+        // to collapse every distance bucket toward "close-and-charge" when CommanderAttack != Safety.
+        // Sentinel-style negative magnitude (~30u beyond MinCombatRangeDefault=12); do NOT feed
+        // (spacer + range) into a divisor without a Mathf.Max guard.
+        public const float GCRamSpacer = -32f;
 
         // Non-Player Base Checks
         public static bool StartingBasesAreAirdropped = false;
@@ -444,34 +455,55 @@ namespace TAC_AI
         public const int EnemyBaseMiningMaxRange = 250;
         public const int EnemyExtendActionRangeShort = 500;
         public const int EnemyExtendActionRange = EnemyExtendActionRangeShort + 32; //the extra 32 to account for tech sizes
+        // Distance cap for keeping mod-managed hostile techs awake (suppressing vanilla ManTechs.CheckSleepRange).
+        // Sits above EnemyExtendActionRange so combat-edge enemies stay awake, below ~2 tile widths so far-field
+        // techs still hand off to ManEnemyWorld's unloaded NP_* simulation.
+        public const float EnemyKeepAwakeRange = 700f;
+
+        // Dive-attack FSM tuning (AirplaneAICore.TickDiveStateMachine).
+        // MinDiveAGL: target must be at least this many meters below the aircraft to commit to a dive.
+        //   Primary guard against the stale-aim/world-origin nose-into-ground bug.
+        public const float MinDiveAGL = 60f;
+        // MinRecoverHold: seconds the FSM stays in Recover before re-arming. Prevents oscillation.
+        public const float MinRecoverHold = 1.5f;
+        // MaxRecoverHold: hard ceiling on seconds in Recover. An underpowered tech or a rising ground
+        //   reference can keep altAdvantage <= MinDiveAGL indefinitely; without this the FSM wedges in
+        //   Recover forever, full-throttle climbing. Re-arming is still gated by MinDiveAGL at
+        //   Approach->Commit, so this escape cannot trigger a too-low dive.
+        public const float MaxRecoverHold = 8f;
+        // Dive FSM hysteresis (Layer 3): debounce + re-arm to stop the climb-dive yo-yo. See docs/21 & docs/10.
+        public const float CommitRecoverAltHysteresis = 0.3f; // Commit->Recover altitude-low clause must persist this long before aborting (terrain-jitter debounce)
+        public const float PostRecoverCooldown = 2.0f;        // min seconds after Recover->Idle before a new Approach may start (prevents the yo-yo)
+        // DiveCachedAimMaxRange: max distance (m) a stale lastDestinationOp may sit from the aircraft and
+        //   still seed a dive when no live target (enemy/resource/base) exists. Replaces an inline 20km
+        //   literal that let the FSM chase an obsolete, effectively map-wide world point.
+        public const float DiveCachedAimMaxRange = 2000f;
+        public const int RaidMinSpawnDistance = 96;
         public const float RetreatBelowTechDamageThreshold = 50;
         public const float RetreatBelowTeamDamageThreshold = 30;
 
         public const int MPEachBaseProfits = 250;
         public const float RaidCooldownTimeSecs = 1200;
         public const int IgnoreBaseCullingTilesFromOrigin = 8388607;
-        /// <summary>
-        /// SaveLoadDelay
-        /// </summary>
         public const float SLDBeforeBuilding = 90;
         public const float DelayBetweenBuilding = 30;
 
-        public const float MaximumNeutralMonitorSqr = 75 ^ 2;//175
+        // B11: sub-neutral curious-follow leash, squared. Was `75 ^ 2` — `^` is XOR in C#,
+        // not exponent, so the literal evaluated to 73 (~8.5m radius) and `RGeneral.Monitor`
+        // no-op'd at any meaningful range. The trailing `//175` comment documents the
+        // author's intended linear radius (matches SpyperMaxCombatRange, one tile-sized
+        // lookout perimeter — well above DefaultEnemyScanRange = 150).
+        public const float MaximumNeutralMonitorSqr = 175f * 175f; // 30625
 
-        // Colors
         internal static Color PlayerColor => AltUI.ColorDefaultPlayer;
         internal static Color PlayerAutoColor = new Color(0.35f, 0.85f, 0.475f, 1);
-        // ENEMY BASE TEAMS
         internal static Color EnemyColor => AltUI.ColorDefaultEnemy;
 
         internal static Color NeutralColor => AltUI.ColorDefaultNeutral;
         internal static Color SubNeutralColor = new Color(0.5f, 0, 0.5f, 1);
         internal static Color FriendlyColor => AltUI.ColorDefaultFriendly;
 
-
-        /// <summary> increments NEGATIVELY </summary>
         public const int EnemyTeamsRangeStart = -1073741828;
-                                               //2147483647 
         internal static bool IsAttract => ManGameMode.inst.GetCurrentGameType() == ManGameMode.GameType.Attract;
 
         private const float BaseChanceNonHosileDefaultMulti = 0.1f;//0.25f;
@@ -497,8 +529,6 @@ namespace TAC_AI
 #else
         internal static bool ShowDebugFeedBack = false;
 #endif
-
-
 
         public static float AngleUnsignedToSigned(float angle)
         {
@@ -559,7 +589,6 @@ namespace TAC_AI
                     }
                 }
             }
-            // Our storedTech DOES NOT EXISTS 
             return null;
         }
         public static ManSaveGame.StoredTech RemoveStoredTech(int visID, IntVector2 coord, bool removeFromJSONToo)
@@ -631,16 +660,9 @@ namespace TAC_AI
                     }
                 }
             }
-            // Our storedTech DOES NOT EXISTS 
             return null;
         }
 
-        /// <summary>
-        /// WIP
-        /// </summary>
-        /// <param name="posScene"></param>
-        /// <param name="anchored"></param>
-        /// <returns></returns>
         public static RadarTypes DetermineRadarType(int ID, Vector3 posScene, bool anchored)
         {
             WorldPosition WP = WorldPosition.FromScenePosition(posScene);
@@ -657,7 +679,6 @@ namespace TAC_AI
             return anchored ? RadarTypes.Base : RadarTypes.Vehicle;
         }
 
-        // Utilities
         public static Quaternion LookRot(Vector3 forward) => LookRot(forward, Vector3.up);
         public static Quaternion LookRot(Vector3 forward, Vector3 up)
         {
@@ -702,11 +723,6 @@ namespace TAC_AI
                 !IsPlayerTeam(team) && team != ManSpawn.NeutralTeam;
         }
 
-        /// <summary>
-        /// Returns true if the target visible is loaded in a way that DOES NOT overlap unloaded tiles!!!
-        /// </summary>
-        /// <param name="tileCoord"></param>
-        /// <returns></returns>
         public static bool CanPlaceSafelyInTile(IntVector2 tileCoord, IntVector2 overlapDir)
         {
             if (overlapDir != IntVector2.zero)
@@ -721,22 +737,14 @@ namespace TAC_AI
                 return true;
             return false;
         }
-        private static bool techSpawned = false;
+        private static float nextSplitAllowedTime = 0f;
         public static bool CanSplitTech(float delay = TechSplitDelay)
         {
-            if (techSpawned)
+            if (Time.unscaledTime < nextSplitAllowedTime)
                 return false;
-            techSpawned = true;
-            InvokeHelper.InvokeSingle(ReAllowSplitTech, delay);
+            nextSplitAllowedTime = Time.unscaledTime + delay;
             return true;
         }
-        private static void ReAllowSplitTech()
-        {
-            techSpawned = false;
-        }
-        /// <summary>
-        /// Set to -1 to recache the count immedeately next update
-        /// </summary>
         internal static int SceneTechCount = -1;
         public static bool AtSceneTechMaxSpawnLimit()
         {
@@ -786,11 +794,6 @@ namespace TAC_AI
         }
 
         private static List<Tank> TEMP = new List<Tank>();
-        /// <summary>
-        /// WILL RESET ON NEXT CALL
-        /// </summary>
-        /// <param name="team"></param>
-        /// <returns></returns>
         public static List<Tank> GetAllPlayerControlledTechs()
         {
             TEMP.Clear();
@@ -892,9 +895,6 @@ namespace TAC_AI
             teamInst = ManBaseTeams.GetNewBaseTeam(TeamRelations.Enemy);
             return teamInst.teamID;
         }
-        /// <summary>
-        /// Attackable neutral
-        /// </summary>
         public static int GetRandomSubNeutralBaseTeam(bool forceNew = true)
         {
             if (!forceNew && ManBaseTeams.inst.teams.Any() && UnityEngine.Random.Range(0, 1f) <= ManBaseTeams.PercentChanceExisting &&
@@ -903,17 +903,9 @@ namespace TAC_AI
             teamInst = ManBaseTeams.GetNewBaseTeam(TeamRelations.SubNeutral);
             return teamInst.teamID;
         }
-        /// <summary>
-        /// Non-attackable neutral
-        /// </summary>
-        public static int GetRandomNeutralBaseTeam(bool forceNew = true)
-        {
-            if (!forceNew && ManBaseTeams.inst.teams.Any() && UnityEngine.Random.Range(0, 1f) <= ManBaseTeams.PercentChanceExisting &&
-                ManBaseTeams.TryGetExistingBaseTeamWithPlayerAlignment(TeamRelations.Neutral, out var teamInst))
-                return teamInst.teamID;
-            teamInst = ManBaseTeams.GetNewBaseTeam(TeamRelations.Neutral);
-            return teamInst.teamID;
-        }
+        // P14: removed dead GetRandomNeutralBaseTeam (zero callers; the umbrella GetRandomBaseTeam
+        // never routes to it). NOTE for upstream: this was a public allocator present in the original
+        // — its removal is a deliberate dead-code cleanup, not a behavior change.
         public static int GetRandomAllyBaseTeam(bool forceNew = true)
         {
             if (!forceNew && ManBaseTeams.inst.teams.Any() && UnityEngine.Random.Range(0, 1f) <= ManBaseTeams.PercentChanceExisting &&
@@ -993,8 +985,6 @@ namespace TAC_AI
             AltUI.PopupCustomInfo(text, pos, playerOverEdit);
         }
 
-
-
         private static bool enemySavedOver = false;
         private static FloatingTextOverlayData enemyOverEdit;
         private static GameObject enemyTextStor;
@@ -1038,7 +1028,6 @@ namespace TAC_AI
             AltUI.PopupCustomInfo(text, pos, NeutralOverEdit);
         }
 
-
         private static bool AllySavedOver = false;
         private static FloatingTextOverlayData AllyOverEdit;
         private static GameObject AllyTextStor;
@@ -1056,7 +1045,12 @@ namespace TAC_AI
             //DebugTAC_AI.Log(KickStart.ModID + ": PopupAllyInfo - Threw popup \"" + text + "\"");
         }
 
-
+        internal static void ResetPopupCache()
+        {
+            playerSavedOver = enemySavedOver = subNeutralSavedOver = neutralSavedOver = AllySavedOver = false;
+            playerOverEdit = enemyOverEdit = subNeutralOverEdit = NeutralOverEdit = AllyOverEdit = null;
+            playerTextStor = enemyTextStor = subNeutralTextStor = neutralTextStor = AllyTextStor = null;
+        }
 
         internal static bool TileNeverLoadedBefore(IntVector2 coord) => ManWorld.inst.IsTileUsableForNewSetPiece(coord);
         internal static bool TileLoadedCanSpawnNewEnemy(Vector3 posScene, float radius)
@@ -1466,13 +1460,6 @@ namespace TAC_AI
             }
         }
 
-        //Actions
-
-        /// <summary>
-        /// Remove a Tech from existance
-        /// </summary>
-        /// <param name="tech"></param>
-        /// <param name="player"></param>
         internal static void Purge(ManSaveGame.StoredTech tech, bool removeFromJSONToo)
         {   // 
             if (ManNetwork.IsNetworked)
@@ -1483,11 +1470,6 @@ namespace TAC_AI
                 RemoveStoredTech(tech.m_ID, GetWorldPos(tech).TileCoord, removeFromJSONToo);
             }
         }
-        /// <summary>
-        /// Remove a Tech from existance
-        /// </summary>
-        /// <param name="tech"></param>
-        /// <param name="player"></param>
         internal static void Purge(Tank tech)
         {   // 
             if (ManNetwork.IsNetworked)
@@ -1503,11 +1485,6 @@ namespace TAC_AI
                 }
             }
         }
-        /// <summary>
-        /// Remove a Tech from existance
-        /// </summary>
-        /// <param name="tech"></param>
-        /// <param name="player"></param>
         internal static bool PurgeHost(int HostVisibleID, string name)
         {   // 
             if (!ManNetwork.IsHost)
@@ -1644,11 +1621,6 @@ namespace TAC_AI
             }
             return false;
         }
-        /// <summary>
-        /// Remove a Tech from existance the cool way
-        /// </summary>
-        /// <param name="tech"></param>
-        /// <param name="player"></param>
         internal static void Eradicate(Tank tech)
         {   // 
             if (ManNetwork.IsNetworked)
@@ -1680,7 +1652,7 @@ namespace TAC_AI
                         if (!block.damage.AboutToDie)
                             block.damage.SelfDestruct(0.5f);
                     }
-                    catch { }
+                    catch (Exception eDest) { DebugTAC_AI.LogWarnPlayerOnce("[TAC_AI:catch:Globals] eradicate block self-destruct", eDest); }
                 }
                 tech.blockman.Disintegrate();
             }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -8,19 +8,14 @@ namespace TAC_AI.AI.Enemy
 {
     public static class RMission
     {
-        /// <summary>
-        /// N/A until MissionManager exists
-        /// </summary>
         public class OnRailsActions : MonoBehaviour
         {   // Will sit on standby for MissionManager
             public Tank Tank;
             public TankAIHelper AIControl;
             public int MissionAIID = 0;
 
-
             //public MissionManager.Mission Mission;
             public static Event<Tank, OnRailsActions> MissionAIStatus;
-
 
             public static void Initiate()
             {
@@ -155,60 +150,67 @@ namespace TAC_AI.AI.Enemy
             return DidFire;
         }
 
-        internal static bool SetupBaseOrMissionAI(TankAIHelper helper, Tank tank, EnemyMind mind)
+        // T2: returns MissionSetupResult instead of bool. FullyConfigured = "all four canonical
+        // fields explicitly set, skip the AutoSet/Handling/Smart chain". PartialMind = "one or
+        // two fields nudged, still need the chain to fill in the rest". None = "not a mission
+        // tech, run the full chain normally". Replaces previous bool which silently lost the
+        // partial-vs-full distinction (Ω/⦲ branches got skipped despite only setting
+        // CommanderMind, leaving the other 3 fields at construction defaults).
+        internal static MissionSetupResult SetupBaseOrMissionAI(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             string name = tank.name;
-            // Don't worry the bases are sorted based on if they are valid or not
-            bool DidFire = RLoadedBases.SetupBaseAI(helper, tank, mind);
+            MissionSetupResult result = RLoadedBases.SetupBaseAI(helper, tank, mind)
+                ? MissionSetupResult.FullyConfigured
+                : MissionSetupResult.None;
             if (!(bool)tank)
-                return true;
+                return MissionSetupResult.FullyConfigured;
             tank.AI.TryGetCurrentAIType(out AITreeType.AITypes tree1);
             DebugTAC_AI.LogAISetup(KickStart.ModID + ": AI " + tank.name + ":  AI Tree is " + tree1.ToString());
 
-            if (!DidFire)
+            if (result == MissionSetupResult.None)
             {
                 if (name.Contains('Ω'))
-                {   // Base host NPC
+                {   // Base host NPC — only sets CommanderMind; chain must still run for the rest.
                     mind.CommanderMind = EnemyAttitude.NPCBaseHost;
-                    DidFire = true;
+                    result = MissionSetupResult.PartialMind;
                 }
                 else if (name.Contains('⦲'))
-                {   // Boss
+                {   // Boss — same partial pattern as Ω.
                     mind.CommanderMind = EnemyAttitude.Boss;
-                    DidFire = true;
+                    result = MissionSetupResult.PartialMind;
                 }
                 else if (SpecificNameCases(helper, tank, mind))
                 {
-                    DidFire = true;
+                    // SpecificNameCases hand-tunes all 4 canonical fields per name.
+                    result = MissionSetupResult.FullyConfigured;
                 }
                 else
                 {
                     if (tank.AI.TryGetCurrentAIType(out AITreeType.AITypes tree))
                     {
                         if (tree == AITreeType.AITypes.Flee)
-                        {   // setup for runner 
+                        {   // setup for runner — full 4 fields + intelligence
                             mind.AllowRepairsOnFly = true;
                             mind.EvilCommander = EnemyHandling.Wheeled;
                             mind.CommanderAttack = EAttackMode.Safety;
                             mind.CommanderMind = EnemyAttitude.Homing;
                             RCore.AutoSetIntelligence(mind);
-                            DidFire = true;
+                            result = MissionSetupResult.FullyConfigured;
                         }
                         else if (tree == AITreeType.AITypes.ChargeAtSKU)
-                        {   // setup for Sumo 
+                        {   // setup for Sumo — full 4 fields + IntAIligent
                             mind.AllowRepairsOnFly = false;
                             mind.EvilCommander = EnemyHandling.Wheeled;
                             mind.CommanderAttack = EAttackMode.Chase;
                             mind.CommanderMind = EnemyAttitude.Homing;
                             mind.CommanderSmarts = EnemySmarts.IntAIligent;
-                            DidFire = true;
+                            result = MissionSetupResult.FullyConfigured;
                         }
                         else if (tree == AITreeType.AITypes.Invader)
-                        {   // setup for Invaders
-                            //   Who needs a timer anyways?  Let's just attack when the player gets close.
+                        {   // setup for Invaders — full 4 fields via handling + intelligence
                             mind.AllowRepairsOnFly = false;
                             RCore.GetOrCalculateEnemyHandling(tank, mind);
-                            if (KickStart.Difficulty > 100)// in Soviet GSO, Invader come to you
+                            if (KickStart.Difficulty > 100)
                             {
                                 mind.CommanderAttack = EAttackMode.Ranged;
                                 mind.CommanderMind = EnemyAttitude.Invader;
@@ -219,12 +221,12 @@ namespace TAC_AI.AI.Enemy
                                 mind.CommanderMind = EnemyAttitude.Invader;
                             }
                             RCore.AutoSetIntelligence(mind);
-                            DidFire = true;
+                            result = MissionSetupResult.FullyConfigured;
                         }
                         else if (tree == AITreeType.AITypes.Specific || tree == AITreeType.AITypes.FacePlayer)
-                        {   // setup for idk
+                        {   // Only sets RunState — needs chain to fill in combat fields.
                             helper.RunState = AIRunState.Default;
-                            DidFire = true;
+                            result = MissionSetupResult.PartialMind;
                         }
                     }
                 }
@@ -234,7 +236,7 @@ namespace TAC_AI.AI.Enemy
             {   // Spawned as a Tech Fragment
                 mind.BuildAssist = true;
             }
-            if (DidFire && mind.CommanderMind == EnemyAttitude.OnRails)
+            if (result != MissionSetupResult.None && mind.CommanderMind == EnemyAttitude.OnRails)
             {
                 var rails = tank.GetComponent<OnRailsActions>();
                 if (rails.IsNull())
@@ -242,9 +244,7 @@ namespace TAC_AI.AI.Enemy
                     rails = tank.gameObject.AddComponent<OnRailsActions>();
                     rails.InitiateForTank();
                 }
-
                 rails.Reset();
-
             }
             else   // remove uneeded module
             {
@@ -253,7 +253,7 @@ namespace TAC_AI.AI.Enemy
                     rails.Remove();
             }
 
-            return DidFire;
+            return result;
         }
 
         public static void MissionHandler(TankAIHelper helper, Tank tank, EnemyMind mind)

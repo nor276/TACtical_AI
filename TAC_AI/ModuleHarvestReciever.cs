@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using TAC_AI.AI;
 using UnityEngine;
 using TerraTechETCUtil;
@@ -8,7 +8,6 @@ namespace TAC_AI
     public class ModuleHarvestReciever : MonoBehaviour, IAIFollowable
     {
         TankBlock TankBlock;
-        // Returns the position of itself in the world as a point the AI can pathfind to
         public Tank tank { get; private set; }
         public Transform trans;
         public ModuleItemHolder holder;

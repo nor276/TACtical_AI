@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+using UnityEngine;
+using TAC_AI.World;
 
 namespace TAC_AI.AI
 {
@@ -7,7 +8,13 @@ namespace TAC_AI.AI
         public static void ResetValues(TankAIHelper helper, ref EControlOperatorSet direct)
         {
             helper.ThrottleState = AIThrottleState.FullSpeed;
-            helper.FIRE_ALL = false;
+            // P12 BUG-4: don't clear a live player-RTS hold-fire command - ManWorldRTS.Update owns that
+            // bit on a per-frame clock, and this op-tick reset would otherwise race it into FireControl
+            // flicker. Enemy / non-player techs short-circuit at the AIAlign check (no input poll).
+            if (!(helper.AIAlign == AIAlignment.Player && !ManNetwork.IsNetworked &&
+                  ManWorldRTS.inst != null && AIGlobals.PlayerClientFireCommand() &&
+                  ManWorldRTS.inst.LocalPlayerTechsControlled.Contains(helper)))
+                helper.FIRE_ALL = false;
             helper.FullBoost = false;
             helper.FirePROPS = false;
             helper.ForceSetBeam = false;
@@ -17,88 +24,20 @@ namespace TAC_AI.AI
             direct.FaceDest();
         }
 
-        /// <summary>
-        /// Defend like default
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
         public static bool AidDefend(TankAIHelper helper, Tank tank)
         {
-            // Determines the weapons actions and aiming of the AI
             if (helper.lastEnemyGet != null)
             {
                 helper.TryRefreshEnemyAllied();
                 //Fire even when retreating - the AI's life depends on this!
-                helper.AttackEnemy = true;
+                helper.WantsToFight = true;
                 return false;
             }
             else
             {
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
                 helper.TryRefreshEnemyAllied();
                 return helper.lastEnemyGet;
-            }
-        }
-
-        /// <summary>
-        /// Hold fire until aiming at target cab-forwards or after some time
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
-        public static void AimDefend(TankAIHelper helper, Tank tank)
-        {
-            // Determines the weapons actions and aiming of the AI, this one is more fire-precise and used for turrets
-            helper.AttackEnemy = false;
-            helper.TryRefreshEnemyAllied();
-            if (helper.lastEnemyGet != null)
-            {
-                Vector3 aimTo = (helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).normalized;
-                helper.WeaponDelayClock++;
-                if (helper.Attempt3DNavi)
-                {
-                    if (helper.SideToThreat)
-                    {
-                        float dot = Vector3.Dot(tank.rootBlockTrans.right, aimTo);
-                        if (dot > 0.45f || dot < -0.45f || helper.WeaponDelayClock >= 30)
-                        {
-                            helper.AttackEnemy = true;
-                            helper.WeaponDelayClock = 30;
-                        }
-                    }
-                    else
-                    {
-                        if (Vector3.Dot(tank.rootBlockTrans.forward, aimTo) > 0.45f || helper.WeaponDelayClock >= 30)
-                        {
-                            helper.AttackEnemy = true;
-                            helper.WeaponDelayClock = 30;
-                        }
-                    }
-                }
-                else
-                {
-                    if (helper.SideToThreat)
-                    {
-                        float dot = Vector2.Dot(tank.rootBlockTrans.right.ToVector2XZ(), aimTo.ToVector2XZ());
-                        if (dot > 0.45f || dot < -0.45f || helper.WeaponDelayClock >= 30)
-                        {
-                            helper.AttackEnemy = true;
-                            helper.WeaponDelayClock = 30;
-                        }
-                    }
-                    else
-                    {
-                        if (Vector2.Dot(tank.rootBlockTrans.forward.ToVector2XZ(), aimTo.ToVector2XZ()) > 0.45f || helper.WeaponDelayClock >= 30)
-                        {
-                            helper.AttackEnemy = true;
-                            helper.WeaponDelayClock = 30;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                helper.WeaponDelayClock = 0;
-                helper.AttackEnemy = false;
             }
         }
 
@@ -112,39 +51,39 @@ namespace TAC_AI.AI
                     AIECore.RequestFocusFirePlayer(tank, helper.lastEnemyGet, RequestSeverity.ThinkMcFly);
                 }
                 else
-                    helper.AttackEnemy = false;
+                    helper.WantsToFight = false;
             }
             else
-                helper.AttackEnemy = true;
+                helper.WantsToFight = true;
         }
 
-        /// <summary>
-        /// Stay focused on first target if the unit is order to focus-fire
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
         public static void RTSCombat(TankAIHelper helper, Tank tank)
         {
-            // Determines the weapons actions and aiming of the AI
             if (helper.lastEnemyGet != null)
             {   // focus fire like Grudge
-                helper.AttackEnemy = true;
+                helper.WantsToFight = true;
                 if (!helper.lastEnemyGet.isActive)
                     helper.TryRefreshEnemyAllied();
             }
             else
             {
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
                 helper.TryRefreshEnemyAllied();
             }
         }
 
         public static bool GetMineableScenery(TankAIHelper helper, Tank tank, bool includeTradingStations, ref float dist, ref bool hasMessaged, ref EControlOperatorSet direct)
         {
-            helper.foundGoal = AIECore.FetchClosestResource(tank.rootBlockTrans.position, helper.JobSearchRange + 
-                AIGlobals.FindItemScanRangeExtension, helper.lastTechExtents * AIGlobals.WaterDepthTechHeightPercent ,
-                out helper.theResource);
-            if (!helper.foundGoal)
+            helper.foundGoal = AIECore.FetchClosestResource(tank.rootBlockTrans.position, helper.JobSearchRange +
+                AIGlobals.FindItemScanRangeExtension, helper.lastTechExtents * AIGlobals.WaterDepthTechHeightPercent,
+                out var tmpRes);
+            helper.theResource = tmpRes;
+            if (helper.foundGoal) helper.theResourceNode = tmpRes; // also tag the resource-node role
+            // Deferred-8 fix: branches were swapped. "Found a Resource Node" + centrePosition deref
+            // is the success path (requires foundGoal == true); "Scanning..." + StopByBase is the
+            // failure fallback. Inversion caused an NRE every time a node was found, and the
+            // function returned true only on the NRE path.
+            if (helper.foundGoal)
             {
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Found a Resource Node...");
                 direct.SetLastDest(helper.theResource.centrePosition);

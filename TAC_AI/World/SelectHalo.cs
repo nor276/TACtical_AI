@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using TAC_AI.AI;
@@ -23,7 +23,6 @@ namespace TAC_AI.World
         private static Color Hovered = new Color(1f, 1f, 0.1f, 0.45f);
         private static Color Info = new Color(1f, 0.25f, 1f, 0.45f);
         private static Color Curious = new Color(1f, 0.8f, 1f, 0.45f);
-
 
         internal static Dictionary<RTSHaloState, Material> halos = new Dictionary<RTSHaloState, Material>();
 

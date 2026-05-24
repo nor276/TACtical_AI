@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -27,7 +27,6 @@ namespace TAC_AI.AI
 
         public static HashSet<int> MissionTechs = new HashSet<int>();
 
-        //public static EventNoParams QueueUpdater = new EventNoParams();
         private static Dictionary<int, TeamIndex> teamsIndexed;
         public static Event<TankAIHelper> TechRemovedEvent = new Event<TankAIHelper>();
         public static Event<int> MissionTechRemovedEvent = new Event<int>();
@@ -57,7 +56,6 @@ namespace TAC_AI.AI
             if (inst)
                 return;
             inst = new GameObject("AIManager").AddComponent<TankAIManager>();
-            AIEPathMapper.inst = inst.gameObject.AddComponent<AIEPathMapper>();
             //Allies = new List<Tank>();
             AIECore.Minables = new List<Visible>();
             AIECore.Depots = new List<ModuleHarvestReciever>();
@@ -72,17 +70,34 @@ namespace TAC_AI.AI
             Singleton.Manager<ManVisible>.inst.OnStoppedTrackingVisible.Subscribe(OnVisibleNoLongerTracked);
             Singleton.Manager<ManGameMode>.inst.ModeStartEvent.Subscribe(OnStartup);
             InvokeHelper.Invoke(GatherAllMissionTechs, 0.1f);
-            //QueueUpdater.Subscribe(FetchAllAllies);
             DebugTAC_AI.Log(KickStart.ModID + ": Created AIECore Manager.");
 
-            // Only change if no other mod changed
-            DebugTAC_AI.Log(KickStart.ModID + ": Current AI interaction range is " + (float)rangeOverride.GetValue(ManTechs.inst) + ".");
-            if ((float)rangeOverride.GetValue(ManTechs.inst) == 200f)
-            {   // more than twice the range
-                rangeOverride.SetValue(ManTechs.inst, AIGlobals.EnemyExtendActionRange);
-                DebugTAC_AI.Log(KickStart.ModID + ": Extended enemy Tech interaction range to " + AIGlobals.EnemyExtendActionRange + ".");
+            // B3: reflection-acquired FieldInfo can be null if vanilla TerraTech renames the
+            // private field. Match the OverrideEnemyMax (KickStart.cs:986) precedent: FatalError
+            // popup so the user sees the vanilla-API mismatch, but degrade gracefully so the rest
+            // of the mod still loads.
+            if (rangeOverride == null)
+            {
+                DebugTAC_AI.FatalError(KickStart.ModID + ": TankAIManager - ManTechs.m_SleepRangeFromCamera field not found (vanilla API change?). Enemy interaction range will stay at vanilla 200m; far-range AI engagements will not work.");
             }
-            SetPieces = (List<ManWorld.TerrainSetPiecePlacement>)liveSetPieces.GetValue(ManWorld.inst);
+            else
+            {
+                DebugTAC_AI.Log(KickStart.ModID + ": Current AI interaction range is " + (float)rangeOverride.GetValue(ManTechs.inst) + ".");
+                if ((float)rangeOverride.GetValue(ManTechs.inst) == 200f)
+                {   // more than twice the range
+                    rangeOverride.SetValue(ManTechs.inst, AIGlobals.EnemyExtendActionRange);
+                    DebugTAC_AI.Log(KickStart.ModID + ": Extended enemy Tech interaction range to " + AIGlobals.EnemyExtendActionRange + ".");
+                }
+            }
+            if (liveSetPieces == null)
+            {
+                DebugTAC_AI.FatalError(KickStart.ModID + ": TankAIManager - ManWorld.m_SetPiecesPlacement field not found (vanilla API change?). Set-piece obstacle avoidance disabled; AI may path through monuments.");
+                SetPieces = new List<ManWorld.TerrainSetPiecePlacement>(); // empty so AIEPathing stays safe
+            }
+            else
+            {
+                SetPieces = (List<ManWorld.TerrainSetPiecePlacement>)liveSetPieces.GetValue(ManWorld.inst);
+            }
         }
 #if STEAM
         internal void CheckNextFrameNeedsDeInit()
@@ -104,6 +119,7 @@ namespace TAC_AI.AI
             Singleton.Manager<ManTechs>.inst.TankTeamChangedEvent.Unsubscribe(OnTankChange);
             Singleton.Manager<ManTechs>.inst.PlayerTankChangedEvent.Unsubscribe(OnPlayerTechChange);
             Singleton.Manager<ManVisible>.inst.OnStoppedTrackingVisible.Unsubscribe(OnVisibleNoLongerTracked);
+            Singleton.Manager<ManGameMode>.inst.ModeStartEvent.Unsubscribe(OnStartup);
             teamsIndexed = null;
             AIECore.RetreatingTeams = null;
             AIECore.Chargers = null;
@@ -116,8 +132,9 @@ namespace TAC_AI.AI
             inst = null;
             DebugTAC_AI.Log(KickStart.ModID + ": De-Init AIECore Manager.");
 
-            // Only change if no other mod changed
-            if ((float)rangeOverride.GetValue(ManTechs.inst) == AIGlobals.EnemyExtendActionRange)
+            // B3: symmetric null-guard for DeInit — if Initiate skipped the override due to a
+            // renamed field, the restore must skip too instead of NREing.
+            if (rangeOverride != null && (float)rangeOverride.GetValue(ManTechs.inst) == AIGlobals.EnemyExtendActionRange)
             {   // more than twice the range
                 rangeOverride.SetValue(ManTechs.inst, 200);
                 DebugTAC_AI.Log(KickStart.ModID + ": Un-Extended enemy Tech interaction range to default 200.");
@@ -160,23 +177,22 @@ namespace TAC_AI.AI
 
         private static void OnTankAddition(Tank tonk)
         {
-            var helper = tonk.GetHelperInsured();
-            //IndexTech(tonk, tonk.Team);
+            // T4: log+destroy extras instead of throw (a throw here corrupts vanilla TankPostSpawnEvent
+            // dispatch for subsequent listeners). EnforceSingleComponent keeps the first instance.
+            var helper = tonk.gameObject.EnforceSingleComponent<TankAIHelper>("OnTankAddition")
+                          ?? tonk.GetHelperInsured();
 
-            if (tonk.GetComponents<TankAIHelper>().Count() > 1)
-                throw new InvalidOperationException(KickStart.ModID + ": ASSERT: THERE IS MORE THAN ONE TankAIHelper ON " + tonk.name + "!!!");
-
-            //DebugTAC_AI.Log(KickStart.ModID + ": Allied AI " + tankInfo.name + ":  Called OnSpawn");
-            //if (tankInfo.gameObject.GetComponent<TankAIHelper>().AIState != 0)
-            //helper.ResetAll(tonk);
-            //helper.OnTechTeamChange();
+            // Indexing + alignment rebuild are deferred: dirtyAI=Dirty causes the next
+            // CheckRebuildAlignment tick to call TankAIManager.UpdateTechTeam, and the
+            // TankTeamChangedEvent that follows spawn routes through OnTankChange.
             helper.dirtyExtents = true;
-            helper.dirtyAI =  TankAIHelper.AIDirtyState.Dirty;
-            helper.RunState = AIRunState.Advanced;
+            helper.dirtyAI = TankAIHelper.AIDirtyState.Dirty;
+            // T8: RunState ownership belongs to CheckRebuildAlignment, not this listener.
+            // The field default is Advanced for fresh helpers; for recycled helpers, the dirtyAI
+            // flag above triggers a rebuild that re-derives RunState. Removing the unconditional
+            // overwrite eliminates a race that clobbered HandOffToVanillaForNeutral state.
             helper.enabled = true;
             DebugTAC_AI.LogAISetup(KickStart.ModID + ": AI Helper " + tonk.name + ":  OnTankAddition - Spawned!");
-
-            //QueueUpdater.Send();
         }
         private static void OnTankChange(Tank tonk, ManTechs.TeamChangeInfo info)
         {
@@ -187,20 +203,24 @@ namespace TAC_AI.AI
             }
             var helper = tonk.GetHelperInsured();
             RemoveTech(tonk);
-            //helper.ResetAll(tonk);
             helper.OnTechTeamChange();
+            // T2: drop MissionTechs membership when the tech leaves its mission context (e.g.
+            // captured-and-converted to player team, or faction-flipped). Without this, the sticky
+            // HashSet keeps the tech flagged forever and SetupBaseOrMissionAI keeps short-circuiting
+            // even when the original mission state is gone.
+            if (tonk.visible != null)
+                MissionTechs.Remove(tonk.visible.ID);
+            // B1: removed the `if (tonk.FirstUpdateAfterSpawn)` gate. Mid-game team flips (player
+            // capture, faction flip) must also re-mark dirty so CheckRebuildAlignment re-evaluates;
+            // the previous gate left stale RunState=Default + AIAlign=Static for non-first-frame flips.
+            // RunState is no longer written here either (CheckRebuildAlignment owns it).
+            helper.dirtyExtents = true;
+            helper.dirtyAI = TankAIHelper.AIDirtyState.Dirty;
+            helper.enabled = true;
             if (tonk.FirstUpdateAfterSpawn)
-            {
-                helper.dirtyExtents = true;
-                helper.dirtyAI = TankAIHelper.AIDirtyState.Dirty;
-                helper.RunState = AIRunState.Advanced;
-                helper.enabled = true;
                 DebugTAC_AI.LogAISetup(KickStart.ModID + ": AI Helper " + tonk.name + ":  Spawned!");
-            }
             IndexTech(tonk, info.m_NewTeam);
             CheckDestroyedTeams();
-            //DebugTAC_AI.LogAISetup(KickStart.ModID + ": AI Helper " + tonk.name + ":  Called OnTankChange");
-            //QueueUpdater.Send();
         }
         private static void OnTankRecycled(Tank recycledTech)
         {
@@ -241,10 +261,9 @@ namespace TAC_AI.AI
                             loss = ALossReact.Space;
                             break;
                     }
-                    AnimeAICompat.RespondToLoss(tonk, loss);
+                    AnimeAICompat.RespondToLoss(recycledTech, loss);
 #endif
             }
-            //QueueUpdater.Send();
         }
         private static void OnPlayerTechChange(Tank nextTonk, bool yes)
         {
@@ -254,7 +273,8 @@ namespace TAC_AI.AI
                 if (nextTonk != null)
                 {
                     helper = nextTonk.GetHelperInsured();
-                    //helper.OnTechTeamChange();
+                    // D3: removed `//helper.OnTechTeamChange()` — ForceRebuildAlignment below
+                    // already sets dirtyAI and runs the rebuild, which subsumes its work.
                     helper.SuppressFiring(false);
                     helper.ForceRebuildAlignment();
                 }
@@ -274,9 +294,7 @@ namespace TAC_AI.AI
             }
         }
 
-        /// <summary> DO NOT ALTER </summary>
         private static readonly HashSet<Tank> emptyHash = new HashSet<Tank>();
-        /// <summary>  DO NOT EDIT OUTPUT </summary>
         public static IEnumerable<Tank> GetTeamTanks(int Team)
         {
             if (teamsIndexed.TryGetValue(Team, out TeamIndex TIndex))
@@ -286,7 +304,6 @@ namespace TAC_AI.AI
             }
             return emptyHash;
         }
-        /// <summary>  DO NOT EDIT OUTPUT </summary>
         public static HashSet<Tank> GetNonEnemyTanks(int Team)
         {
             if (teamsIndexed.TryGetValue(Team, out TeamIndex TIndex))
@@ -296,7 +313,6 @@ namespace TAC_AI.AI
             }
             return emptyHash;
         }
-        /// <summary>  DO NOT EDIT OUTPUT </summary>
         public static IEnumerable<Tank> GetTargetTanks(int Team)
         {
             if (teamsIndexed.TryGetValue(Team, out TeamIndex TIndex))
@@ -443,7 +459,6 @@ namespace TAC_AI.AI
             BlockIndexer.ConstructBlockLookupListDelayed();
         }
 
-        // AI comms
         internal static ManTechs.TechIterator TeamActiveTechs(int Team)
         {
             return ManTechs.inst.IterateTechsWhere(x => x.Team == Team);
@@ -455,7 +470,7 @@ namespace TAC_AI.AI
         internal static ManTechs.TechIterator TeamActiveMobileTechsInCombat(int Team)
         {
             return ManTechs.inst.IterateTechsWhere(x => x.Team == Team && !x.IsBase() && 
-            x.GetHelperInsured() is TankAIHelper helper && helper && helper.AttackEnemy && helper.lastEnemyGet);
+            x.GetHelperInsured() is TankAIHelper helper && helper && helper.WantsToFight && helper.lastEnemyGet);
         }
         private void RunFocusFireRequests()
         {
@@ -467,60 +482,83 @@ namespace TAC_AI.AI
         }
         private static void ProcessFocusFireRequestAllied(int requestingTeam, Visible Target, RequestSeverity Priority)
         {
+            // B12: was a blanket `try { switch } catch { }`. Any throw on tank #1 (e.g.
+            // GetComponent<TankAIHelper>() returning null → NRE on .Retreat) aborted the
+            // broadcast for every remaining ally on the team, silently. Now uses
+            // GetHelperInsured() (heals missing helpers), per-tank inner try/catch
+            // (one bad tech can't kill the broadcast), outer dedup-logged catch for
+            // structural failures (e.g. teamsIndexed enumerator mutation), and .ToList()
+            // snapshot so SetPursuit's downstream state changes can't corrupt iteration.
+            if (Target == null || Target.tank == null)
+                return;
             try
             {
+                IEnumerable<Tank> roster;
                 switch (Priority)
                 {
                     case RequestSeverity.ThinkMcFly:
-                        foreach (Tank tech in GetTeamTanks(requestingTeam))
-                        {
-                            var helper = tech.GetComponent<TankAIHelper>();
-                            if (!tech.IsAnchored && !helper.Retreat && helper.DediAI == AIType.Aegis)
-                            {
-                                helper.Provoked = AIGlobals.ProvokeTimeShort;
-                                if (!(bool)helper.lastEnemyGet)
-                                    helper.SetPursuit(Target);
-                            }
-                        }
+                    case RequestSeverity.SameTeam:
+                        roster = GetTeamTanks(requestingTeam);
                         break;
                     case RequestSeverity.Warn:
-                        foreach (Tank tech in GetNonEnemyTanks(requestingTeam))
-                        {
-                            var helper = tech.GetComponent<TankAIHelper>();
-                            if (!tech.IsAnchored && !helper.Retreat && (!ManSpawn.IsPlayerTeam(tech.Team) || helper.DediAI == AIType.Aegis))
-                            {
-                                helper.Provoked = AIGlobals.ProvokeTime;
-                                if (!(bool)helper.lastEnemyGet)
-                                    helper.SetPursuit(Target);
-                            }
-                        }
-                        break;
-                    case RequestSeverity.SameTeam:
-                        foreach (Tank tech in GetTeamTanks(requestingTeam))
-                        {
-                            var helper = tech.GetComponent<TankAIHelper>();
-                            helper.Provoked = AIGlobals.ProvokeTime;
-                            if (!(bool)helper.lastEnemyGet)
-                                helper.SetPursuit(Target);
-                        }
-                        break;
                     case RequestSeverity.AllHandsOnDeck:
-                        foreach (Tank tech in GetNonEnemyTanks(requestingTeam))
-                        {
-                            var helper = tech.GetComponent<TankAIHelper>();
-                            if (!tech.IsAnchored || (ManSpawn.IsPlayerTeam(tech.Team) && (helper.DediAI == AIType.Aegis || helper.AdvancedAI)))
-                            {
-                                helper.Provoked = AIGlobals.ProvokeTime;
-                                if (!(bool)helper.lastEnemyGet)
-                                    helper.SetPursuit(Target);
-                            }
-                        }
+                        roster = GetNonEnemyTanks(requestingTeam);
                         break;
                     default:
-                        break;
+                        return;
+                }
+
+                foreach (Tank tech in roster.ToList())
+                {
+                    if (tech == null) continue;
+                    try
+                    {
+                        var helper = tech.GetHelperInsured();
+                        if (helper == null) continue;
+
+                        bool engage;
+                        switch (Priority)
+                        {
+                            case RequestSeverity.ThinkMcFly:
+                                engage = !tech.IsAnchored && !helper.Retreat && helper.DediAI == AIType.Aegis;
+                                if (engage) helper.Provoked = AIGlobals.ProvokeTimeShort;
+                                break;
+                            case RequestSeverity.Warn:
+                                engage = !tech.IsAnchored && !helper.Retreat
+                                      && (!ManSpawn.IsPlayerTeam(tech.Team) || helper.DediAI == AIType.Aegis);
+                                if (engage) helper.Provoked = AIGlobals.ProvokeTime;
+                                break;
+                            case RequestSeverity.SameTeam:
+                                engage = true;
+                                helper.Provoked = AIGlobals.ProvokeTime;
+                                break;
+                            case RequestSeverity.AllHandsOnDeck:
+                                engage = !tech.IsAnchored
+                                      || (ManSpawn.IsPlayerTeam(tech.Team)
+                                          && (helper.DediAI == AIType.Aegis || helper.AdvancedAI));
+                                if (engage) helper.Provoked = AIGlobals.ProvokeTime;
+                                break;
+                            default:
+                                engage = false;
+                                break;
+                        }
+                        if (engage && !(bool)helper.lastEnemyGet)
+                            helper.SetPursuit(Target);
+                    }
+                    catch (Exception ePerTank)
+                    {
+                        DebugTAC_AI.LogWarnPlayerOncePerKey(
+                            "FocusFire:" + Priority + ":" + (tech != null ? tech.name : "<null>"),
+                            "FocusFire dispatch failed for one teammate; other allies still notified", ePerTank);
+                    }
                 }
             }
-            catch { }
+            catch (Exception e)
+            {
+                DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    "FocusFire:" + Priority + ":Team" + requestingTeam,
+                    "FocusFire roster lookup failed; entire request dropped for this team/priority", e);
+            }
         }
 
         private void OnPaused(bool state)
@@ -630,11 +668,32 @@ namespace TAC_AI.AI
         }
 
         private List<TankAIHelper> helpersActive = new List<TankAIHelper>();
-        private int clockHelperStepDirectors = 0;
-        private int clockHelperStepOperations = 0;
+        // P08 G.6: replaced raw round-robin indices with identity-based resume tracking. The old
+        // `clockHelperStepDirectors/Operations` indices persisted across frames into a list that
+        // gets rebuilt every FixedUpdate; mid-cycle removal of a helper caused the index to point
+        // at a DIFFERENT helper, silently re-skipping/double-firing some. Tracking the last-
+        // processed helper by GetInstanceID() (stable per-MonoBehaviour, unique) and resuming
+        // from the next position survives list churn cleanly.
+        private int lastDirectorHelperId = 0;  // 0 = "start from beginning"
+        private int lastOpHelperId = 0;
+        private static int FindResumeIndex(List<TankAIHelper> list, int lastId)
+        {
+            if (lastId == 0 || list.Count == 0) return 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].GetInstanceID() == lastId)
+                    return (i + 1) % list.Count;  // resume from the helper AFTER the last-processed one
+            }
+            return 0;  // last-processed helper is no longer in the list; start fresh
+        }
 
         private float DirectorUpdateClock = 0;
-        private float OperationsUpdateClock = 500;
+        private float OperationsUpdateClock = 0;
+        // T1: force every helper's Operations pass on the first FixedUpdate so AI state
+        // (targets, paths, role) is fully primed before gameplay sees the tank. Replaces
+        // the magic `OperationsUpdateClock = 500` "kick" — explicit + bound-safe regardless
+        // of helper count + survives any future change to AIClockPeriod or the Mathf.Min cap.
+        private bool warmStartOperations = true;
         private int DirectorsToUpdateThisFrame()
         {
             DirectorUpdateClock += (float)helpersActive.Count / KickStart.AIDodgeCheapness;
@@ -644,6 +703,11 @@ namespace TAC_AI.AI
         }
         private int OperationsToUpdateThisFrame()
         {
+            if (warmStartOperations)
+            {
+                warmStartOperations = false;
+                return helpersActive.Count;
+            }
             OperationsUpdateClock += (float)helpersActive.Count / KickStart.AIClockPeriod;
             int count = Mathf.FloorToInt(OperationsUpdateClock);
             OperationsUpdateClock -= count;
@@ -680,17 +744,21 @@ namespace TAC_AI.AI
         {
             int numDirUpdate = Mathf.Min(helpersActive.Count, DirectorsToUpdateThisFrame());
             int numOpUpdate = Mathf.Min(helpersActive.Count, OperationsToUpdateThisFrame());
+            // P08 G.6: identity-resume — find where the last-processed helper sits in the (possibly
+            // rebuilt) list and walk forward from the NEXT slot. Worst case after mid-cycle churn:
+            // one helper double-processed or skipped for one frame, never silently/cumulatively.
+            int dirStart = FindResumeIndex(helpersActive, lastDirectorHelperId);
+            int opStart = FindResumeIndex(helpersActive, lastOpHelperId);
             if (ManNetwork.IsHost)
             {
                 try
                 {
-                    while (numDirUpdate > 0)
+                    for (int n = 0; n < numDirUpdate && helpersActive.Count > 0; n++)
                     {
-                        if (clockHelperStepDirectors >= helpersActive.Count)
-                            clockHelperStepDirectors = 0;
-                        helpersActive[clockHelperStepDirectors].OnUpdateHostAIDirectors();
-                        clockHelperStepDirectors++;
-                        numDirUpdate--;
+                        int i = (dirStart + n) % helpersActive.Count;
+                        var h = helpersActive[i];
+                        h.OnUpdateHostAIDirectors();
+                        lastDirectorHelperId = h.GetInstanceID();
                     }
                 }
                 catch (Exception e)
@@ -699,13 +767,12 @@ namespace TAC_AI.AI
                 }
                 try
                 {
-                    while (numOpUpdate > 0)
+                    for (int n = 0; n < numOpUpdate && helpersActive.Count > 0; n++)
                     {
-                        if (clockHelperStepOperations >= helpersActive.Count)
-                            clockHelperStepOperations = 0;
-                        helpersActive[clockHelperStepOperations].OnUpdateHostAIOperations();
-                        clockHelperStepOperations++;
-                        numOpUpdate--;
+                        int i = (opStart + n) % helpersActive.Count;
+                        var h = helpersActive[i];
+                        h.OnUpdateHostAIOperations();
+                        lastOpHelperId = h.GetInstanceID();
                     }
                 }
                 catch (Exception e)
@@ -717,13 +784,12 @@ namespace TAC_AI.AI
             {
                 try
                 {
-                    while (numDirUpdate > 0)
+                    for (int n = 0; n < numDirUpdate && helpersActive.Count > 0; n++)
                     {
-                        if (clockHelperStepDirectors >= helpersActive.Count)
-                            clockHelperStepDirectors = 0;
-                        helpersActive[clockHelperStepDirectors].OnUpdateClientAIDirectors();
-                        clockHelperStepDirectors++;
-                        numDirUpdate--;
+                        int i = (dirStart + n) % helpersActive.Count;
+                        var h = helpersActive[i];
+                        h.OnUpdateClientAIDirectors();
+                        lastDirectorHelperId = h.GetInstanceID();
                     }
                 }
                 catch (Exception e)
@@ -732,13 +798,12 @@ namespace TAC_AI.AI
                 }
                 try
                 {
-                    while (numOpUpdate > 0)
+                    for (int n = 0; n < numOpUpdate && helpersActive.Count > 0; n++)
                     {
-                        if (clockHelperStepOperations >= helpersActive.Count)
-                            clockHelperStepOperations = 0;
-                        helpersActive[clockHelperStepOperations].OnUpdateClientAIOperations();
-                        clockHelperStepOperations++;
-                        numOpUpdate--;
+                        int i = (opStart + n) % helpersActive.Count;
+                        var h = helpersActive[i];
+                        h.OnUpdateClientAIOperations();
+                        lastOpHelperId = h.GetInstanceID();
                     }
                 }
                 catch (Exception e)
@@ -757,15 +822,13 @@ namespace TAC_AI.AI
                 }
                 catch (Exception e)
                 {
-                    if (!TankAIHelper.updateErrored)
-                    {
-                        DebugTAC_AI.LogWarnPlayerOnce("TankAIManager.FixedUpdate() Critical error", e);
-                        TankAIHelper.updateErrored = true;
-                    }
+                    // B1+B8: keyed dedup replaces the static updateErrored latch.
+                    DebugTAC_AI.LogWarnPlayerOncePerKey(
+                        "TankAIManager.FixedUpdate",
+                        "TankAIManager.FixedUpdate() Critical error", e);
                 }
             }
         }
-
 
         internal class GUIManaged
         {

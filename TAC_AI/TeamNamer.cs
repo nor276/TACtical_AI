@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,7 +17,6 @@ namespace TAC_AI
         private const string mPlayerTeam = "MP Player Team";
         private const string neutralTeam = "Services Group";
         private const string trollerTeam = "Trader Trolls United";
-
 
         private static StringBuilder build = new StringBuilder();
 
@@ -123,9 +122,6 @@ namespace TAC_AI
             }
         }
 
-
-
-        // team name generator
         private static List<string> Adjective
         {
             get

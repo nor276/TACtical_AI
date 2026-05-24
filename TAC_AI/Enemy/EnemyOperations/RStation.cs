@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -16,19 +16,13 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             //The Handler that tells the Tank (Escort) what to do movement-wise
             BGeneral.ResetValues(helper, ref direct);
 
-
             helper.Attempt3DNavi = true;
             helper.Retreat = true;    //Prevent the auto-driveaaaa
 
             float dist = helper.GetDistanceFromTask2D(mind.sceneStationaryPos);
 
-            if (helper.lastEnemyGet == null)
-            {
-                // Bases cannot LollyGag
-                //RGeneral.LollyGag(helper, tank, mind, ref direct, true);
-                return;
-            }
-
+            // B7+D1: null-target case centralized in EnemyOperationsController.Execute,
+            // which dispatches Stationary to LollyGag(holdGround:true) — revives D1.
             if (dist > 6)
             {
                 //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  HOLDING GROUND (or space)!!!");

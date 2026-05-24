@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -31,7 +31,6 @@ namespace TAC_AI.World
             return MoveSpeed;
         }
 
-
         public override bool Exists()
         {
             return teamInst.IsValidAndRegistered() && teamInst.EMUs.Contains(this);
@@ -59,11 +58,6 @@ namespace TAC_AI.World
             //DebugTAC_AI.Log("MovementSceneDelta for " + Name + " with val " + finalPos);
         }
 
-        /// <summary>
-        /// Deal damage to this Tech
-        /// </summary>
-        /// <param name="dealt"></param>
-        /// <returns>True if tech destroyed</returns>
         public override bool RecieveDamage(int Dealt)
         {
             //ManEnemyWorld.GetTeam(tech.m_TeamID).SetAttackMode(tilePos);

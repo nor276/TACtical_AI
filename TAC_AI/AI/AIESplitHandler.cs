@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,7 +6,6 @@ using UnityEngine;
 using TAC_AI.AI.Enemy;
 using TAC_AI.Templates;
 using TerraTechETCUtil;
-
 
 namespace TAC_AI.AI
 {
@@ -75,7 +74,6 @@ namespace TAC_AI.AI
                                 }
                                 else
                                 {
-                                    //It's likely not a base
                                     if (tank.IsAnchored && !tank.blockman.IterateBlockComponents<ModuleTechController>().FirstOrDefault())
                                     {   // It's a fragment of the base - recycle it to prevent unwanted mess from getting in the way
                                         RLoadedBases.RecycleTechToTeam(tank);
@@ -107,7 +105,6 @@ namespace TAC_AI.AI
                                     var mind = tank.GetComponent<EnemyMind>();
                                     if (mind)
                                     {
-                                        // it's a minion of the base
                                         if (mind.CommanderAttack == EAttackMode.Safety)
                                             mind.CommanderAttack = EAttackMode.Chase;
                                     }
@@ -143,7 +140,6 @@ namespace TAC_AI.AI
                 cachedTechsByParent.Clear();
             }
         }
-
 
         private Tank tank;
         private Tank mother;
@@ -182,7 +178,7 @@ namespace TAC_AI.AI
                 {
                     int wheelCount = BM.IterateBlockComponents<ModuleWheels>().Count();
                     int hoverCount = BM.IterateBlockComponents<ModuleHover>().Count();
-                    if (!(hoverCount == 1 && wheelCount > 0) && (wheelCount > 0 || hoverCount > 0))
+                    if (wheelCount > 0 || hoverCount > 1)
                         helper.DediAI = AIType.Escort;
                     else
                     {

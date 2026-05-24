@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -8,7 +8,6 @@ namespace TAC_AI.AI.Enemy
 {
     public static class RRepair
     {
-        // Timing Information inherited from AIERepair
         private static bool CanGrabFromInventory(EnemyMind mind)
         {
             return (KickStart.EnemiesHaveCreativeInventory || mind.AllowInvBlocks || KickStart.AllowEnemiesToStartBases) && (mind.CommanderSmarts >= EnemySmarts.Smrt || mind.BuildAssist);
@@ -244,7 +243,6 @@ namespace TAC_AI.AI.Enemy
                             helper.PendingDamageCheck = false;
                         }
                         
-
                         if (!helper.PendingDamageCheck)
                         {
                             if (mind.StartedAnchored)
@@ -285,27 +283,5 @@ namespace TAC_AI.AI.Enemy
             return helper.PendingDamageCheck;
         }
 
-
-        // EXPERIMENTAL - AI-Based new Tech building
-        public static bool EnemyNewTechConstruction(TankAIHelper helper, Tank tank, EnemyMind mind)
-        {
-            if (helper.PendingDamageCheck)// && helper.AttemptedRepairs == 0)
-            {
-                helper.PendingDamageCheck = !EnemyInstaRepair(tank, mind, mind.TechMemor.IterateReturnContents().Count() + 10);
-            }
-            else
-            {
-                if (helper.RepairStepperClock == 1)
-                {
-                    //helper.AttemptedRepairs = 0;
-                    helper.RepairStepperClock = 0;
-                }
-                else if (helper.RepairStepperClock == 0)
-                    helper.RepairStepperClock = 20;
-                else
-                    helper.RepairStepperClock--;
-            }
-            return helper.PendingDamageCheck;
-        }
     }
 }

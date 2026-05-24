@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -7,7 +7,6 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
-    /// <summary> Handles Space AI Directors & Maintainers </summary>
     internal class SpaceAICore : IMovementAICore
     {
         private AIControllerDefault controller;
@@ -38,7 +37,6 @@ namespace TAC_AI.AI.Movement.AICores
         {
             throw new NotImplementedException();
         }
-
 
         public bool PlanningPathing(Vector3 Target, EDrivePathing aim)
         {
@@ -117,11 +115,9 @@ namespace TAC_AI.AI.Movement.AICores
                 Target = AIEPathing.OffsetFromGroundH(Target, helper);
             controller.PathPointSet = AIEPathing.ModerateMaxAlt(Target, helper);
 
-            // Planned pathing
             if (PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
             return ImmedeatePathing(Target, core.DrivePathing);
         }
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
@@ -134,14 +130,13 @@ namespace TAC_AI.AI.Movement.AICores
                 Target = AIEPathing.OffsetFromGroundH(Target, helper);
             controller.PathPointSet = AIEPathing.ModerateMaxAlt(Target, helper);
 
-            // Planned pathing
-            if (PlanningPathing(Target, core.DrivePathing))
+            // P08 G.4 sibling-of-B-NEW2: gate `PlanningPathing` on `!helper.Attempt3DNavi`
+            // (matches LandAICore/SeaAICore/VehicleAICore DriveDirectorEnemyRTS pattern).
+            if (!helper.Attempt3DNavi && PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
             return ImmedeatePathing(Target, core.DrivePathing);
         }
-
 
         public bool DriveDirector(ref EControlCoreSet core)
         {
@@ -153,11 +148,9 @@ namespace TAC_AI.AI.Movement.AICores
                 Target = AIEPathing.OffsetFromGroundH(Target, helper);
             controller.PathPointSet = AIEPathing.ModerateMaxAlt(Target, helper);
 
-            // Planned pathing
             if (PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
             return ImmedeatePathing(Target, core.DrivePathing);
         }
         public bool ImmedeatePathing(Vector3 Target, EDrivePathing aim)
@@ -190,22 +183,20 @@ namespace TAC_AI.AI.Movement.AICores
             return true;
         }
 
-
         public bool DriveDirectorEnemy(EnemyMind mind, ref EControlCoreSet core)
         {
             if (!VehicleUtils.GetPathingTargetEnemy(controller, out Vector3 Target, ref core))
             {
-                throw new NullReferenceException("DriveDirectorEnemy expects a valid EnemyMind but IT WAS NULL");
+                // P08: misleading message — see LandAICore.DriveDirectorEnemy for explanation.
+                throw new NullReferenceException("DriveDirectorEnemy: GetPathingTargetEnemy returned false (target lookup failed or EnemyMind null) for " + controller.Tank?.name);
             }
 
             var helper = controller.Helper;
             Target = AIEPathing.OffsetFromGroundH(Target, helper);
             controller.PathPointSet = AIEPathing.ModerateMaxAlt(Target, helper);
-            // Planned pathing
             if (PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
             return ImmedeatePathingEnemy(mind, Target, core.DrivePathing);
         }
         public bool ImmedeatePathingEnemy(EnemyMind mind, Vector3 Target, EDrivePathing aim)
@@ -237,15 +228,11 @@ namespace TAC_AI.AI.Movement.AICores
             return true;
         }
 
-
-
-
         public bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
             // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " normal drive was called");
             float driveMulti = 1;
 
-            //AI Steering Rotational
             Vector3 distDiff = controller.PathPoint - tank.boundsCentreWorldNoCheck;
             Vector3 turnVal;
             Vector3 forwardFlat = tank.rootBlockTrans.forward;
@@ -258,7 +245,6 @@ namespace TAC_AI.AI.Movement.AICores
                 else
                     turnVal = AIGlobals.LookRot(tank.rootBlockTrans.InverseTransformDirection(forwardFlat.normalized), tank.rootBlockTrans.InverseTransformDirection(Vector3.up)).eulerAngles;
 
-                //Convert turnVal to runnable format
                 turnVal.x = -AIGlobals.AngleUnsignedToSigned(turnVal.x) / 180f;
 
                 turnVal.z = -AIGlobals.AngleUnsignedToSigned(turnVal.z) / 180f;
@@ -280,7 +266,6 @@ namespace TAC_AI.AI.Movement.AICores
                     //DebugTAC_AI.Log(KickStart.ModID + ": Forwards");
                     if (!helper.FullMelee && Vector3.Dot(helper.Navi3DDirect, tank.rootBlockTrans.forward) < 0.6f)
                     {
-                        //If overtilt then try get back upright again
                         turnVal.x = turnValUp.x;
                         turnVal.x = -AIGlobals.AngleUnsignedToSigned(turnVal.x) / 180f;
                     }
@@ -295,7 +280,6 @@ namespace TAC_AI.AI.Movement.AICores
                 {   //Using broadside tilting
                     if (!helper.FullMelee && Vector3.Dot(helper.Navi3DUp, tank.rootBlockTrans.up) < 0.6f)
                     {
-                        //If overtilt then try get back upright again
                         turnVal.z = turnValUp.z;
                         turnVal.z = -AIGlobals.AngleUnsignedToSigned(turnVal.z) / 180f;
                         //DebugTAC_AI.Log(KickStart.ModID + ": Broadside overloaded with value " + Vector3.Dot(helper.Navi3DUp, tank.rootBlockTrans.up));
@@ -303,13 +287,12 @@ namespace TAC_AI.AI.Movement.AICores
                     else
                     {
                         //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Z-tilt active");
-                        turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.x) / 60f, -1, 1);
+                        turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.z) / 60f, -1, 1);
                     }
                     turnVal.x = turnValUp.x;
                     turnVal.x = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.x) / 60f, -1, 1);
                 }
 
-                //Convert turnVal to runnable format
                 turnVal.y = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.y) / 60f, -1, 1);
 
                 //DebugTAC_AI.Log(KickStart.ModID + ": TurnVal AIM " + turnVal);
@@ -331,31 +314,8 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         else
                         {
-                            VehicleUtils.TurnerHovership(tank.control, helper, distDiff, ref core);
+                            VehicleUtils.TurnerHovership(tank.control, helper, -distDiff, ref core);
                         }
-                        // Disabled for now as most spaceships in the pop do not have broadsides.
-                        /*
-                        control3D.m_State.m_InputRotation = turnVal.Clamp01Box();
-                        if (helper.lastEnemy.IsNotNull())
-                        {
-                            if (Vector3.Dot(helper.lastEnemy.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck, tank.rootBlockTrans.right) < 0)
-                            {
-                                helper.Navi3DDirect = Vector3.Cross(Vector3.up, (helper.lastEnemy.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).normalized).normalized;
-                                helper.Navi3DUp = Vector3.Cross((helper.lastEnemy.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).normalized, helper.Navi3DDirect).normalized;
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Left A  up is " + helper.Navi3DUp);
-                            }
-                            else
-                            {
-                                helper.Navi3DDirect = Vector3.Cross((helper.lastEnemy.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).normalized, Vector3.up).normalized;
-                                helper.Navi3DUp = Vector3.Cross(helper.Navi3DDirect, (helper.lastEnemy.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).normalized).normalized;
-                                //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Right A  up is " + helper.Navi3DUp);
-                            }
-                        }
-                        else
-                        {
-                            //helper.Navi3DDirect = controller.PathPoint - tank.boundsCentreWorldNoCheck;
-                            thisControl.m_Movement.FacePosition(tank, controller.PathPoint, 1);
-                        }*/
                     }
                     else if (core.DriveDir == EDriveFacing.Forwards)
                     {
@@ -419,8 +379,12 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         else
                         {
-                            //helper.Navi3DDirect = controller.PathPoint - tank.boundsCentreWorldNoCheck;
-                            VehicleUtils.TurnerHovership(tank.control, helper, distDiff, ref core);
+                            // NO-YAW fix: feed the 3D aim channel toward the travel target, exactly as the
+                            // enemy branch above does. This was commented out and replaced by TurnerHovership
+                            // (a 2D FaceDirection wheel-steer that a thruster-based hover/space craft ignores),
+                            // so a no-enemy follower kept Navi3DDirect == zero -> turnVal.y == 0 -> TurnVal.y == 0
+                            // every frame: it translated toward the target but never yawed to face it.
+                            helper.Navi3DDirect = controller.PathPoint - tank.boundsCentreWorldNoCheck;
                         }
                     }
                     else
@@ -433,10 +397,8 @@ namespace TAC_AI.AI.Movement.AICores
             else
                 TurnVal = Vector3.zero;
 
-            //AI Drive Translational
             bool EmergencyUp = false;
             bool CloseToGroundWarning = false;
-            // Multitechs do NOT use ground avoidence
             if (!helper.IsMultiTech)
             {
                 float height = helper.GetFrameHeight();
@@ -464,7 +426,6 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         if (helper.AIAlign == AIAlignment.Player && helper.lastPlayer.IsNotNull())
                         {
-                            // Keep below a certain height in relation to player so that they may command if need be
                             float playerOffsetH = helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + helper.GroundOffsetHeight;
                             float leveler = Mathf.Clamp((playerOffsetH - tank.boundsCentreWorldNoCheck.y) / 20, -1, 1);
                             if (leveler > -1f)
@@ -500,7 +461,6 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         if (helper.AIAlign == AIAlignment.Player && helper.lastPlayer.IsNotNull())
                         {
-                            // Keep below a certain height in relation to player so that they may command if need be
                             float playerOffsetH = helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + helper.GroundOffsetHeight;
                             float leveler = Mathf.Clamp((playerOffsetH - tank.boundsCentreWorldNoCheck.y) / 20, -1, 1);
                             if (leveler > -1f)
@@ -525,7 +485,7 @@ namespace TAC_AI.AI.Movement.AICores
                     float range = helper.lastOperatorRange;
                     if (range < helper.AutoSpacing - 1)
                     {
-                        driveVal = InertiaTranslation(tank.rootBlockTrans.InverseTransformVector(InvertHorizontalPlane(distDiff)) * 0.3f);
+                        driveVal = InertiaTranslation(tank.rootBlockTrans.InverseTransformVector(InvertHorizontalPlane(distDiff.normalized)) * 0.3f);
                     }
                     else if (range > helper.AutoSpacing + 1)
                     {
@@ -568,13 +528,12 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (helper.LightBoost)
                     {
-                        if (helper.LightBoostFeatheringClock >= 25)
+                        if (helper.lightBoostFeatherTimer.Due)
                         {
                             if (helper.IsMultiTech || Vector3.Dot(driveVal, tank.rootBlockTrans.forward) > 0.75f)
                                 helper.MaxBoost();
-                            helper.LightBoostFeatheringClock = 0;
+                            helper.lightBoostFeatherTimer.Set(0.5f);
                         }
-                        helper.LightBoostFeatheringClock++;
                     }
                     break;
                 case AIThrottleState.ForceSpeed:
@@ -589,7 +548,6 @@ namespace TAC_AI.AI.Movement.AICores
 
             Vector3 DriveVal;
 
-            // PREVENT GROUND CRASHING
             if (EmergencyUp)
             {
                 DriveVal = (tank.rootBlockTrans.InverseTransformVector(Vector3.up) * 2).Clamp01Box();
@@ -603,7 +561,6 @@ namespace TAC_AI.AI.Movement.AICores
                 return true;
             }
             //helper.MinimumRad
-            // Prevent drifting
             Vector3 final = (driveVal * driveMulti * Mathf.Clamp(distDiff.magnitude / 5, 0, 1)).Clamp01Box();
             final.x = final.x * AIGlobals.HovershipHorizontalDriveMulti;
             final.z = final.z * AIGlobals.HovershipHorizontalDriveMulti;
@@ -625,14 +582,13 @@ namespace TAC_AI.AI.Movement.AICores
 
             if (AIGlobals.ShowDebugFeedBack)
             {
-                // DEBUG FOR DRIVE ERRORS
                 if (!tank.IsAnchored)
                 {
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, distDiff, new Color(0, 1, 1));
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 1, tank.rootBlockTrans.TransformVector(driveVal * helper.lastTechExtents * 2), new Color(0, 0, 1)); // blue
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 2, tank.rootBlockTrans.TransformVector(DriveVal * helper.lastTechExtents * 2), new Color(1, 0, 0));
                 }
-                else if (helper.AttackEnemy && helper.lastEnemyGet)
+                else if (helper.WantsToFight && helper.lastEnemyGet)
                 {
                     if (ManBaseTeams.IsEnemy(tank.Team, helper.lastEnemyGet.tank.Team))
                         DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, helper.lastEnemyGet.centrePosition - tank.trans.position, new Color(0, 1, 1));
@@ -650,12 +606,14 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
-            if (helper.ChaseThreat && (!helper.IsDirectedMoving || !helper.Retreat) && helper.lastEnemyGet.IsNotNull())
+            // P08 G.6: dropped vestigial `(!helper.IsDirectedMoving || !helper.Retreat)` (see LandAICore).
+            if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
             {
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
-                if (between && helper.theResource?.tank)
+                // P08 G.5 sibling-of-B-NEW5-8: destroyed-Unity-object hardening.
+                if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);
                 }
@@ -807,12 +765,10 @@ namespace TAC_AI.AI.Movement.AICores
             return output;
         }
 
-
         public Vector3 Between(Vector3 Target, Vector3 other)
         {
             return (Target + other) / 2;
         }
-
 
         private const float throttleDampen = 0.5f;
         private const float DampeningStrength = 0.75f;

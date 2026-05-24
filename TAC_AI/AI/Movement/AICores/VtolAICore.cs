@@ -1,15 +1,17 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using TAC_AI.AI.Enemy;
 using TerraTechETCUtil;
 
-
 namespace TAC_AI.AI.Movement.AICores
 {
     internal class VtolAICore : AirplaneAICore, IMovementAICore
     {
+        // IAirMovementAICore: a VTOL is not pure fixed-wing (air target-acq treats it like a hovering
+        // craft); inherits IsRotorcraft => false from AirplaneAICore.
+        public override bool IsFixedWing => false;
         public override void Initiate(Tank tank, IMovementAIController pilot)
         {
             base.Initiate(tank, pilot);
@@ -18,14 +20,32 @@ namespace TAC_AI.AI.Movement.AICores
         }
         public override bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
+            // P08 B-NEW5-3 partial: was missing beam check that AirplaneAICore.DriveMaintainer has.
+            // Without this, a beamed-mid-flight VTOL runs cruise/takeoff logic against an inactive tech.
+            if (tank.beam.IsActive)
+            {
+                // KillAllControl lives on AIControllerAir, not TankAIHelper.
+                pilot.KillAllControl(helper);
+                return true;
+            }
             if (pilot.Grounded)
             {   //Become a ground vehicle for now
                 if (!AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents * 2))
                 {
+                    // P08 G.8: parity with HelicopterAICore Grounded branch (line ~50) — call
+                    // inherited DriveMaintainerEmergLand instead of silently returning. Without
+                    // this, a Grounded VTOL near terrain sat with zero input forever.
+                    DriveMaintainerEmergLand(helper, tank, ref core);
                     return false;
                 }
-                //Try fighting the controls to land safely
-
+                // P08 G.7: controlled descent mirroring HelicopterAICore (VTOLs use heli helpers
+                // when ForcePitchUp). Target ground level so ModerateUpwardsThrust modulates
+                // thrust DOWN for safe landing.
+                pilot.ForcePitchUp = true;
+                AIEPathMapper.GetAltitudeLoadedOnly(tank.boundsCentreWorldNoCheck, out float groundHeight);
+                pilot.MainThrottle = HelicopterUtils.ModerateUpwardsThrust(tank, helper, pilot, groundHeight, false);
+                pilot.UpdateThrottle(helper);
+                HelicopterUtils.AngleTowardsUp(pilot, tank.boundsCentreWorldNoCheck, helper.lastDestinationCore, ref core, true);
                 return true;
             }
             if (tank.wheelGrounded || pilot.ForcePitchUp)
@@ -83,6 +103,10 @@ namespace TAC_AI.AI.Movement.AICores
                 }
                 else
                 {
+                    // P08 B-NEW5-3 partial: was calling UpdateThrottle without setting MainThrottle
+                    // from AdvisedThrottle first, so VTOL cruise inherited whatever MainThrottle was
+                    // last set (often `1f` from takeoff/U-turn). Mirror AirplaneAICore.DriveMaintainer.
+                    pilot.MainThrottle = pilot.AdvisedThrottle;
                     pilot.UpdateThrottle(helper);
                     AngleTowards(helper, tank, pilot, pilot.PathPointSet);
                 }

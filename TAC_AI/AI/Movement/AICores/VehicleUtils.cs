@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -20,9 +20,6 @@ namespace TAC_AI.AI.Movement.AICores
         private const float MinLookAngleToTurnFineSideways = 0.65f;
         private const float MaxThrottleToTurnFull = 0.75f;
         private const float MaxThrottleToTurnAccurate = 0.5f;
-        /// <summary>
-        /// Controls how hard the Tech should turn when pursuing a target vector
-        /// </summary>
         public static bool Turner(TankAIHelper helper, Vector3 destVec, float drive, ref EControlCoreSet core)
         {
             float turnVal;
@@ -44,20 +41,8 @@ namespace TAC_AI.AI.Movement.AICores
                     else
                     {
                         turnVal = 1;
-                        /* float sped = helper.recentSpeed / Mathf.Max(helper.EstTopSped, 14);
-                        if (sped < 0.45f)
-                        {
-                            if (thisControl.DriveControl.Approximately(0, 0.05f))
-                            thisControl.DriveControl = Mathf.Sign(thisControl.DriveControl) * 1;
-                            return false;
-                        }
-                        else if (sped < 0.75f)
-                            turnVal = sped;
-                        else
-                        {*/
                         driveVal = Mathf.Log10(1 + Mathf.Max(0, forwards * 9));
                         helper.DriveControl = Mathf.Sign(drive) * Mathf.Clamp(Mathf.Max(Mathf.Abs(drive), driveVal), -1, 1);
-                        //}
                     }
                     if (turnVal < 0 || turnVal > 1 || float.IsNaN(turnVal))
                         DebugTAC_AI.Exception("Invalid Turnval  NaN " + float.IsNaN(turnVal) + "  negative " + (turnVal < 0));
@@ -126,6 +111,11 @@ namespace TAC_AI.AI.Movement.AICores
                         if (turnVal < 0 || turnVal > 1 || float.IsNaN(turnVal))
                             DebugTAC_AI.Exception("Invalid Turnval  NaN " + float.IsNaN(turnVal) + "  negative " + (turnVal < 0));
                     }
+                    // P08 doc-bug: Lazy/default branch never wrote `helper.DriveControl` (only Strict
+                    // and MaxSteering did). Maintainer's local `DriveControl` reached physics via
+                    // ProcessControl, but the helper.DriveControl field stayed stale from the prior
+                    // non-Lazy frame, leading to HUD readouts misreporting current drive magnitude.
+                    helper.DriveControl = drive;
                     if (helper.FixControlReversal(drive))
                         helper.SteerControl(new Vector3(-destVec.x, destVec.y, -destVec.z), turnVal);
                     else
@@ -137,9 +127,6 @@ namespace TAC_AI.AI.Movement.AICores
         private const float ignoreSteeringAboveAngleAir = 0.95f;
         private const float forwardsLowerSteeringAboveAngleAir = 0.5f;
         private const float MinLookAngleToTurnFineSidewaysAir = 0.65f;
-        /// <summary>
-        /// Controls how hard the Tech should turn when pursuing a target vector
-        /// </summary>
         public static void TurnerHovership(TankControl thisControl, TankAIHelper helper, Vector3 destVec, ref EControlCoreSet core)
         {
             Transform rootBlock = helper.tank.rootBlockTrans;
@@ -175,7 +162,6 @@ namespace TAC_AI.AI.Movement.AICores
                     thisControl.m_Movement.FaceDirection(helper.tank, destVec, turnVal);
             }
         }
-
 
         public static void ModerateThrust3D(TankAIHelper helper, ref Vector3 driveVal, Vector3 TtWRatios, Vector3 tankPos, Vector3 localSpaceTargPos, float propLerpSpeed)
         {
@@ -214,7 +200,6 @@ namespace TAC_AI.AI.Movement.AICores
             else // throttleShiftDelay >= timeCurToReach
                 driveVal += deltaThrottle * timeCurToReach;
         }
-
 
         public static bool GetPathingTargetRTS(AIControllerDefault controller, out Vector3 pos, ref EControlCoreSet core)
         {
@@ -410,7 +395,11 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.Log(KickStart.ModID + ": Missing variable(s)");
                 }
             }
-            core.lastDestination = controller.GetDestination();
+            // P08 B-NEW7-2: unified to `pos` (was `controller.GetDestination()` which re-reads the
+            // field we're about to write — effectively a no-op). All four GetPathingTarget* variants
+            // now persist the freshly-computed `pos` to keep helper.lastDestinationCore in sync with
+            // the Director's actual decision.
+            core.lastDestination = pos;
             return true;
         }
 
@@ -530,6 +519,7 @@ namespace TAC_AI.AI.Movement.AICores
                         core.DrivePathing = EDrivePathing.Path;
                     helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(controller.Tank.Team),
                         controller.Tank.boundsCentreWorldNoCheck, Mathf.Pow(helper.MaxCombatRange * 2, 2), out float bestval, helper)?.visible;
+                    helper.theGuardedAlly = helper.theResource;
                     if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombat(true, ref pos, ref core))
                     {
                         if (helper.theResource.IsNotNull())
@@ -636,7 +626,9 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.Log(KickStart.ModID + ": Missing variable(s)");
                 }
             }
-            core.lastDestination = controller.GetTargetDestination();
+            // P08 B-NEW7-2: unified to `pos` (was `controller.GetTargetDestination()` which returns
+            // the pathfinding target, not the actual resolved Director output post-combat/Aegis).
+            core.lastDestination = pos;
             return true;
         }
         
@@ -720,7 +712,11 @@ namespace TAC_AI.AI.Movement.AICores
                     helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(controller.Tank.Team),
                         controller.Tank.boundsCentreWorldNoCheck, Mathf.Pow(helper.MaxCombatRange * 2, 2),
                         out float bestval, helper)?.visible;
-                    if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombat(true, ref pos, ref core))
+                    helper.theGuardedAlly = helper.theResource;
+                    // P08 B-NEW7-1: HIGH — was calling allied `TryAdjustForCombat` from the enemy
+                    // Guardian branch (B7-pattern copy-paste). Allied variant ignores `mind`, so
+                    // enemy Guardian-attitude techs lost CommanderAttack/MinCombatRange/LikelyMelee.
+                    if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core))
                     {
                         if (helper.theResource.IsNotNull())
                         {

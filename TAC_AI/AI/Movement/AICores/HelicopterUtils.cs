@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -14,7 +14,6 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = pilot.Helper;
             Tank tank = pilot.Tank;
-            //AI Steering Rotational
             Vector3 turnVal;
             float upVal = tank.rootBlockTrans.up.y;
             //bool isMostlyInControl = upVal > 0.4f;
@@ -44,15 +43,12 @@ namespace TAC_AI.AI.Movement.AICores
             }
             bool needsTurnControl = fwdDelta.z < 0.65f;
 
-            //Convert turnVal to runnable format
-
             turnVal.x = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.x) / pilot.FlyingChillFactor.x), -1, 1);
 
             turnVal.y = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.y) / pilot.FlyingChillFactor.y), -1, 1);
 
             turnVal.z = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.z) / pilot.FlyingChillFactor.z), -1, 1);
 
-            //Stop Wobble
             if (Mathf.Abs(turnVal.x) < 0.05f)
                 turnVal.x = 0;
             if (Mathf.Abs(turnVal.y) < 0.05f)
@@ -60,21 +56,14 @@ namespace TAC_AI.AI.Movement.AICores
             if (Mathf.Abs(turnVal.z) < 0.05f)
                 turnVal.z = 0;
 
-            // limit rotation speed
-
-
-            // stop pitching if the main prop is trying to force us into the ground
             if (helper.SafeVelocity.y < -6)
                 turnVal.y = 0;
 
-
-            //Turn our work in to process
             Vector3 TurnVal = turnVal.Clamp01Box();
 
             // -----------------------------------------------------------------------------------------------
             // -----------------------------------------------------------------------------------------------
             // -----------------------------------------------------------------------------------------------
-            // DRIVE
             float xOffset = 0;
             if (core.DriveDir == EDriveFacing.Perpendicular && helper.lastEnemyGet != null)
             {
@@ -97,7 +86,6 @@ namespace TAC_AI.AI.Movement.AICores
                 Vector3 nudge = tank.rootBlockTrans.InverseTransformPoint(positionToMoveTo) / helper.lastTechExtents;
                 if (helper.ThrottleState == AIThrottleState.PivotOnly)
                 {
-                    // Do nothing and let the inertia dampener kick in
                 }
                 else if (helper.IsDirectedMovingFromDest)
                 {
@@ -115,7 +103,6 @@ namespace TAC_AI.AI.Movement.AICores
             //DriveVar = DriveVar.normalized;
             DriveVar.y = pilot.CurrentThrottle;
 
-            //Turn our work in to processing
             Vector3 DriveVal = DriveVar.Clamp01Box();
 
             /*
@@ -152,11 +139,8 @@ namespace TAC_AI.AI.Movement.AICores
                 }
             }//*/
             
-
             if (AIGlobals.ShowDebugFeedBack)
             {
-                // DEBUG FOR DRIVE ERRORS
-                // Teal is target vector
                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, positionToMoveTo - tank.boundsCentreWorldNoCheck, new Color(0, 1, 1));
                 // The drive direction - blue means upright, Yellow means correcting
                 if (ForceAccend || !isInControl)
@@ -216,12 +200,10 @@ namespace TAC_AI.AI.Movement.AICores
                 default:
                     throw new NotImplementedException("Unknown ThrottleState " + helper.ThrottleState);
             }
-            // Pitch axis turning
             if (!inertiaDampen && !PointAtTarget)
             {   // Try balance
                 fFlat.y = 0;
                 fFlat.Normalize();
-                // Rotors on some chopper designs were acting funky and cutting out due to pitch so I disabled pitching
                 if (pilot.LowerEngines || avoidCrash)
                     fFlat.y = 0;
                 else if (Vector2.Dot(Heading.ToVector2XZ(), tankForward.ToVector2XZ()) < AIGlobals.ChopperAngleDoPitchPercent)
@@ -262,12 +244,8 @@ namespace TAC_AI.AI.Movement.AICores
                     fFlat.y = Mathf.Clamp(veloLocal.z / rotateDividend,
                         -AIGlobals.ChopperMaxDeltaAnglePercent, AIGlobals.ChopperMaxDeltaAnglePercent);
             }
-            // Because tilting forwards too hard causes the chopper to stall on some builds
             //fFlat.y = fFlat.y - (fFlat.y * pilot.CurrentThrottle);
 
-
-
-            // Roll axis turning
             if (tankUp > 0)
                 rFlat = tank.rootBlockTrans.right;
             else
@@ -288,7 +266,6 @@ namespace TAC_AI.AI.Movement.AICores
                         -AIGlobals.ChopperMaxDeltaAnglePercent, AIGlobals.ChopperMaxDeltaAnglePercent);
             }
 
-            // Prevent ourselves from FLIPPING OVER
             if (fFlat.y > AIGlobals.ChopperMaxDeltaAnglePercent)
             {
                 fFlat.y = AIGlobals.ChopperMaxDeltaAnglePercent;
@@ -308,7 +285,6 @@ namespace TAC_AI.AI.Movement.AICores
                 directUp = directUp.SetY(angleRestrict).normalized.SetY(angleRestrict).normalized;
             else
                 directUp.Normalize();
-
 
             helper.Navi3DDirect = fFlat.normalized;
             helper.Navi3DUp = directUp;
@@ -436,7 +412,6 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                     }
                 }
-
 
                 /*
                 float rampDownTimeThrottle = RampDownTime(pilot, pilot.MainThrottle);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Reflection;
 using System.Collections.Generic;
 using System.Linq;
@@ -132,7 +132,6 @@ namespace TAC_AI
             }
         }
 #if DEBUG
-        // DEBUGGGGGGGGGGGGGG
         /*
         [HarmonyPatch(typeof(Debug))]
         [HarmonyPatch("DrawLine", typeof(Vector3), typeof(Vector3), typeof(Color))]
@@ -305,7 +304,6 @@ namespace TAC_AI
                 return true;
             }
         }*/
-
 
 #if !STEAM
         [HarmonyPatch(typeof(ManGameMode))]

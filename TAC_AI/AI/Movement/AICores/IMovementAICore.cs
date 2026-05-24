@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -9,37 +9,32 @@ namespace TAC_AI.AI.Movement.AICores
 {
     public interface IMovementAICore
     {
-        /// <summary>
-        /// DriveMaintainer is the most frequently updated out of the AI operations.  
-        ///   Use this for matters that must be updated quickly and frequently.
-        /// </summary>
         bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core);
 
         void Initiate(Tank tank, IMovementAIController controller);
 
-        /// <summary>
-        /// DriveDirector is used for more expensive, less updated operations.
-        ///   Pathfinding is also held here.
-        /// </summary>
         bool DriveDirector(ref EControlCoreSet core);
 
-        /// <summary>
-        /// DriveDirectorRTS is used for RTS Control for AI or the player.  
-        ///   Strictly follow a point in world space.
-        /// </summary>
         bool DriveDirectorRTS(ref EControlCoreSet core); // FOR RTS CONTROL
 
         bool DriveDirectorEnemy(Enemy.EnemyMind mind, ref EControlCoreSet core);
         bool DriveDirectorEnemyRTS(Enemy.EnemyMind mind, ref EControlCoreSet core);
 
-        /// <summary> Director </summary>
         bool TryAdjustForCombat(bool between, ref Vector3 pos, ref EControlCoreSet core); 
 
-        /// <summary> Director </summary>
         bool TryAdjustForCombatEnemy(Enemy.EnemyMind mind, ref Vector3 pos, ref EControlCoreSet core);
 
         Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset);
 
         float GetDrive { get; }
+    }
+
+    // Air-subtype capabilities, queried polymorphically by consumers that need flight-mode behaviour
+    // without reaching into AIControllerAir.FlyStyle across pipeline boundaries. Implemented only by
+    // the air cores; FlyStyle remains the air controller's own internal flight-mode cache.
+    public interface IAirMovementAICore : IMovementAICore
+    {
+        bool IsRotorcraft { get; }   // true for helicopters (vertical-lift) - e.g. weapon-aim strategy
+        bool IsFixedWing { get; }    // true ONLY for pure fixed-wing aircraft (not VTOL) - air target-acq
     }
 }

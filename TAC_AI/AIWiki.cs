@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -134,9 +134,6 @@ namespace TAC_AI
             GUILayout.EndVertical();
         }
 
-        /// <summary>
-        /// INCOMPLETE
-        /// </summary>
         private static void PageEnemies()
         {
             AltUI.Sprite(RawTechExporter.aiIconsEnemy[AI.Enemy.EnemySmarts.IntAIligent], AltUI.TextfieldBorderedBlue, GUILayout.Height(128), GUILayout.Width(128));
@@ -355,9 +352,6 @@ namespace TAC_AI
             //PageRTSGoHere();
         }
 
-        /// <summary>
-        /// INCOMPLETE
-        /// </summary>
         private static void PageBases()
         {
             GUILayout.Label("AKA: Founders, Siegers", AltUI.LabelBlackTitle);
@@ -434,7 +428,6 @@ namespace TAC_AI
             GUILayout.FlexibleSpace();
             GUILayout.EndVertical();
         }
-
 
         private static void InitTypes()
         {
@@ -842,7 +835,6 @@ namespace TAC_AI
             GUILayout.EndVertical();
         }
 
-
         internal static void ShowTeamInfoFirstTime(int Team)
         {
             switch (ManBaseTeams.GetRelationsWritablePriority(ManPlayer.inst.PlayerTeam, Team, TeamRelations.Enemy))
@@ -856,8 +848,6 @@ namespace TAC_AI
                     break;
             }
         }
-
-
 
         internal static LoadingHintsExt.LoadingHint loadHint1 = new LoadingHintsExt.LoadingHint(KickStart.ModID, "ADVANCED AI HINT",
             "Talk to prospectors with " + AltUI.HighlightString("T - Left-Click") + ".\nYou can't talk to " +
@@ -910,8 +900,6 @@ namespace TAC_AI
             "You can also open the AI Controls by pressing " +
             AltUI.HighlightString(KickStart.ModeSelect.ToString()));
 
-
-        // Others
         internal static ExtUsageHint.UsageHint hintUpgrades = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintUpgrades",
             new LocExtStringMod("Your A.I. can also be mouse-controlled through " + AltUI.ObjectiveString("RTS Mode") + " by toggling key " + 
             AltUI.HighlightString(KickStart.CommandHotkey.ToString()) + " or through Camera Mode.  To command, press " +
@@ -942,13 +930,11 @@ namespace TAC_AI
            new LocExtStringMod(AltUI.EnemyString("Trader Trolls") +
             " may appear from time to time to give budding prospectors a rough time."), 14);
 
-
         internal static bool TooHighed = false;
         internal static ExtUsageHint.UsageHint hintSpaceTooHigh = new ExtUsageHint.UsageHint(KickStart.ModID, 
             "AIGlobals.hintSpaceTooHigh",
             new LocExtStringMod("You have flown so high, you can almost see space!  " + AltUI.WhisperString("Wait a minute...") +
             "  There's more " + AltUI.EnemyString("Spaceships") + " up here!"), 14);
-
 
         internal static ExtUsageHint.UsageHint hintBase = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintBase",
             new LocExtStringMod(AltUI.HighlightString("Other Prospectors") + " will appear to stake their claim.  The " +
@@ -957,7 +943,6 @@ namespace TAC_AI
         internal static ExtUsageHint.UsageHint hintBaseInteract = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintBaseInteract",
             new LocExtStringMod("To interact with " + AltUI.SideCharacterString("Other Prospectors") + ", " + AltUI.HighlightString("hold T and Right-Mouse") +
             ".  " + AltUI.HintString("This may help you later on.")), 12);
-
 
         internal static ExtUsageHint.UsageHint hintInvader = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintRival",
             new LocExtStringMod(AltUI.EnemyString("Rival Prospectors") + " have a " + AltUI.EnemyString("Red") + " eye icon above themselves.  " +
@@ -982,8 +967,6 @@ namespace TAC_AI
         internal static ExtUsageHint.UsageHint hintNPTRetreat = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintNPTRetreat",
             AltUI.EnemyString("Rival Prospectors") + " when weak may " + AltUI.HighlightString("Fall Back") +
             " and regroup.  If you think you can take them out, go wild!", 10);
-
-
 
         internal static ExtUsageHint.UsageHint hintMissileWarning = new ExtUsageHint.UsageHint(KickStart.ModID, "SpecialAISpawner(A)",
             new LocExtStringMod(AltUI.HighlightString("ALERT! ") + AltUI.EnemyString("Huge Missile Detected")), 3.5f, true);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -12,8 +12,6 @@ namespace TAC_AI
 {
     internal class GUIAIManager : MonoBehaviour
     {
-        //Handles the display that's triggered on AI change 
-        //  Circle hud wheel when the player assigns a new AI state
         //  TODO - add the hook needed to get the UI to pop up on Guard selection
         // NOTE: HANDLES RTS SELECTED AIS AS WELL
         private static GUIAIManager inst;
@@ -24,7 +22,6 @@ namespace TAC_AI
         private static AIType changeAI = AIType.Escort;
         internal static TankAIHelper lastTank;
 
-
         // Mode - Setting
         private static GameObject GUIWindow;
         private static Rect HotWindow = new Rect(0, 0, 200, 380);   // the "window"
@@ -33,10 +30,8 @@ namespace TAC_AI
         private static int SelfDestruct = 5;
         private static bool AdvancedToggles = false;
 
-        // Tech Tracker
         private static float windowTimer = 0;
         private const int AIManagerID = 8001;
-
 
         internal static void Initiate()
         {
@@ -94,7 +89,6 @@ namespace TAC_AI
                     try
                     {
                         var title = AltUI.UIAlphaText + (!lastTank.name.NullOrEmpty() ? lastTank.name == "recycled tech" ? "None Selected" : lastTank.name : "NO NAME") + "</color>";
-                        //"AI Mode Select"
                         HotWindow = GUI.Window(AIManagerID, HotWindow, GUIHandler, title, AltUI.MenuLeft);
                         if (UIHelpersExt.MouseIsOverGUIMenu(HotWindow))
                             ManModGUI.IsMouseOverAnyModGUI = 2;
@@ -176,7 +170,6 @@ namespace TAC_AI
                     }
                 }
                 
-
                 GUI.Label(new Rect(6, HotWindow.height - 60, 188, 50), 
                     AltUI.UIAlphaText + GUI.tooltip + "</color>", AltUI.LabelBlackWrap);
             }
@@ -435,7 +428,6 @@ namespace TAC_AI
                 ManSFX.inst.PlayUISFX(ManSFX.UISfxType.AnchorFailed);
             }
 
-            // Tasks
             // top - Escort
             string textEscort = "<color=#ffffffff>Escort</color>";
             if (GUI.Button(new Rect(20, 115, 80, 30), fetchAI == AIType.Escort ? new GUIContent(textEscort, "ACTIVE") : new GUIContent(textEscort, "Follows player"),
@@ -479,7 +471,6 @@ namespace TAC_AI
                 ManSFX.inst.PlayUISFX(ManSFX.UISfxType.AnchorFailed);
             }
 
-
             // upper right - MT
             string textStation = "<color=#ffffffff>Static</color>";
             if (GUI.Button(new Rect(100, 145, 80, 30), CantPerformActions ? !lastTank.AllMT ? new GUIContent(textStation, "Player not in range") : new GUIContent(textStation, "Ally not in range") :
@@ -505,7 +496,6 @@ namespace TAC_AI
                 changeAI = AIType.MTMimic;
                 clicked = true;
             }
-
 
             // upper left, bottom - Aux modes
             string textMiner = "<color=#ffffffff>Miner</color>";
@@ -635,7 +625,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese,
                 "車輪または履帯で走行する"},
         });
-
 
         internal static LocExtStringMod LOC_FindTheAI = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
@@ -909,7 +898,6 @@ namespace TAC_AI
 
             GUIDriverSetter(CantPerformActions, GLO, GLH, ref clickedDriver);
 
-            // Tasks
             // top - Escort
             GUILayout.BeginHorizontal(GLH);
             if (GUILayout.Button(fetchAI == AIType.Escort ?
@@ -967,8 +955,6 @@ namespace TAC_AI
                 SetAIType(changeAI);
             }
         }
-
-
 
         internal static LocExtStringMod LOC_AnchorNone = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
@@ -1135,7 +1121,6 @@ namespace TAC_AI
             }
         }
 
-
         static float selectedOnceTime = 0;
         static float selectedUIDisplayTime = 0;
         static bool releasedOnce = false;
@@ -1263,9 +1248,6 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese,
                 "アイドル時にアンカー"},
         });
-        /// <summary>
-        /// Pending - allow toggling of AI special operations
-        /// </summary>
         private static void GUIOptionsDisplay(bool stuckAnchored, bool CantPerformActions)
         {
             bool delta = false;
@@ -1287,7 +1269,6 @@ namespace TAC_AI
                 delta = true;
             }
 
-
             StatusLabelButton(new Rect(20, 115, 80, 30), "Aware", lastTank.SecondAvoidence, 
                 LOC_SecondAvoidence_desc, LOC_FindTheAI, ref delta);//"Need Non-Anchor AI"
             StatusLabelButton(new Rect(100, 115, 80, 30), "Crafty", lastTank.AutoAnchor, 
@@ -1295,7 +1276,10 @@ namespace TAC_AI
 
             set.GUIDisplay(lim, ref delta);
 
-            lastTank.AttackMode = (EAttackMode)Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(25, 235, 150, 30), (int)lastTank.AttackMode, 0, (int)EAttackMode.Ranged));
+            // D5: slider min=1 (Circle) excludes EAttackMode.AutoSet=0 which is a sentinel resolved
+            // by EWeapSetup.GetAttackStrat (TankAIHelper.cs:1051), not a user-selectable mode.
+            // Max=Safety (6) includes the previously-excluded Safety mode.
+            lastTank.AttackMode = (EAttackMode)Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(25, 235, 150, 30), (int)lastTank.AttackMode, (int)EAttackMode.Circle, (int)EAttackMode.Safety));
             StatusLabel(new Rect(20, 235, 160, 30), "Mode: " + lastTank.AttackMode, LOC_AttackMethod);
 
             if (delta)
@@ -1441,7 +1425,6 @@ namespace TAC_AI
             }
         }
 
-
         internal static FieldInfo bubble = typeof(Tank).GetField("m_Overlay", BindingFlags.NonPublic | BindingFlags.Instance);
 
         private static void SetDriver(AIDriverType driver, bool playSFX = true)
@@ -1553,7 +1536,6 @@ namespace TAC_AI
                     DebugTAC_AI.LogError(KickStart.ModID + ": Encountered illegal AIDriverType on AI Driver switch!");
                     break;
             }
-
 
             if (ManNetwork.IsNetworked)
             {
@@ -1821,7 +1803,6 @@ namespace TAC_AI
             Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.Enter);
         }
 
-
         private static bool isAssassinAvail = false;    //Is there an Assassin-enabled AI on this tech?
         private static bool isAegisAvail = false;       //Is there an Aegis-enabled AI on this tech?
 
@@ -1853,7 +1834,6 @@ namespace TAC_AI
             if (helper.isAssassinAvail)
                 isAssassinAvail = true;
 
-            // Collectors
             if (helper.isProspectorAvail)
                 isProspectorAvail = true;
             if (helper.isScrapperAvail)
@@ -1861,7 +1841,6 @@ namespace TAC_AI
             if (helper.isEnergizerAvail)
                 isEnergizerAvail = true;
 
-            // Pilots
             if (helper.isAviatorAvail)
                 isAviatorAvail = true;
             if (helper.isBuccaneerAvail)
@@ -1869,7 +1848,6 @@ namespace TAC_AI
             if (helper.isAstrotechAvail)
                 isAstrotechAvail = true;
         }
-
 
         internal static void LaunchSubMenuClickableRTS()
         {
@@ -1967,7 +1945,6 @@ namespace TAC_AI
             UIHelpersExt.ClampGUIToScreen(ref HotWindow, centerOnMouse);
         }
        
-
         private void Update()
         {
             if (selectedOnceTime > 0)

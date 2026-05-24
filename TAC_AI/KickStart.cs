@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -15,14 +15,9 @@ using TerraTechETCUtil;
 using System.Runtime.CompilerServices;
 using Snapshots;
 
-
-
-
-
 #if !STEAM
 using ModHelper.Config;
 #endif
-
 
 namespace TAC_AI
 {
@@ -33,7 +28,6 @@ namespace TAC_AI
     {
         internal const string ModID = "Advanced AI";
         internal const string ModCommandID = "TAC_AI";
-
 
         public static FactionSubTypes factionAttractOST = FactionSubTypes.NULL;
 
@@ -48,60 +42,65 @@ namespace TAC_AI
         public static bool UseClassicRTSControls = false;//
 #endif
         public static bool UseNumpadForGrouping = false;//
-        /// <summary> Toggles retreat state! </summary>
         internal static KeyCode RetreatHotkey = KeyCode.I;
         public static int RetreatHotkeySav = (int)RetreatHotkey;
-        /// <summary> Toggles RTS Mode </summary>
         internal static KeyCode CommandHotkey = KeyCode.K;
         public static int CommandHotkeySav = (int)CommandHotkey;
-        /// <summary> Fires bolts on selected Techs </summary>
         internal static KeyCode CommandBoltsHotkey = KeyCode.X;
         public static int CommandBoltsHotkeySav = (int)CommandBoltsHotkey;
-        /// <summary> Hold to select multiple </summary>
         internal static KeyCode MultiSelect = KeyCode.LeftShift;
         public static int MultiSelectKeySav = (int)MultiSelect;
-        /// <summary> Access the AI modal </summary>
         internal static KeyCode ModeSelect = KeyCode.J;
         public static int ModeSelectKeySav = (int)ModeSelect;
-        /// <summary> Interact with NPTss </summary>
         internal static KeyCode NPTInteract = KeyCode.T;
         public static int NPTInteractKeySav = (int)NPTInteract;
-        //internal static bool testEnemyAI = true; // OBSOLETE
 
         public static float TerrainHeight => ManWorldGeneratorExt.CurrentTotalHeight;
         public static float TerrainHeightOffset => ManWorldGeneratorExt.CurrentMinHeight;
 
-        /// <summary>
-        /// This is the Tech limit PER AI team
-        /// </summary>
         internal static int EnemyTeamTechLimit = 6;// Allow the bases plus 6 additional capacity of the AIs' choosing
 
         public static float SavedDefaultEnemyFragility;
+        public static float SavedDefaultBlockSurvivalChance = -1f;
+        public static int SavedDefaultPopulationLimit = -1;
+        internal static int initCycleCount = 0;
+        internal static int deInitCycleCount = 0;
+        public static bool DoLogHealthPulse = false;
+        public static bool DoLogOwnership = false;
+        private static bool healthPulseScheduled = false;
+        internal static void EmitHealthPulse()
+        {
+            // Spawn-attempt summary always emits when there's activity (it self-gates on dAttempt==0).
+            try { World.ManEnemyWorld.EmitSpawnAttemptSummary(); } catch { /* never let pulse crash the InvokeRepeat */ }
+            if (!DoLogHealthPulse) return;
+            try
+            {
+                int playerHelpers = 0, enemyHelpers = 0, anchored = 0;
+                foreach (var h in AI.AIECore.IterateAllHelpers())
+                {
+                    if (h == null) continue;
+                    if (h.AIAlign == AIAlignment.Player) playerHelpers++;
+                    else if (h.AIAlign == AIAlignment.NonPlayer) enemyHelpers++;
+                    if (h.tank != null && h.tank.IsAnchored) anchored++;
+                }
+                DebugTAC_AI.LogTagged("Pulse", "Helpers: total=" + AI.AIECore.HelperCountNoCheck
+                    + " player=" + playerHelpers + " enemy=" + enemyHelpers + " anchored=" + anchored);
+                DebugTAC_AI.LogTagged("Pulse", "Strategic: NPTeams=" + World.ManEnemyWorld.NPTeamCountForPulse);
+            }
+            catch (Exception e) { DebugTAC_AI.Log("[TAC_AI:Pulse] failed - " + e); }
+        }
 
         public static int MaxEnemyWorldCapacity
         {
             get
             {
                 return AIPopMaxLimit;
-                /*
-                 // Abandoned due to too many issues, instead I have raised the max pop limit
-                if ((1 / Time.deltaTime) <= 20)
-                {   // game lagging too much - hold back
-                    return AIPopMaxLimit + MaxEnemyBaseLimit;
-                }
-                return AIPopMaxLimit + (MaxBasesPerTeam * MaxEnemyBaseLimit) + 1;*/
             }
         }// How many techs that can exist before giving up tech splitting?
         internal static int MaxEnemyBaseLimit = 3;  // How many different enemy team bases are allowed to exist in one instance
-        internal static int MaxEnemyHQLimit = 1;    // How many HQs are allowed to exist in one instance
-        /// <summary>
-        /// Maker bases (excludes defenses)
-        /// </summary>
+        internal static int MaxEnemyHQLimit = 24;   // How many HQs are allowed to exist in one instance
         internal static int MaxBasesPerTeam = 6;    // How many base expansions can a single team perform?
 
-        /// <summary>
-        /// For handling Operations
-        /// </summary>
         internal static short AIClockPeriod // How frequently we update
         {
             get
@@ -144,7 +143,7 @@ namespace TAC_AI
                         if (tankInst.lastAIType != AITreeType.AITypes.Escort)
                             tankInst.WakeAIForChange(true);
                         tankInst.SetRTSState(true);
-                        tankInst.MovementAIControllerDirty = true;
+                        tankInst.RequestMovementControllerSwap(TankAIHelper.MovementSwapReason.PlayerAutopilot);
                     }
                 }
             }
@@ -154,10 +153,8 @@ namespace TAC_AI
             }
         }
 
-        /// <summary>
-        /// For handing Directors
-        /// </summary>
         public static int AIDodgeCheapness = 20;
+        public static float CombatFacingCyclePeriod = 4f;   // Seconds for one full circle+face combat cycle (turret-fraction duty cycle). Higher = slower alternation between broadside and facing.
         public static int AIPopMaxLimit = 8;
         public static bool MuteNonPlayerRacket = true;
         public static bool DisplayEnemyEvents = true;
@@ -172,7 +169,6 @@ namespace TAC_AI
 
         public static int ForceRemoveOverEnemyMaxCap = 4;
         public static bool ActiveSpawnFoundersOffScene = false;
-        /// <summary> % Chance NPT Founders spawn when a tile is loaded for the first time </summary>
         public static float SpawnFoundersPositional = 0.05f;//0.2f;
         internal static bool AllowEnemiesToStartBases { get { return MaxEnemyBaseLimit != 0; } }
         internal static bool AllowEnemyBaseExpand { get { return MaxBasesPerTeam != 0; } }
@@ -188,26 +184,14 @@ namespace TAC_AI
         public static bool AllowAirEnemiesToSpawn = true;
         public static float AirEnemiesSpawnRate = 1;
         public static bool AllowSeaEnemiesToSpawn = true;
-        /// <summary>
-        /// Block spawning of Vanilla Techs when applicable
-        /// </summary>
         public static bool TryForceOnlyPlayerSpawns = false;
-        /// <summary>
-        /// Block spawning of This mod's Global Population Techs when applicable
-        /// </summary>
         public static bool TryForceOnlyPlayerLocalSpawns = false;
         public static bool AllowEnemiesToMine = true;
         public static bool DesignsToLog = false;
         public static bool CommitDeathMode = false;
         public static bool CatMode = false;
 
-        /// <summary>
-        /// Allows player to use the RTS HUD
-        /// </summary>
         public static bool AllowPlayerRTSHUD = true;
-        /// <summary>
-        /// Allows the enemies to act outside of the active play area.  Might be laggy
-        /// </summary>
         public static bool AllowStrategicAI = true;
         public static List<EnemyMaxDistLimit> limitTypes = new List<EnemyMaxDistLimit>()
         {
@@ -257,15 +241,16 @@ namespace TAC_AI
 
         //public static bool DestroyTreesInWater = false;
 
-        // Set on startup
-
-        // MOD SUPPORT
         internal static bool IsRandomAdditionsPresent = false;
         internal static bool isWaterModPresent = false;
         internal static bool isControlBlocksPresent = false;
         internal static bool isTweakTechPresent = false;
-        //internal static bool isTougherEnemiesPresent = false; // OBSOLETE
         internal static bool isWeaponAimModPresent = false;
+        // T9: combat-FSM Circle mode forces continuous strafe when either mod is present.
+        // Both mods reshape aim such that stationary firing is no longer optimal.
+        // Single named predicate for the RWheeled.cs:113 mod-presence OR; do NOT generalize to
+        // sibling sites (EWeapSetup / AIECore / BAviator / ModulePatches use distinct semantics).
+        internal static bool ShouldForceContinuousStrafe() => isTweakTechPresent || isWeaponAimModPresent;
         internal static bool isBlockInjectorPresent = false;
         internal static bool isPopInjectorPresent = false;
         internal static bool isAnimeAIPresent = false;
@@ -273,8 +258,6 @@ namespace TAC_AI
         internal static bool isConfigHelperPresent = false;
         internal static bool isNativeOptionsPresent = false;
 
-
-        // Set ingame
         public static int Difficulty
         {
             get
@@ -291,18 +274,16 @@ namespace TAC_AI
 #else
         public static int difficulty = 50;
 #endif
-        // 150 means only the smartest spawn
-        // 50 means the full AI range is used
+        public const int DifficultyMin = -50;
+        public const int DifficultyMax = 1500;
+        // values > 150 spawn only the smartest enemies
         // -50 means only the simpleton AI spawns
-
 
         public static int EnemyBlockDropChance = 40;
 
         public static bool WarnOnEnemyLock = true;
         public static bool DisableEnemyFogOfWar = true;
 
-
-        //Calculated
         public static int LastRawTechCount = 0;
         public static int LowerDifficulty { get { return Mathf.Clamp(Difficulty - 50, 0, 99); } }
         public static int UpperDifficulty { get { return Mathf.Clamp(Difficulty + 50, 1, 100); } }
@@ -362,8 +343,6 @@ namespace TAC_AI
                 }
             }
         }
-
-
 
         internal static bool firedAfterBlockInjector = false;
         public static bool SpecialAttract = false;
@@ -465,12 +444,6 @@ namespace TAC_AI
                 isTweakTechPresent = true;
             }
             else isTweakTechPresent = false;
-            /*
-            if (LookForMod("TougherEnemies"))
-            {
-                DebugTAC_AI.Log(KickStart.ModID + ": Found Tougher Enemies!  MAKING THE PAIN REAL!");
-                isTougherEnemiesPresent = true;
-            }*/
 
             if (LookForMod("BlockInjector"))
             {
@@ -497,6 +470,19 @@ namespace TAC_AI
             return true;
         }
 
+        // Per-batch patch tracking — if any batch succeeded on a prior call, don't retry it.
+        // Prevents double-patch when PatchAll throws (which leaves hasPatched=false) but individual
+        // MassPatcher batches already succeeded.
+        private static HashSet<Type> patchedBatches = new HashSet<Type>();
+        private static void PatchBatchOnce(Type batch)
+        {
+            if (patchedBatches.Contains(batch))
+                return;
+            if (MassPatcher.MassPatchAllWithin(harmonyInstance, batch, "TACtical_AI"))
+                patchedBatches.Add(batch);
+            else
+                DebugTAC_AI.ErrorReport("Error on patching " + batch.Name);
+        }
         public static void PatchMod()
         {
             DebugTAC_AI.Log(KickStart.ModID + ": Patch Call");
@@ -504,14 +490,10 @@ namespace TAC_AI
             {
                 try
                 {
-                    if (!MassPatcher.MassPatchAllWithin(harmonyInstance, typeof(GlobalPatches), "TACtical_AI"))
-                        DebugTAC_AI.ErrorReport("Error on patching GlobalPatches");
-                    if (!MassPatcher.MassPatchAllWithin(harmonyInstance, typeof(ManagerPatches), "TACtical_AI"))
-                        DebugTAC_AI.ErrorReport("Error on patching ManagerPatches");
-                    if (!MassPatcher.MassPatchAllWithin(harmonyInstance, typeof(UIPatches), "TACtical_AI"))
-                        DebugTAC_AI.ErrorReport("Error on patching UIPatches");
-                    if (!MassPatcher.MassPatchAllWithin(harmonyInstance, typeof(ModulePatches), "TACtical_AI"))
-                        DebugTAC_AI.ErrorReport("Error on patching ModulePatches");
+                    PatchBatchOnce(typeof(GlobalPatches));
+                    PatchBatchOnce(typeof(ManagerPatches));
+                    PatchBatchOnce(typeof(UIPatches));
+                    PatchBatchOnce(typeof(ModulePatches));
 
                     harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
                     DebugTAC_AI.Log(KickStart.ModID + ": Patched");
@@ -535,9 +517,13 @@ namespace TAC_AI
                 ManSafeSaves.RegisterSaveSystem(assemble, OnSaveManagers, OnLoadManagers);
                 HasHookedUpToSafeSaves = true;
             }
-            catch { 
-                DebugTAC_AI.Log(KickStart.ModID + ": Error on RegisterSaveSystem");
-                DebugTAC_AI.ErrorReport("Error on hooking to SafeSaves");
+            catch (Exception e)
+            {
+                // Fatal-class: no SafeSaves hook means OnSaveManagers / OnLoadManagers never fire,
+                // so ManBaseTeams / ManWorldRTS / ManEnemyWorld state never persists or restores.
+                // Continuing past this would silently corrupt saves. Surface as popup.
+                DebugTAC_AI.Log(KickStart.ModID + ": Error on RegisterSaveSystem: " + e);
+                DebugTAC_AI.FatalError(KickStart.ModID + ": Error on hooking to SafeSaves — save/load of mod state will NOT work this session.");
             }
         }
 
@@ -551,15 +537,6 @@ namespace TAC_AI
             harmonyInstance.Patch(targetMethod, transpiler: new HarmonyMethod(typeof(KickStart).
                 GetMethod("SpecialPatchTranspiler", BindingFlags.NonPublic | BindingFlags.Static)));
             BlockIndexer.UseVanillaFallbackSnapUtility = false;
-            //MassPatcher.MassPatchAllWithin(harmonyInstance, typeof(SpecialPatchBatch), "Advanced AI", true);
-            /*
-            /// convert below to masspatcher - giving me stupid attitude "cannot find" bullshit
-            var targetMethod2 = typeof(ManScreenshot).GetMethod("RunSnapshotConversionTool", BindingFlags.Static | BindingFlags.Public);
-            harmonyInstance.Patch(targetMethod2, prefix: new HarmonyMethod(typeof(KickStart).
-                GetMethod("BlockBuggedConverter", BindingFlags.NonPublic | BindingFlags.Static)));
-            */
-            //SpecialAISpawner.inst.StartCoroutine((IEnumerator)typeof(SnapshotServiceDesktop).GetMethod("UpdateSnapshotCacheOnStartup",
-            //    BindingFlags.Instance | BindingFlags.Public).CreateDelegate(typeof(IEnumerator)));
         }
         private static IEnumerable<CodeInstruction> SpecialPatchTranspiler(IEnumerable<CodeInstruction> collection)
         {
@@ -572,11 +549,9 @@ namespace TAC_AI
             }
         }
         
-        
         public static void MainOfficialInit()
         {
             
-            //Where the fun begins
 #if STEAM
             DebugTAC_AI.Log(KickStart.ModID + ": MAIN (Steam Workshop Version) startup");
             if (!VALIDATE_MODS())
@@ -586,13 +561,7 @@ namespace TAC_AI
 #else
             DebugTAC_AI.Log(KickStart.ModID + ": Startup was invoked by TTSMM!  Set-up to handle LATE initialization.");
 #endif
-            //throw new NullReferenceException("CrashHandle");
-
-            //SafeSaves.DebugSafeSaves.LogAll = true;
-            //Initiate the madness
             HookToSafeSaves();
-
-            //TinySettingsUtil.TryLoadFromDiskStatic<AIGlobals>("TAC_AI_Globals");
 
             LegModExt.InsurePatches();
             ManBaseTeams.Initiate();
@@ -605,10 +574,12 @@ namespace TAC_AI
             SpecialAISpawner.Initiate();
             GUINPTInteraction.Initiate();
 
+            // PatchMod call sites: line 574 (MainOfficialInit, here), line 653 (iterator path,
+            // MainOfficialInitIterate), line 910 (pure-TTMM branch of Main). All guarded by
+            // hasPatched + per-batch patchedBatches so duplication is safe.
             PatchMod();
 
             AIERepair.RefreshDelays();
-            // Because official fails to init this while switching modes
             SpecialAISpawner.DetermineActiveOnModeType();
             TankAIManager.inst.CorrectBlocksList();
 
@@ -627,14 +598,6 @@ namespace TAC_AI
             AIWiki.InitWiki();
             ManGameMode.inst.ModeSwitchEvent.Subscribe(OnModeSwitch);
 #if DEBUG
-            /*
-            var list = ManSnapshots.inst.ServiceDisk.GetSnapshotCollectionDisk().Snapshots;
-            if (list.Any())
-            {
-                var temp = list[0];
-                list.RemoveAt(0);
-                list.Add(temp);
-            }*/
             InitSpecialPatch();
 #endif
             InvokeHelper.BlocksPostChangeEvent.Subscribe(AfterBlocksLoaded);
@@ -656,60 +619,67 @@ namespace TAC_AI
 #if STEAM
         public static IEnumerable<float> MainOfficialInitIterate()
         {
-            //Where the fun begins
             DebugTAC_AI.Log(KickStart.ModID + ": MAIN [ITERATOR] (Steam Workshop Version) startup");
             if (!VALIDATE_MODS())
             {
                 yield return 1f;
+                yield break;
             }
 
-            //Initiate the madness
             HookToSafeSaves();
-            yield return 0.16f;
+            LegModExt.InsurePatches();
+            yield return 0.14f;
 
             ManBaseTeams.Initiate();
             TankAIManager.Initiate();
-            yield return 0.24f;
+            yield return 0.22f;
 
             AIGlobals.InitSharedMenu();
             GUIAIManager.Initiate();
-            yield return 0.32f;
+            yield return 0.30f;
 
             RawTechExporter.Initiate();
-            yield return 0.40f;
+            yield return 0.38f;
 
             RLoadedBases.BaseFunderManager.Initiate();
-            yield return 0.48f;
+            yield return 0.46f;
 
             ManEnemyWorld.Initiate();
-            yield return 0.56f;
+            yield return 0.54f;
 
             SpecialAISpawner.Initiate();
-            yield return 0.64f;
+            yield return 0.62f;
 
             GUINPTInteraction.Initiate();
-            AIERepair.RefreshDelays();
-            yield return 0.72f;
+            yield return 0.68f;
 
-            // Because official fails to init this while switching modes
-            SpecialAISpawner.DetermineActiveOnModeType();
-            yield return 0.80f;
-            TankAIManager.inst.CorrectBlocksList();
-            yield return 0.95f;
-
-            InitSettings();
-            yield return 1f;
-
+            // Patch BEFORE InitSettings — matches MainOfficialInit order (PatchMod@574, InitSettings@580).
+            // The previous iterator inverted these, which caused config/options-init to run before
+            // Harmony patches were installed (BUG-3).
             PatchMod();
-            yield return 0.1f;
+            yield return 0.76f;
 
+            AIERepair.RefreshDelays();
+            SpecialAISpawner.DetermineActiveOnModeType();
+            TankAIManager.inst.CorrectBlocksList();
+            InitSettings();
+            yield return 0.86f;
 
+            // Bring iterator in sync with MainOfficialInit (lines 582-597) — these were silently
+            // missing from the iterator path, leaving Steam-iterator boots with vanilla population
+            // cap, no AIWiki, and no BlocksPostChangeEvent subscription (BUG-3).
+            if (!isPopInjectorPresent)
+                OverrideEnemyMax();
+            _ = AIWiki.hintADV;
+            EnableBetterAI = true;
             if (CustomAttract.Attracts == null)
             {
                 CustomAttract.Attracts = CustomAttract.InitAttracts;
             }
+            AIWiki.InitWiki();
             ManGameMode.inst.ModeSwitchEvent.Subscribe(OnModeSwitch);
-            EnableBetterAI = true;
+            InvokeHelper.BlocksPostChangeEvent.Subscribe(AfterBlocksLoaded);
+            yield return 1f;
         }
         private static bool launched = false;
         public static void ENCAPSULATEErrorSaveConfig()
@@ -756,6 +726,14 @@ namespace TAC_AI
             if (launched)
                 return;
             launched = true;
+            initCycleCount++;
+            DebugTAC_AI.Log("[TAC_AI:Lifecycle] Init #" + initCycleCount
+                + " (DeInit cycles seen: " + deInitCycleCount + ")");
+            if (!healthPulseScheduled)
+            {
+                InvokeHelper.InvokeSingleRepeat(EmitHealthPulse, 10f);
+                healthPulseScheduled = true;
+            }
             GUINPTInteraction.InsureNetHooks();
             if (isNativeOptionsPresent && isConfigHelperPresent)
             {
@@ -798,7 +776,6 @@ namespace TAC_AI
             }
 
             UpdateCullDist();
-            //InvokeHelper.ModsPostLoadEvent.Subscribe(AIWiki.InsureAllValidAIs);
             InvokeHelper.BlocksPostChangeEvent.Subscribe(AIWiki.InsureAllValidAIs);
         }
 
@@ -810,13 +787,64 @@ namespace TAC_AI
             }
         }
 
-
         public static void DeInitALL()
         {
             ManGameMode.inst.ModeSwitchEvent.Unsubscribe(OnModeSwitch);
             float timeStart = Time.realtimeSinceStartup;
             DebugTAC_AI.Log(KickStart.ModID + ": Doing mod DeInit. Garbage Cleanup... current " + GC.GetTotalMemory(false));
             EnableBetterAI = false;
+            launched = false;
+
+            try
+            {
+                InvokeHelper.BlocksPostChangeEvent.Unsubscribe(AfterBlocksLoaded);
+                InvokeHelper.BlocksPostChangeEvent.Unsubscribe(AIWiki.InsureAllValidAIs);
+            }
+            catch (Exception eEvt)
+            {
+                DebugTAC_AI.Log(ModID + ": [DeInit] BlocksPostChangeEvent unsubscribe failed - " + eEvt);
+            }
+
+            if (healthPulseScheduled)
+            {
+                try { InvokeHelper.CancelInvokeSingleRepeat(EmitHealthPulse); } catch { }
+                healthPulseScheduled = false;
+            }
+
+            deInitCycleCount++;
+            DebugTAC_AI.Log("[TAC_AI:Lifecycle] DeInit #" + deInitCycleCount
+                + " (Init cycles seen: " + initCycleCount + ")");
+
+            try
+            {
+                if (Globals.inst != null)
+                {
+                    if (SavedDefaultBlockSurvivalChance >= 0f)
+                    {
+                        DebugTAC_AI.Log(ModID + ": [DeInit] Globals.m_BlockSurvivalChance: "
+                            + Globals.inst.m_BlockSurvivalChance + " → " + SavedDefaultBlockSurvivalChance + " (restored)");
+                        Globals.inst.m_BlockSurvivalChance = SavedDefaultBlockSurvivalChance;
+                    }
+                    if (SavedDefaultEnemyFragility > 0f)
+                    {
+                        DebugTAC_AI.Log(ModID + ": [DeInit] Globals.detachMeterFillFactor: "
+                            + Globals.inst.moduleDamageParams.detachMeterFillFactor + " → "
+                            + SavedDefaultEnemyFragility + " (restored)");
+                        Globals.inst.moduleDamageParams.detachMeterFillFactor = SavedDefaultEnemyFragility;
+                    }
+                }
+                if (SavedDefaultPopulationLimit >= 0 && ManPop.inst != null && limitBreak != null)
+                {
+                    DebugTAC_AI.Log(ModID + ": [DeInit] ManPop.m_PopulationLimit restored to " + SavedDefaultPopulationLimit);
+                    limitBreak.SetValue(ManPop.inst, SavedDefaultPopulationLimit);
+                    SavedDefaultPopulationLimit = -1;
+                }
+                AIGlobals.ResetPopupCache();
+            }
+            catch (Exception eRestore)
+            {
+                DebugTAC_AI.Log(ModID + ": [DeInit] settings restore failed - " + eRestore);
+            }
             if (hasPatched)
             {
                 try
@@ -835,6 +863,7 @@ namespace TAC_AI
                     MassPatcher.MassUnPatchAllWithin(harmonyInstance, typeof(GlobalPatches), "TACtical_AI");
                     harmonyInstance.UnpatchAll("legionite.tactical_ai");
                     hasPatched = false;
+                    patchedBatches.Clear();
                 }
                 catch (Exception e)
                 {
@@ -844,15 +873,14 @@ namespace TAC_AI
             }
 
             // DE-INIT ALL
-            ManBaseTeams.DeInit();
+            GUINPTInteraction.DeInit();
             SpecialAISpawner.DeInit();
             ManEnemyWorld.DeInit();
             RLoadedBases.BaseFunderManager.DeInit();
             RawTechExporter.DeInit();
             GUIAIManager.DeInit();
             TankAIManager.DeInit();
-            GUINPTInteraction.DeInit();
-            AIEPathMapper.DepoolUnusedTiles();
+            ManBaseTeams.DeInit();
             try
             {
                 ManSafeSaves.UnregisterSaveSystem(Assembly.GetExecutingAssembly(), OnSaveManagers, OnLoadManagers);
@@ -868,11 +896,9 @@ namespace TAC_AI
 #else
         public static void Main()
         {
-            //Where the fun begins
             DebugTAC_AI.Log(KickStart.ModID + ": MAIN (TTMM Version) startup");
             if (!VALIDATE_MODS())
                 return;
-            //Initiate the madness
 #if DEBUG
             DebugTAC_AI.Log("-----------------------------------------");
             DebugTAC_AI.Log("-----------------------------------------");
@@ -889,14 +915,17 @@ namespace TAC_AI
                 }
                 PatchMod();
                 HookToSafeSaves();
+                LegModExt.InsurePatches();
 
+                ManBaseTeams.Initiate();
                 TankAIManager.Initiate();
+                AIGlobals.InitSharedMenu();
                 GUIAIManager.Initiate();
                 RawTechExporter.Initiate();
-                RBases.BaseFunderManager.Initiate();
+                RLoadedBases.BaseFunderManager.Initiate();
                 ManEnemyWorld.Initiate();
-                GUIEvictionNotice.Initiate();
-
+                SpecialAISpawner.Initiate();
+                GUINPTInteraction.Initiate();
 
                 AIERepair.RefreshDelays();
                 try
@@ -922,7 +951,6 @@ namespace TAC_AI
 
 #endif
 
-
         public static void DelayedBaseLoader()
         {
             DebugTAC_AI.Log(KickStart.ModID + ": LAUNCHED MODDED BLOCKS BASE VALIDATOR");
@@ -932,7 +960,17 @@ namespace TAC_AI
             firedAfterBlockInjector = true;
         }
 
-
+        /// <summary>
+        /// Pipeline 03 (World Load/Save) — SAVE dispatch.
+        ///
+        /// SafeSaves invokes this twice per save cycle:
+        ///   Doing=true   -> pre-snapshot phase  (OnWorldSave on each manager)
+        ///   Doing=false  -> post-write phase    (OnWorldFinishSave on each manager)
+        ///
+        /// Manager call order (intentional, matches OnLoadManagers):
+        ///   1. ManBaseTeams (team roster, HiddenVisibles, TradingSellOffers, etc.)
+        ///   2. ManWorldRTS  (UnitGroups via UnitGroupsSerial shadow)
+        /// </summary>
         public static void OnSaveManagers(bool Doing)
         {
             if (Doing)
@@ -946,6 +984,51 @@ namespace TAC_AI
                 ManWorldRTS.OnWorldFinishSave();
             }
         }
+        /// <summary>
+        /// Pipeline 03 (World Load/Save) — LOAD dispatch and canonical phase sequence.
+        ///
+        /// Full ordered sequence for a disk-load (single source of truth — handlers
+        /// elsewhere depend on this ordering and must NOT be re-ordered casually):
+        ///
+        ///   Phase 1 (OnLoadManagers, Doing=true) — PRE-DESERIALIZATION RESET:
+        ///     - ManBaseTeams.OnWorldPreLoad()  -> ResetSessionState + null teams sentinel
+        ///     - ManWorldRTS.OnWorldPreLoad()   -> clears live UnitGroups buckets
+        ///
+        ///   Phase 2 (SafeSaves) — DESERIALIZATION:
+        ///     SafeSaves populates [SSaveField] members on ManBaseTeams.inst and
+        ///     ManWorldRTS.inst from disk. Manager bodies do NOT run during this phase.
+        ///
+        ///   Phase 3 (OnLoadManagers, Doing=false) — POST-DESERIALIZATION FIX-UP:
+        ///     - ManBaseTeams.OnWorldLoad()  -> initializes any [SSaveField] still null
+        ///                                     (treats teams==null as "fresh world" sentinel,
+        ///                                      runs MigrateTeamsToNewSaveFormat if so);
+        ///                                     post-load PurgeOrphanedSellOffers.
+        ///     - ManWorldRTS.OnWorldLoad()   -> rebuilds UnitGroups from UnitGroupsSerial;
+        ///                                     normalizes bucket count.
+        ///
+        ///   Phase 4 (ModeStartEvent) — MODE ACTIVATION:
+        ///     - ManEnemyWorld.OnWorldLoad(mode) -> clears NPTTeams/RegisteredByID/
+        ///                                         QueuedUnitMoves; mode-gate; subscribes
+        ///                                         OnTileTechsBeforeLoad + OnWorldLoadEnd.
+        ///                                         Flips enabledThis=true, draining any
+        ///                                         Harmony-postfix events buffered during
+        ///                                         deserialization (B-05).
+        ///     - ManBaseTeams.OnModeStart(mode)  -> InsureDefaultTeams + network hooks.
+        ///
+        ///   Phase 5 (ModeStartEvent, second subscriber) — POST-TILE FIX-UP:
+        ///     - ManEnemyWorld.OnWorldLoadEnd(mode) -> purges m_VisiblesFailedToRestore;
+        ///                                            registers unloaded stored techs from
+        ///                                            AllTrackedVisibles via TryRegister-
+        ///                                            TechUnloaded; sets WorldWasTouchedBy-
+        ///                                            TAC_AI; conditionally taints
+        ///                                            m_FileHasBeenTamperedWith (T-04).
+        ///
+        /// Phases 4 and 5 still subscribe to raw ModeStartEvent (not OnLoadManagers)
+        /// because they must fire on mode transitions even when no disk-load occurred
+        /// (e.g. starting a fresh world). The implicit assumption is that SafeSaves
+        /// load (Phases 1-3) completes before ModeStartEvent dispatches Phase 4 —
+        /// verified by call-order in vanilla's save/load path.
+        /// </summary>
         public static void OnLoadManagers(bool Doing)
         {
             DebugTAC_AI.Log("OnLoadManagers");
@@ -961,18 +1044,28 @@ namespace TAC_AI
             }
         }
 
-
-
         internal static FieldInfo limitBreak = typeof(ManPop).GetField("m_PopulationLimit", BindingFlags.NonPublic | BindingFlags.Instance);
         public static void OverrideEnemyMax()
         {
+            if (limitBreak == null)
+            {
+                // Fatal-class: downstream code (spawn pipelines, NP_Presence) assumes the pop cap
+                // was raised. Silently leaving vanilla cap in place causes mass spawn-suppression
+                // bugs that look unrelated. Surface as popup so the user sees it.
+                DebugTAC_AI.FatalError(ModID + ": OverrideEnemyMax - ManPop.m_PopulationLimit field not found (vanilla API change?). Pop cap NOT overridden; enemy spawns will be capped at vanilla limit.");
+                return;
+            }
             try
             {
+                if (SavedDefaultPopulationLimit < 0)
+                    SavedDefaultPopulationLimit = (int)limitBreak.GetValue(ManPop.inst);
                 limitBreak.SetValue(ManPop.inst, AIPopMaxLimit);
             }
-            catch { }
+            catch (Exception e)
+            {
+                DebugTAC_AI.Log(ModID + ": OverrideEnemyMax failed - " + e);
+            }
         }
-
 
         public static void TryHookUpToSafeSavesIfNeeded()
         {
@@ -1013,78 +1106,11 @@ namespace TAC_AI
             return false;
         }
 
-
-        /// <summary>
-        /// Only call for cases where we want only vanilla corps!
-        /// </summary>
-        /// <param name="type"></param>
-        /// <returns></returns>
         public static FactionSubTypes GetCorpExtended(BlockTypes type)
         {
             return (FactionSubTypes)Singleton.Manager<ManSpawn>.inst.GetCorporation(type);
         }
 
-        /*
-        public static FactionSubTypes CorpExtToCorp(FactionSubTypes corpExt)
-        {
-            switch (corpExt)
-            {
-                case FactionSubTypes.SPE:
-                //case FactionSubTypes.GSO:
-                case FactionSubTypes.GT:
-                case FactionSubTypes.IEC:
-                    return FactionSubTypes.GSO;
-                //case FactionSubTypes.GC:
-                case FactionSubTypes.EFF:
-                case FactionSubTypes.LK:
-                    return FactionSubTypes.GC;
-                //case FactionSubTypes.VEN:
-                case FactionSubTypes.OS:
-                    return FactionSubTypes.VEN;
-                //case FactionSubTypes.HE:
-                case FactionSubTypes.BL:
-                case FactionSubTypes.TAC:
-                    return FactionSubTypes.HE;
-                //case FactionSubTypes.BF:
-                case FactionSubTypes.DL:
-                case FactionSubTypes.EYM:
-                case FactionSubTypes.HS:
-                    return FactionSubTypes.BF;
-                case FactionSubTypes.EXP:
-                    return FactionSubTypes.EXP;
-            }
-            return (FactionSubTypes)corpExt;
-        }
-        public static FactionSubTypes CorpExtToVanilla(FactionSubTypes corpExt)
-        {
-            switch (corpExt)
-            {
-                case FactionSubTypes.SPE:
-                //case FactionSubTypes.GSO:
-                case FactionSubTypes.GT:
-                case FactionSubTypes.IEC:
-                    return FactionSubTypes.GSO;
-                //case FactionSubTypes.GC:
-                case FactionSubTypes.EFF:
-                case FactionSubTypes.LK:
-                    return FactionSubTypes.GC;
-                //case FactionSubTypes.VEN:
-                case FactionSubTypes.OS:
-                    return FactionSubTypes.VEN;
-                //case FactionSubTypes.HE:
-                case FactionSubTypes.BL:
-                case FactionSubTypes.TAC:
-                    return FactionSubTypes.HE;
-                //case FactionSubTypes.BF:
-                case FactionSubTypes.DL:
-                case FactionSubTypes.EYM:
-                case FactionSubTypes.HS:
-                    return FactionSubTypes.BF;
-                case FactionSubTypes.EXP:
-                    return FactionSubTypes.EXP;
-            }
-            return corpExt;
-        }*/
         public static bool TransferLegacyIfNeeded(AIType type, out AIType newType, out AIDriverType driver)
         {
             newType = type;

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -14,9 +14,6 @@ namespace TAC_AI.World
         public readonly Event<TileMoveCommand, Tank> OnTechLoaded;
         public int CurrentTurn;
         public readonly NP_TechUnit ETU;
-        /// <summary>
-        /// this, Worked, Loaded
-        /// </summary>
         public readonly Action<TileMoveCommand, bool, bool> call;
 
         public TileMoveCommand(NP_TechUnit unit, IntVector2 endTileWorld, int expectedTime, Action<TileMoveCommand, bool, bool> callback)

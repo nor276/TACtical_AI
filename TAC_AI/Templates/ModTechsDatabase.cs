@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -59,7 +59,9 @@ namespace TAC_AI.Templates
         }
 
         // --------------------  RawTech Lookups  --------------------
-        internal static int IterateExtraRate = Mathf.Clamp(Mathf.RoundToInt(4 / Time.deltaTime), 1, 1000);
+        // ~4s worth of items at 60fps. Was Mathf.RoundToInt(4 / Time.deltaTime): at static-init
+        // Time.deltaTime is 0 -> +Infinity -> clamped to 1000 (4x too coarse, stalls progress UI).
+        internal static int IterateExtraRate = 240;
 
         internal static string Subject = null;
         internal static string InProgress = null;
@@ -70,10 +72,6 @@ namespace TAC_AI.Templates
         public const int MinimumLocalTechsToTriggerWarning = 32;
         private static int lastExtLocalCount = 0;
         private static int lastExtModCount = 0;
-
-
-        /// <summary> Hosts active techs </summary>
-
 
         public static int ExtPopTechsAllCount() => ExtPopTechsAll.Count;
         public static RawTech ExtPopTechsAllLookup(int index)
@@ -121,9 +119,6 @@ namespace TAC_AI.Templates
             }
         }
 
-
-
-
         // --------------------  MAIN RawTech Validation  --------------------
         private static List<RawTech> ExtPopTechsAll = new List<RawTech>();
         public static void ValidateAllStringTechs()
@@ -150,8 +145,6 @@ namespace TAC_AI.Templates
                 InvokeHelper.InvokeCoroutine(preloadable.GetEnumerator());
             }
         }
-
-
 
         // --------------------  Internal RawTech Validation  --------------------
         public static Dictionary<SpawnBaseTypes, RawTech> InternalPopTechs;
@@ -229,7 +222,6 @@ namespace TAC_AI.Templates
             DebugTAC_AI.Log(KickStart.ModID + ": Finished in " + (Time.realtimeSinceStartup - startTimeInt).ToString("F") + " seconds");
         }
 
-        /// <summary> Add in some Vanilla Techs (PENDING) </summary>
         public static void DelayedValidateAndAddBaseGameTechs()
         {
             /*
@@ -247,7 +239,6 @@ namespace TAC_AI.Templates
                 InternalPopTechs.Add(pair.Key, pair.Value);
             }
         }
-
 
         private static IEnumerator ValidateAndAdd(Dictionary<SpawnBaseTypes, RawTechTemplate> preCompile, Dictionary<SpawnBaseTypes, RawTech> target)
         {
@@ -404,13 +395,8 @@ namespace TAC_AI.Templates
             EstNumStepsIterator = 0;
         }
 
-
-
-
         // --------------------  External RawTech Validation  --------------------
-        /// <summary> <see cref="RawTech"/>s imported by our client </summary>
         internal static List<RawTech> ExtPopTechsLocal = new List<RawTech>();
-        /// <summary> <see cref="RawTech"/>s imported by other loaded mods </summary>
         internal static List<RawTech> ExtPopTechsMods = new List<RawTech>();
 
         public static void ValidateAndAddAllExternalTechs(bool force = false)
@@ -443,9 +429,6 @@ namespace TAC_AI.Templates
             foreach (var item in CombineExtTechPools())
                 yield return item;
         }
-
-
-
 
         private static float startTimeExtClient;
         private static IEnumerable DoValidateClientTechs(bool force)
@@ -598,15 +581,7 @@ namespace TAC_AI.Templates
             }
         }
 
-
-
-
         // --------------------  RawTech Utilities  --------------------
-        /// <summary>
-        /// returns true if ALL blocks in tech are valid
-        /// </summary>
-        /// <param name="toScreen"></param>
-        /// <returns></returns>
         public static bool ValidateBlocksInTechAndPurgeIfNeeded(List<RawBlockMem> toScreen)
         {
             try
@@ -637,9 +612,6 @@ namespace TAC_AI.Templates
                 return false; 
             }
         }
-
-
-
 
     }
 }

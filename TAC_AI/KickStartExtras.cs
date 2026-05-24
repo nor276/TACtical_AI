@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 //using Harmony;
@@ -14,7 +14,6 @@ using TerraTechETCUtil;
 #if !STEAM
 using ModHelper.Config;
 #endif
-
 
 namespace TAC_AI
 {
@@ -36,9 +35,42 @@ namespace TAC_AI
         {
             modConfig.WriteConfigJsonFile();
         }
+
+        internal static void ApplyEnemyBlockDropChance()
+        {
+            if (Globals.inst == null) return;
+            Globals.inst.m_BlockSurvivalChance = KickStart.EnemyBlockDropChance / 100.0f;
+            if (KickStart.EnemyBlockDropChance == 0)
+                Globals.inst.moduleDamageParams.detachMeterFillFactor = 0;
+            else if (KickStart.SavedDefaultEnemyFragility > 0f)
+                Globals.inst.moduleDamageParams.detachMeterFillFactor = KickStart.SavedDefaultEnemyFragility;
+            DebugTAC_AI.Log("[TAC_AI:Config:Apply] EnemyBlockDropChance=" + KickStart.EnemyBlockDropChance
+                + " → Globals.m_BlockSurvivalChance=" + Globals.inst.m_BlockSurvivalChance
+                + ", detachMeterFillFactor=" + Globals.inst.moduleDamageParams.detachMeterFillFactor);
+        }
+
+        internal static void ApplyDifficulty()
+        {
+            int prev = KickStart.difficulty;
+            if (KickStart.difficulty < KickStart.DifficultyMin)
+                KickStart.difficulty = KickStart.DifficultyMin;
+            if (prev != KickStart.difficulty)
+                DebugTAC_AI.Log("[TAC_AI:Config:Apply] difficulty clamped " + prev + " → " + KickStart.difficulty
+                    + " (floor=" + KickStart.DifficultyMin + ", no high cap)");
+            else
+                DebugTAC_AI.Log("[TAC_AI:Config:Apply] difficulty=" + KickStart.difficulty);
+        }
+
+        internal static void PushAllConfigToVanilla()
+        {
+            try { ApplyEnemyBlockDropChance(); } catch (Exception e) { DebugTAC_AI.Log("[TAC_AI:Config:Apply] failed - " + e); }
+            try { ApplyDifficulty(); }            catch (Exception e) { DebugTAC_AI.Log("[TAC_AI:Config:Apply] failed - " + e); }
+        }
         internal static void PushExtModConfigHandlingConfigOnly()
         {
             KickStart.SavedDefaultEnemyFragility = Globals.inst.moduleDamageParams.detachMeterFillFactor;
+            if (KickStart.SavedDefaultBlockSurvivalChance < 0f)
+                KickStart.SavedDefaultBlockSurvivalChance = Globals.inst.m_BlockSurvivalChance;
 
             PushExtModConfigSetup();
 
@@ -57,6 +89,7 @@ namespace TAC_AI
             thisModConfig.BindConfig<KickStart>(null, "RetreatHotkeySav");
             thisModConfig.BindConfig<KickStart>(null, "AIDodgeCheapness");
             thisModConfig.BindConfig<KickStart>(null, "AIClockPeriodSet");
+            thisModConfig.BindConfig<KickStart>(null, "CombatFacingCyclePeriod");
             thisModConfig.BindConfig<AIEPathMapper>(null, "PathRequestsToCalcPerFrame");
             thisModConfig.BindConfig<KickStart>(null, "MuteNonPlayerRacket");
             thisModConfig.BindConfig<KickStart>(null, "enablePainMode");
@@ -90,7 +123,6 @@ namespace TAC_AI
             thisModConfig.BindConfig<KickStart>(null, "ForceRemoveOverEnemyMaxCap");
             thisModConfig.BindConfig<KickStart>(null, "EnemyBaseUpdateMode");
 
-            // RTS
             thisModConfig.BindConfig<KickStart>(null, "AllowPlayerRTSHUD");
             thisModConfig.BindConfig<KickStart>(null, "AllowStrategicAI");
             thisModConfig.BindConfig<ManWorldRTS>(null, "RTSUIScale");
@@ -111,11 +143,14 @@ namespace TAC_AI
                 CullFarEnemyBasesDevStartup = false;
             }
             modConfig = thisModConfig;
+            PushAllConfigToVanilla();
             return thisModConfig;
         }
         internal static void PushExtModConfigHandling()
         {
             KickStart.SavedDefaultEnemyFragility = Globals.inst.moduleDamageParams.detachMeterFillFactor;
+            if (KickStart.SavedDefaultBlockSurvivalChance < 0f)
+                KickStart.SavedDefaultBlockSurvivalChance = Globals.inst.m_BlockSurvivalChance;
 
             var thisModConfig = PushExtModConfigSetup();
             try
@@ -134,7 +169,6 @@ namespace TAC_AI
     }
     public class KickStartNativeOptions
     {
-        // NativeOptions Parameters
         public static Nuterra.NativeOptions.OptionKey retreatHotkey;
         public static Nuterra.NativeOptions.OptionKey commandHotKey;
         public static Nuterra.NativeOptions.OptionKey commandBoltsHotKey;
@@ -185,7 +219,6 @@ namespace TAC_AI
         public static Nuterra.NativeOptions.OptionToggle WarnEnemyLock;
         public static Nuterra.NativeOptions.OptionToggle HoldFireOnNeutral;
         public static bool ShownRebootWarning = false;
-
 
         public static void EnoughLocalTechsSanityCheck()
         {
@@ -269,7 +302,6 @@ namespace TAC_AI
             aiSelfRepair2 = new Nuterra.NativeOptions.OptionToggle("Mobile A.I. Building - Requires Beefy Networking", TACAIMP, KickStart.AllowAISelfRepairInMP);
             aiSelfRepair2.onValueSaved.AddListener(() => { KickStart.AllowAISelfRepairInMP = aiSelfRepair2.SavedValue; });
 
-
             var TACAIRTS = KickStart.ModID + " - Real-Time Strategy [RTS] Mode";
             playerStrategic = new Nuterra.NativeOptions.OptionToggle("Enable A.I. Click-based Control", TACAIRTS, KickStart.AllowPlayerRTSHUD);//\nRandomAdditions and TweakTech highly advised for best experience
             playerStrategic.onValueSaved.AddListener(() => { 
@@ -277,7 +309,10 @@ namespace TAC_AI
                 if (KickStart.AllowPlayerRTSHUD)
                 {
                     PlayerRTSUI.Initiate();
-                    //ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL); // tf is this here for?
+                    // Rebuilds RTS UI (SelectCirclePrefab + SelectWindow/autoWindow) when the player
+                    // toggles RTS HUD on at runtime. Safe after BUG-2 fix added Destroy-before-Instantiate
+                    // guards in DelayedInitiate.
+                    ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL);
                 }
                 else
                 {
@@ -291,7 +326,9 @@ namespace TAC_AI
                 if (KickStart.AllowStrategicAI)
                 {
                     ManEnemyWorld.Initiate();
-                    //ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL); // tf is this here for?
+                    // Same as above — re-fire DelayedInitiate so RTS UI follows the strategic-AI
+                    // toggle. Safe after BUG-2 fix.
+                    ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL);
                 }
                 else
                 {
@@ -348,7 +385,6 @@ namespace TAC_AI
                 KickStart.EnemyBaseUpdateMode = enemyBaseTeamsUpdateLaziness.SavedValue;
             });
 
-
             var TACAIEnemies = KickStart.ModID + " - Non-Player Techs (NPT) General";
             painfulEnemies = new Nuterra.NativeOptions.OptionToggle("<b>Enable Advanced NPTs</b>", TACAIEnemies, KickStart.enablePainMode);
             painfulEnemies.onValueSaved.AddListener(() => {
@@ -366,20 +402,26 @@ namespace TAC_AI
                 KickStart.enablePainMode = painfulEnemies.SavedValue;
                 //DebugRawTechSpawner.CanOpenDebugSpawnMenu = DebugRawTechSpawner.CheckValidMode();
             });
-            diff = SuperNativeOptions.OptionRangeAutoDisplay("NPT Difficulty", 
-                TACAIEnemies, KickStart.difficulty, -50, 150, 25, (float value) => {
+            diff = SuperNativeOptions.OptionRangeAutoDisplay("NPT Difficulty",
+                TACAIEnemies, KickStart.difficulty, KickStart.DifficultyMin, KickStart.DifficultyMax, 50, (float value) => {
                     string pre = Mathf.RoundToInt((value + 50) / 2).ToString();
-                    if (value.Approximately(-50))
+                    if (value.Approximately(KickStart.DifficultyMin))
                         return pre + "% Vanilla AI";
                     if (value.Approximately(0))
                         return pre + "% Standard";
-                    if (value.Approximately(150))
-                        return pre + "% Insanity";
+                    if (value.Approximately(KickStart.DifficultyMax))
+                        return pre + "% Beyond Insanity";
                     if (value < 0)
                         return pre + "% Easy";
-                    if (value >= 75)
+                    if (value < 75)
+                        return pre + "% Medium";
+                    if (value < 150)
                         return pre + "% Hard";
-                    return pre + "% Medium";
+                    if (value < 500)
+                        return pre + "% Insanity";
+                    if (value < 1000)
+                        return pre + "% Apocalyptic";
+                    return pre + "% God-tier";
                 });
             diff.onValueSaved.AddListener(() =>
             {
@@ -400,14 +442,7 @@ namespace TAC_AI
                 });
             blockRecoveryChance.onValueSaved.AddListener(() => {
                 KickStart.EnemyBlockDropChance = (int)blockRecoveryChance.SavedValue;
-                Globals.inst.m_BlockSurvivalChance = (float)((float)KickStart.EnemyBlockDropChance / 100.0f);
-
-                if (KickStart.EnemyBlockDropChance == 0)
-                {
-                    Globals.inst.moduleDamageParams.detachMeterFillFactor = 0;// Make enemies drop no blocks!
-                }
-                else
-                    Globals.inst.moduleDamageParams.detachMeterFillFactor = KickStart.SavedDefaultEnemyFragility;
+                KickStartConfigHelper.ApplyEnemyBlockDropChance();
             });
             infEnemySupplies = new Nuterra.NativeOptions.OptionToggle("All NPTechs Cheat Blocks", TACAIEnemies, KickStart.EnemiesHaveCreativeInventory);
             infEnemySupplies.onValueSaved.AddListener(() => { KickStart.EnemiesHaveCreativeInventory = infEnemySupplies.SavedValue; });

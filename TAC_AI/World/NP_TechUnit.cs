@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -56,14 +56,8 @@ namespace TAC_AI.World
             }
         }
 
-        /// <summary>
-        /// LOSSY AT FAR FROM ORIGIN
-        /// </summary>
         public Vector3 PosWorld => WorldPos.GameWorldPosition;
 
-        /// <summary>
-        /// LOSSY AT FAR FROM CAMERA
-        /// </summary>
         public virtual Vector3 PosScene => WorldPos.ScenePosition;
 
         public long Health;
@@ -88,7 +82,6 @@ namespace TAC_AI.World
             teamInst = team;
             Faction = faction;
         }
-
 
         public abstract float GetSpeed();
         public abstract float GetEvasion();
@@ -119,7 +112,6 @@ namespace TAC_AI.World
             this.tech = tech;
         }
 
-
         internal abstract void MovementSceneDelta(float timeDelta);
         internal void SetFakeTVLocation(Vector3 posScene)
         {
@@ -129,6 +121,31 @@ namespace TAC_AI.World
         internal void UpdateTVLocation()
         {
             trackedVis.SetPos(WorldPos);
+        }
+
+        internal void RebindToTile(IntVector2 newTile, ManSaveGame.StoredVisible posHint = null)
+        {
+            WorldPosition newPos;
+            // tile it lives in. This is the canonical position vanilla TerraTech uses for the
+            // record, and centering would needlessly throw away precise XZ.
+            if (posHint != null && posHint.m_WorldPosition.TileCoord == newTile)
+            {
+                newPos = posHint.m_WorldPosition;
+            }
+            else
+            {
+                // Either we don't have a hint, or the hint's own m_WorldPosition is *also* drifted
+                // (the storage tile holds a StoredVisible whose recorded position points elsewhere —
+                // the same desync, but on the StoredVisible rather than tech.m_WorldPosition). In
+                // that case the only safe fallback is tile-center. Preserve Y from the prior record
+                // so altitude info on flyers isn't lost.
+                float halfTile = ManWorld.inst.TileSize * 0.5f;
+                float yKeep = tech.m_WorldPosition.TileRelativePos.y;
+                newPos = new WorldPosition(newTile, new Vector3(halfTile, yKeep, halfTile));
+            }
+            tech.m_WorldPosition = newPos;
+            if (trackedVis != null)
+                trackedVis.SetPos(newPos);
         }
 
         public Tank GetActiveTech()
@@ -155,11 +172,6 @@ namespace TAC_AI.World
             }
         }
 
-        /// <summary>
-        /// Deal damage to this Tech
-        /// </summary>
-        /// <param name="dealt"></param>
-        /// <returns>True if tech destroyed</returns>
         public abstract bool RecieveDamage(int Dealt);
         internal void ApplyDamage()
         {

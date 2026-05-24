@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -7,7 +7,6 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
-    /// <summary> Handles Space AI Directors & Maintainers </summary>
     internal class LandAICore : IMovementAICore
     {
         private AIControllerDefault controller;
@@ -122,11 +121,9 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
-            // Planned pathing
             if (PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
             return ImmedeatePathing(Target, core.DrivePathing);
         }
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
@@ -143,14 +140,14 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
-            // Planned pathing
-            if (PlanningPathing(Target, core.DrivePathing))
+            // P08 B-NEW2 (LandAICore): gate `PlanningPathing` on `!helper.Attempt3DNavi` to match
+            // DriveDirectorEnemy (:245). Newly-live since P07 wired up DriveDirectorEnemyRTS.
+            if (!helper.Attempt3DNavi && PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
-            return ImmedeatePathing(Target, core.DrivePathing);
+            // P08 G.4: ImmedeatePathingEnemy requires `mind` as first arg (sibling at :253 passes it).
+            return ImmedeatePathingEnemy(mind, Target, core.DrivePathing);
         }
-
 
         public bool ImmedeatePathing(Vector3 Target, EDrivePathing aim)
         {
@@ -196,11 +193,9 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
-            // Planned pathing
             if (PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
             return ImmedeatePathing(Target, core.DrivePathing);
         }
 
@@ -238,7 +233,10 @@ namespace TAC_AI.AI.Movement.AICores
         {
             if (!VehicleUtils.GetPathingTargetEnemy(controller, out Vector3 Target, ref core))
             {
-                throw new NullReferenceException("DriveDirectorEnemy expects a valid EnemyMind but IT WAS NULL");
+                // P08: misleading message — GetPathingTargetEnemy returns false for many reasons
+                // (no enemy target, mind null, MultiTech failure). The catch in UpdateTechControl
+                // swallows but the previous "EnemyMind was NULL" wording sent debugging the wrong way.
+                throw new NullReferenceException("DriveDirectorEnemy: GetPathingTargetEnemy returned false (target lookup failed or EnemyMind null) for " + controller.Tank?.name);
             }
 
             var helper = controller.Helper;
@@ -250,15 +248,11 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
-            // Planned pathing
             if (!helper.Attempt3DNavi && PlanningPathing(Target, core.DrivePathing))
                 return true;
 
-            // Immedeate Pathing
             return ImmedeatePathingEnemy(mind, Target, core.DrivePathing);
         }
-
-
 
         public bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
@@ -267,7 +261,6 @@ namespace TAC_AI.AI.Movement.AICores
             Vector3 destDirect = controller.PathPoint - tank.boundsCentreWorldNoCheck;
 
             //DebugTAC_AI.Log("IS target player " + Singleton.playerTank == helper.lastEnemy + " | MinimumRad " + helper.MinimumRad + " | destination" + controller.PathPoint);
-            // DRIVE
             float DriveControl = 0f;
 
             float range = helper.lastOperatorRange;
@@ -277,10 +270,15 @@ namespace TAC_AI.AI.Movement.AICores
             switch (core.DriveDir)
             {
                 case EDriveFacing.Stop:
+                    // P08 doc-bug + B-NEW1: bypass cleared tank.control.DriveControl but left
+                    // `lastDrive` stale (HUD/audio kept reporting prior frame's drive). Mirror the
+                    // intent (no throttle / no steering this frame) while keeping `lastDrive` honest.
                     helper.DriveControl = 0;
+                    lastDrive = 0;
                     return true;
                 case EDriveFacing.Neutral:
                     helper.DriveControl = 0.001f;
+                    lastDrive = 0.001f;
                     return true;
                 case EDriveFacing.Forwards:
                     if (core.DriveDest >= EDriveDest.ToLastDestination)
@@ -345,7 +343,6 @@ namespace TAC_AI.AI.Movement.AICores
                     break;
             }
 
-            // Additional drive controls
             switch (helper.ThrottleState)
             {
                 case AIThrottleState.PivotOnly:
@@ -354,7 +351,7 @@ namespace TAC_AI.AI.Movement.AICores
                 case AIThrottleState.Yield:
                     if (DriveControl < 0)
                     {
-                        if (helper.recentSpeed < -AIGlobals.YieldSpeed)
+                        if (helper.recentSpeedSigned < -AIGlobals.YieldSpeed)
                             DriveControl = 0.2f;
                         else
                             DriveControl = -1f;
@@ -370,42 +367,71 @@ namespace TAC_AI.AI.Movement.AICores
                 case AIThrottleState.FullSpeed:
                     if (helper.FullBoost)
                     {
-                        Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(destDirect).normalized;
-                        controller.TryBoost(forwardLocal);
-                    }
-                    else if (helper.LightBoost)
-                    {
-                        if (helper.LightBoostFeatheringClock >= 25)
+                        if (DriveControl > 0.01f)
                         {
                             Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(destDirect).normalized;
                             controller.TryBoost(forwardLocal);
-                            helper.LightBoostFeatheringClock = 0;
                         }
-                        helper.LightBoostFeatheringClock++;
+                        else if (DriveControl < -0.01f)
+                        {
+                            Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(-destDirect).normalized;
+                            controller.TryBoost(forwardLocal);
+                        }
+                    }
+                    else if (helper.LightBoost)
+                    {
+                        if (helper.lightBoostFeatherTimer.Due)
+                        {
+                            if (DriveControl > 0.01f)
+                            {
+                                Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(destDirect).normalized;
+                                controller.TryBoost(forwardLocal);
+                            }
+                            else if (DriveControl < -0.01f)
+                            {
+                                Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(-destDirect).normalized;
+                                controller.TryBoost(forwardLocal);
+                            }
+                            helper.lightBoostFeatherTimer.Set(0.5f);
+                        }
                     }
                     break;
                 case AIThrottleState.ForceSpeed:
                     DriveControl = helper.DriveVar;
                     if (helper.FullBoost)
                     {
-                        Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(destDirect).normalized;
-                        controller.TryBoost(forwardLocal);
-                    }
-                    else if (helper.LightBoost)
-                    {
-                        if (helper.LightBoostFeatheringClock >= 25)
+                        if (DriveControl > 0.01f)
                         {
                             Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(destDirect).normalized;
                             controller.TryBoost(forwardLocal);
-                            helper.LightBoostFeatheringClock = 0;
                         }
-                        helper.LightBoostFeatheringClock++;
+                        else if (DriveControl < -0.01f)
+                        {
+                            Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(-destDirect).normalized;
+                            controller.TryBoost(forwardLocal);
+                        }
+                    }
+                    else if (helper.LightBoost)
+                    {
+                        if (helper.lightBoostFeatherTimer.Due)
+                        {
+                            if (DriveControl > 0.01f)
+                            {
+                                Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(destDirect).normalized;
+                                controller.TryBoost(forwardLocal);
+                            }
+                            else if (DriveControl < -0.01f)
+                            {
+                                Vector3 forwardLocal = tank.rootBlockTrans.InverseTransformDirection(-destDirect).normalized;
+                                controller.TryBoost(forwardLocal);
+                            }
+                            helper.lightBoostFeatherTimer.Set(0.5f);
+                        }
                     }
                     break;
                 default:
                     break;
             }
-            // STEERING
             if (helper.DoSteerCore)
             {
                 switch (core.DriveDir)
@@ -420,8 +446,11 @@ namespace TAC_AI.AI.Movement.AICores
                         {
                             if (range < helper.AutoSpacing + 2)
                             {
-                                VehicleUtils.Turner(helper, -destDirect, DriveControl, ref core);
-                                //DebugTAC_AI.Log("Orbiting out " + helper.MinimumRad + " | " + destDirect);
+                                // FACE-ENEMY fix: at/inside the orbit radius, face the enemy (destDirect) rather
+                                // than -destDirect, which pointed the chassis REAR at the enemy and made circling
+                                // tanks drive rear-first the whole fight. Turrets track regardless; the body now
+                                // keeps its front on the target. (Shared Perpendicular branch -> also benefits allied.)
+                                VehicleUtils.Turner(helper, destDirect, DriveControl, ref core);
                             }
                             else if (range > helper.AutoSpacing + 22)
                             {
@@ -448,7 +477,6 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         break;
                     case EDriveFacing.Backwards:
-                        // Face back TOWARDS target
                         if (core.DriveDest == EDriveDest.FromLastDestination)
                         {   //Move from target
                             VehicleUtils.Turner(helper, -destDirect, DriveControl, ref core);
@@ -460,7 +488,6 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         break;
                     default:
-                        // Face front TOWARDS target
                         if (core.DriveDest == EDriveDest.FromLastDestination)
                         {
                             VehicleUtils.Turner(helper, destDirect, DriveControl, ref core);
@@ -474,8 +501,6 @@ namespace TAC_AI.AI.Movement.AICores
                 }
             }
 
-
-            // DEBUG FOR DRIVE ERRORS
             if (AIGlobals.ShowDebugFeedBack)
             {
                 if (!tank.IsAnchored)
@@ -486,7 +511,7 @@ namespace TAC_AI.AI.Movement.AICores
                     if (helper.FullBoost || helper.LightBoost)
                         DebugExtUtilities.DrawDirIndicator(tank.gameObject, 2, tank.rootBlockTrans.TransformDirection(controller.BoostBias) * (helper.lastTechExtents * 2), new Color(1, 0, 0));
                 }
-                else if (helper.AttackEnemy && helper.lastEnemyGet)
+                else if (helper.WantsToFight && helper.lastEnemyGet)
                 {
                     if (ManBaseTeams.IsEnemy(tank.Team, helper.lastEnemyGet.tank.Team))
                         DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, helper.lastEnemyGet.centrePosition - tank.trans.position, new Color(1, 0, 0));
@@ -502,14 +527,22 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
-            if (helper.ChaseThreat && (!helper.IsDirectedMoving || !helper.Retreat) && helper.lastEnemyGet.IsNotNull())
+            // P08 G.6: dropped vestigial `(!helper.IsDirectedMoving || !helper.Retreat)` — peer
+            // AICores (Helicopter, Airplane, the enemy variant in this file) all gate on bare
+            // `!helper.Retreat`. The OR collapsed to roughly `!Retreat` only by accident since
+            // Retreat implies directed motion per its definition. See P08 G.6 investigation.
+            if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
             {
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
                 helper.UpdateEnemyDistance(targPos);
                 float driveDyna = Mathf.Clamp((helper.lastCombatRange - helper.MinCombatRange) / 3f, -1, 1);
-                if (helper.SideToThreat || (helper.BlockedLineOfSight && helper.AdvancedAI))
+                // Turret-fraction duty cycle (allied): only take the broadside/orbit branch while the cycle says
+                // "circle"; otherwise fall through to the FACE branch so front-fixed guns can fire. BlockedLineOfSight
+                // still forces circling to hunt a firing angle. TurretFraction 0 (front-only) => CombatWantsCircleNow
+                // is always false => always faces, even if SideToThreat is on.
+                if ((helper.SideToThreat && helper.CombatWantsCircleNow()) || (helper.BlockedLineOfSight && helper.AdvancedAI))
                 {
                     core.DriveDir = EDriveFacing.Perpendicular;
                     if (helper.FullMelee)
@@ -575,7 +608,9 @@ namespace TAC_AI.AI.Movement.AICores
                         helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 3;
                     }
                 }
-                if (between && helper.theResource?.tank)
+                // P08 G.5 sibling-of-B-NEW5-8: was `helper.theResource?.tank` which passes when the
+                // Visible is non-null but its `tank` field references a destroyed Unity object.
+                if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
                 {
                     pos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);
                 }
@@ -615,9 +650,13 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (driveDyna < 0)
                     {
-                        core.DriveDest = EDriveDest.FromLastDestination;
+                        // FACE-ENEMY fix (enemy Circle, too close): previously this set FromLastDestination
+                        // while DriveDir stayed Perpendicular, which steered the chassis to -destDirect (rear
+                        // toward the enemy) -> the persistent "drives backwards" symptom. DriveAwayFacingTowards
+                        // sets Forwards+FromLastDestination => reverse throttle + destDirect steering, so the tank
+                        // backs off to open distance while keeping its FRONT on the target.
+                        core.DriveAwayFacingTowards();
                         pos = helper.AvoidAssist(targPos);
-                        //helper.MinimumRad = helper.lastTechExtents + helper.lastEnemy.GetCheapBounds() + 2;
                     }
                     else
                     {
@@ -636,18 +675,11 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (helper.IsDirectedMovingToDest && mind.LikelyMelee)
                     {
-                        if (mind.LikelyMelee)
-                        {
-                            core.DriveDir = EDriveFacing.Forwards;
-                            pos = helper.AvoidAssist(targPos);
-                            helper.AutoSpacing = 0.5f;
-                        }
-                        else
-                        {
-                            core.DriveDir = EDriveFacing.Forwards;
-                            pos = helper.AvoidAssist(targPos);
-                            helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 5;
-                        }
+                        // Deferred-5 fix: outer-if guarantees LikelyMelee, so the inner if/else was a
+                        // dead branch. Kept the melee body inline.
+                        core.DriveDir = EDriveFacing.Forwards;
+                        pos = helper.AvoidAssist(targPos);
+                        helper.AutoSpacing = 0.5f;
                     }
                     else
                     {
@@ -661,7 +693,6 @@ namespace TAC_AI.AI.Movement.AICores
             controller.PathPointSet = pos;
             return output;
         }
-
 
         public Vector3 Between(Vector3 Target, Vector3 other)
         {

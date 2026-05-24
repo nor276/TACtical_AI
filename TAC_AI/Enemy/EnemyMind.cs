@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -6,24 +6,16 @@ using TerraTechETCUtil;
 using TAC_AI.AI.Enemy.EnemyOperations;
 using TAC_AI.Templates;
 
-
 namespace TAC_AI.AI.Enemy
 {
-    /// <summary>
-    /// Where the brain is handled for enemies (and mayber non-player allies)
-    /// </summary>
     public class EnemyMind : MonoBehaviour
     {
-        // ESSENTIALS
         public Tank Tank { get; private set; }
         public TankAIHelper AIControl { get; private set; }
         internal EnemyOperationsController EnemyOpsController;
         public AIERepair.DesignMemory TechMemor => AIControl.TechMemor;
 
-        // Set on spawn
-        /// <summary>What kind of vehicle is this Enemy?</summary>
         private EnemyHandling evilCommander = EnemyHandling.Wheeled;
-        /// <summary>The way the enemy interacts with the player and world</summary>
         public EnemyHandling EvilCommander 
         { 
             get => evilCommander;
@@ -54,32 +46,21 @@ namespace TAC_AI.AI.Enemy
                 evilCommander = value;
             }
         }
-        /// <summary>What the Enemy does if there's no threats around.</summary>
         public EnemyAttitude CommanderMind = EnemyAttitude.Default;
-        /// <summary>The way the Enemy acts if there's a threat.</summary>
         public EAttackMode CommanderAttack
         {
             get => AIControl.AttackMode;
             set { AIControl.AttackMode = value; }
         }
-        /// <summary>The extent the Enemy will be "self-aware" and intellegent about it's current state</summary>
         public EnemySmarts CommanderSmarts = EnemySmarts.Default;
-        /// <summary>When the Enemy should press X and seperate bolts.</summary>
         public EnemyBolts CommanderBolts = EnemyBolts.Default;
-        /// <summary>How the enemy will handle attacking</summary>
         public EnemyStanding CommanderAlignment = EnemyStanding.Enemy;
 
-        /// <summary>Extra for determining mentality on auto-generation</summary>
         public FactionSubTypes MainFaction = FactionSubTypes.GSO;
-        /// <summary>Do we stay anchored?</summary>
         public bool StartedAnchored = false;
-        /// <summary>If we are feeling extra evil</summary>
         public bool AllowRepairsOnFly = false;
-        /// <summary>Shoot the big techs instead?</summary>
         public bool InvertBullyPriority = false;
-        /// <summary>Can this tech spawn blocks from inventory?</summary>
         public bool AllowInvBlocks = false;
-        /// <summary>Can we melee?</summary>
         public bool LikelyMelee
         {
             get => AIControl.FullMelee;
@@ -105,12 +86,15 @@ namespace TAC_AI.AI.Enemy
 
         internal int BoltsQueued = 0;
 
-
         public bool AttackPlayer => CommanderAlignment == EnemyStanding.Enemy;
         //public bool AttackAny => CommanderAlignment < EnemyStanding.SubNeutral;
         public bool CanCallRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team);
         public bool CanDoRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team) || IsPopulation;
 
+        // T3: mod-owned "just-initiated" window. Replaces fragile reliance on the vanilla
+        // Tank.FirstUpdateAfterSpawn flag, which is already cleared by the time our
+        // DelayedSubscribe→GenerateEnemyAI→Initiate chain runs (~0.1s after spawn).
+        private float initWindowEndTime;
 
         public void Initiate()
         {
@@ -124,6 +108,17 @@ namespace TAC_AI.AI.Enemy
             Tank.DetachEvent.Subscribe(OnBlockLoss);
 
             AIControl.ResetAISettings();
+
+            // T3: AttachEvent cannot fire retroactively. Sweep already-attached blocks now —
+            // by the time Initiate runs, FirstUpdateAfterSpawn is typically already cleared,
+            // so the OnBlockAdd handler would otherwise never see the initial roster.
+            initWindowEndTime = Time.time + AIGlobals.EnemyInitGrace;
+            try
+            {
+                foreach (TankBlock b in Tank.blockman.IterateBlocks())
+                    TryAbortSelfDestruct(b);
+            }
+            catch (Exception e) { DebugTAC_AI.LogWarnPlayerOnce("EnemyMind.Initiate sweep failed", e); }
         }
         public void Refresh()
         {
@@ -134,15 +129,21 @@ namespace TAC_AI.AI.Enemy
             if (AIControl.MovementController == null)
                 throw new NullReferenceException("AIControl.MovementController null");
 
-            if (GetComponents<EnemyMind>().Count() > 1)
-                DebugTAC_AI.Log(KickStart.ModID + ": ASSERT: THERE IS MORE THAN ONE EnemyMind ON " + Tank.name + "!!!");
+            // T4: log+destroy extras (instead of log-only). Keep the first/oldest instance.
+            // If this Refresh is on an extra, EnforceSingleComponent destroys us and the kept one
+            // continues to run. The kept one still receives this Refresh call on its own subscription.
+            var kept = gameObject.EnforceSingleComponent<EnemyMind>("EnemyMind.Refresh");
+            if (kept != this) return;
 
             //DebugTAC_AI.Log(KickStart.ModID + ": Refreshing Enemy AI for " + Tank.name);
+            // T3: also refresh the init window on re-evaluation (team change, mission reassign)
+            // so legitimate post-Refresh block attaches still get the grace.
+            initWindowEndTime = Time.time + AIGlobals.EnemyInitGrace;
             EnemyOpsController = new EnemyOperationsController(this);
             AIControl.RunState = AIRunState.Advanced;
             AIControl.MovementController.UpdateEnemyMind(this);
             AIControl.AvoidStuff = true;
-            AIControl.EndPursuit();
+            AIControl.ReleaseTarget();  // B14: was bare EndPursuit() — left stale lastEnemy for one tick. Mind re-init is an alignment boundary; match OnSwitchAI semantics.
             BoltsQueued = 0;
             try
             {
@@ -170,70 +171,77 @@ namespace TAC_AI.AI.Enemy
 
         public void OnBlockAdd(TankBlock blockAdd, Tank tonk)
         {
-            try
+            // T3 + T7: replaced the FirstUpdateAfterSpawn gate (almost always false by the time
+            // we run, see Initiate comment) with a mod-owned grace window. Also explicit null
+            // checks replace the bare catch{} that previously hid all errors. Genuine bugs now
+            // surface; transient missing-component cases are skipped cleanly.
+            if (tonk.FirstUpdateAfterSpawn || Time.time <= initWindowEndTime
+                || RawTechLoader.Rebuilding)
             {
-                if (tonk.FirstUpdateAfterSpawn)
-                {
-                    if (blockAdd.GetComponent<Damageable>().Health > 0)
-                        blockAdd.damage.AbortSelfDestruct();
-                }
+                TryAbortSelfDestruct(blockAdd);
             }
-            catch { }
+        }
+        private static void TryAbortSelfDestruct(TankBlock b)
+        {
+            if (b == null) return;
+            var dmg = b.GetComponent<Damageable>();
+            if (dmg == null || dmg.Health <= 0) return;
+            if (b.damage != null) b.damage.AbortSelfDestruct();
         }
         public void OnWorldMove(IntVector3 move)
         {
             sceneStationaryPos += move;
         }
 
-        /// <summary>
-        /// React when hit by an attack from another Tech. 
-        /// Must be resubbed and un-subbed when switching to and from enemy
-        /// </summary>
         public void OnHit(ManDamage.DamageInfo dingus)
         {
-            if (dingus.SourceTank && dingus.Damage > AIGlobals.DamageAlertThreshold)
+            // B2/T2: trip on single big hit OR sustained sub-threshold series.
+            bool tripped = dingus.Damage > AIGlobals.DamageAlertThreshold;
+            Tank src = dingus.SourceTank;
+            bool srcAlive = (bool)src;
+            int srcTeam = dingus.SourceTeamID;        // B3: cached int — survives source death
+            bool teamKnown = srcTeam != int.MaxValue;
+            if (!tripped && srcAlive && AIControl.AccumulateAndCheckThreat(src, dingus.Damage))
+                tripped = true;
+            if (!tripped) return;
+
+            Hurt = true;
+            if (ManBaseTeams.IsSubNeutralBaseTeam(Tank.Team))
             {
-                Hurt = true;
-                if (ManBaseTeams.IsSubNeutralBaseTeam(Tank.Team))
+                // B3: team identity comes from SourceTeamID (cached), so relations still
+                // degrade against a now-dead attacker (kamikaze, missile self-destruct).
+                if (teamKnown && srcTeam == ManPlayer.inst.PlayerTeam)
+                    ManBaseTeams.AttackComplainPlayer(Tank.boundsCentreWorldNoCheck, Tank.Team);
+                if (teamKnown && ManBaseTeams.TryGetBaseTeamDynamicOnly(Tank.Team, out var ETD))
                 {
-                    int teamAttacker = dingus.SourceTank.Team;
-                    if (teamAttacker == ManPlayer.inst.PlayerTeam)
-                        ManBaseTeams.AttackComplainPlayer(Tank.boundsCentreWorldNoCheck, Tank.Team);
-                    if (ManBaseTeams.TryGetBaseTeamDynamicOnly(Tank.Team, out var ETD))
-                    {
-                        ETD.DegradeRelations(teamAttacker, dingus.Damage);
-                        return;
-                    }
-                    /*
-                    ManEnemyWorld.ChangeTeam(tank.Team, AIGlobals.GetRandomEnemyBaseTeam());
-                    RandomSetMindAttack(Mind, tank);
-                    Mind.CommanderAlignment = EnemyStanding.Enemy;
-                    */
+                    ETD.DegradeRelations(srcTeam, dingus.Damage);
+                    return;
                 }
-                else
-                {
-                    AIControl.FIRE_ALL = true; // we do not want subneutrals firing all - this WILL cause collateral
-                }
-                if (AIControl.Provoked <= 0)
-                {
-                    AIControl.lastEnemy = dingus.SourceTank.visible;
-                    GetRevengeOn(AIControl.lastEnemyGet);
-                    if (Tank.IsAnchored && Tank.GetComponent<RLoadedBases.EnemyBaseFunder>())
-                    {
-                        // Execute remote orders to allied units - Attack that threat!
-                        RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.AllHandsOnDeck);
-                    }
-                    else if (CommanderSmarts > EnemySmarts.Mild)
-                    {
-                        // Execute remote orders to allied units - Attack that threat!
-                        if (ManBaseTeams.IsSubNeutralBaseTeam(Tank.Team))
-                            RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.Warn);
-                        else
-                            RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.ThinkMcFly);
-                    }
-                }
-                AIControl.Provoked = AIGlobals.ProvokeTime;
             }
+            else
+            {
+                AIControl.FIRE_ALL = true; // we do not want subneutrals firing all - this WILL cause collateral
+            }
+            // B3: pursuit + remote-fire only fire when the attacker is still alive.
+            if (AIControl.Provoked <= 0 && srcAlive)
+            {
+                AIControl.lastEnemy = src.visible;
+                GetRevengeOn(AIControl.lastEnemyGet);
+                if (Tank.IsAnchored && Tank.GetComponent<RLoadedBases.EnemyBaseFunder>())
+                {
+                    // Execute remote orders to allied units - Attack that threat!
+                    RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.AllHandsOnDeck);
+                }
+                else if (CommanderSmarts > EnemySmarts.Mild)
+                {
+                    // Execute remote orders to allied units - Attack that threat!
+                    if (ManBaseTeams.IsSubNeutralBaseTeam(Tank.Team))
+                        RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.Warn);
+                    else
+                        RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.ThinkMcFly);
+                }
+            }
+            AIControl.Provoked = AIGlobals.ProvokeTime;
         }
         public static void OnBlockLoss(TankBlock blockLoss, Tank tonk)
         {
@@ -260,7 +268,16 @@ namespace TAC_AI.AI.Enemy
                     }
                 }
             }
-            catch { }
+            catch (Exception e)
+            {
+                // SPRINT1-B9: was silent catch{}. Block-loss bookkeeping (FIRE_ALL, Hurt,
+                // PendingDamageCheck, ChanceDestroyBlock) is tick-adjacent and event-fired;
+                // swallowed exceptions left enemies in a wrong combat state with no signal.
+                // Per-tank key so each distinct tech surfaces its first failure.
+                DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    "OnBlockLoss:" + (tonk != null ? tonk.name : "<null>"),
+                    "OnBlockLoss failed; damage bookkeeping may be incomplete for this tech", e);
+            }
         }
         public void ChanceDestroyBlock(TankBlock blockLoss)
         {
@@ -274,7 +291,7 @@ namespace TAC_AI.AI.Enemy
                 }
                 else
                 {
-                    if (UnityEngine.Random.Range(0, 99) >= KickStart.EnemyBlockDropChance)
+                    if (UnityEngine.Random.Range(0, 100) >= KickStart.EnemyBlockDropChance /* SPRINT1-1.6: was (0,99) — Range is maxExclusive, so the previous code never hit a roll of 99 and never matched the 100% setting cleanly. */)
                     {
                         if (ManNetwork.IsNetworked)
                             ManLooseBlocks.inst.RequestDespawnBlock(blockLoss, DespawnReason.Host);
@@ -284,7 +301,7 @@ namespace TAC_AI.AI.Enemy
             }
             catch
             {
-                if (UnityEngine.Random.Range(0, 99) >= KickStart.EnemyBlockDropChance)
+                if (UnityEngine.Random.Range(0, 100) >= KickStart.EnemyBlockDropChance /* SPRINT1-1.6: was (0,99) — Range is maxExclusive, so the previous code never hit a roll of 99 and never matched the 100% setting cleanly. */)
                     blockLoss.damage.SelfDestruct(0.6f);
             }
         }
@@ -307,12 +324,21 @@ namespace TAC_AI.AI.Enemy
                     }
                 }
             }
-            catch { }
+            catch (Exception e)
+            {
+                // SPRINT1-B9: was silent catch{}. Repair-finish state transitions
+                // (name un-mark, AI regeneration, alignment, BuildAssist clear) are
+                // event-fired and would otherwise leave the tech in a half-repaired
+                // state with no visible error. Per-tank key dedups per tech.
+                DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    "OnFinishedRepairs:" + (Tank != null ? Tank.name : "<null>"),
+                    "OnFinishedRepairs failed; post-repair state may be inconsistent", e);
+            }
         }
 
         public void GetRevengeOn(Visible target = null, bool forced = false)
         {
-            if (!AIControl.KeepEnemyFocus && (forced || CommanderAttack != EAttackMode.Safety))
+            if ((forced || !AIControl.KeepEnemyFocus) && (forced || CommanderAttack != EAttackMode.Safety))
             {
                 if (forced)
                 {
@@ -329,17 +355,23 @@ namespace TAC_AI.AI.Enemy
                             break;
                     }
                 }
-                AIControl.SetPursuit(target);
+                AIControl.SetPursuit(target, forced);
             }
         }
         public void EndAggro()
         {
             if (AIControl.KeepEnemyFocus)
             {
-                if (Tank.blockman.IterateBlockComponents<ModuleItemHolderBeam>().Count() != 0)
-                    CommanderMind = EnemyAttitude.Miner;
-                else if (AIECore.FetchClosestBlockReceiver(Tank.boundsCentreWorldNoCheck, MaxCombatRange, out _, out _, Tank.Team))
-                    CommanderMind = EnemyAttitude.Junker;
+                // Don't revert to Miner/Junker if an enemy is still nearby — otherwise the next
+                // LollyGag tick dispatches RMiner.MineYerOwnBusiness while the tech is still being
+                // shot at, producing the "wander off mid-combat" wiggle.
+                if (AIControl.lastEnemyGet == null || !AIControl.InRangeOfTarget(MaxCombatRange))
+                {
+                    if (Tank.blockman.IterateBlockComponents<ModuleItemHolderBeam>().Count() != 0)
+                        CommanderMind = EnemyAttitude.Miner;
+                    else if (AIECore.FetchClosestBlockReceiver(Tank.boundsCentreWorldNoCheck, MaxCombatRange, out _, out _, Tank.Team))
+                        CommanderMind = EnemyAttitude.Junker;
+                }
                 AIControl.EndPursuit();
             }
         }

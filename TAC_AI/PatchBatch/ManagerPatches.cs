@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -16,14 +16,16 @@ namespace TAC_AI
         internal static class ManSpawnPatches
         {
             internal static Type target = typeof(ManSpawn);
-            //DelayedLoadRequest
             private static void OnDLCLoadComplete_Postfix(ManSpawn __instance)
             {
                 try
                 {
                     ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL);
                 }
-                catch { }
+                catch (Exception e)
+                {
+                    DebugTAC_AI.LogError(KickStart.ModID + ": OnDLCLoadComplete_Postfix - ManWorldRTS.DelayedInitiate failed: " + e);
+                }
             }
         }
 
@@ -31,7 +33,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ManLooseBlocks);
 
-            //AITechLivesMatter
             private static bool OnServerAttachBlockRequest_Prefix(ManLooseBlocks __instance, ref NetworkMessage netMsg)
             {
                 if (AIERepair.NonPlayerAttachAllow)
@@ -85,15 +86,38 @@ namespace TAC_AI
             }
         }
 
+        /// <summary>
+        /// Ensures every tech registered with <c>ManTechs.RegisterTank</c> has a
+        /// <see cref="TankAIHelper"/> attached before any other system queries it.
+        /// </summary>
         internal static class ManTechsPatches
         {
             internal static Type target = typeof(ManTechs);
 
-            //PatchTankToHelpAI
             private static void RegisterTank_Postfix(ManTechs __instance, ref Tank t)
             {
-                //DebugTAC_AI.Log(KickStart.ModID + ": Patched Tank OnPool(TankAIHelper & TimeTank)");
                 t.GetHelperInsured();
+            }
+        }
+
+        // Suppresses vanilla camera-distance sleep for mod-managed hostile techs within EnemyKeepAwakeRange,
+        // so distant enemies keep ticking and moving instead of going kinematic and freezing in place.
+        // Vanilla still handles wake-up (TestWakeSleepingTechs) and MP-skip and friendly-skip naturally.
+        internal static class ManTechsSleepPatches
+        {
+            internal static Type target = typeof(ManTechs);
+
+            private static bool CheckSleepRange_Prefix(ManTechs __instance, Tank tech)
+            {
+                if (!KickStart.EnableBetterAI) return true;
+                if (tech == null || tech.IsSleeping) return true;
+                if (!ManBaseTeams.IsEnemyBaseTeam(tech.Team)) return true;  // hostile mod teams only
+
+                float d2 = (tech.boundsCentreWorld - Singleton.cameraTrans.position).sqrMagnitude;
+                if (d2 > AIGlobals.EnemyKeepAwakeRange * AIGlobals.EnemyKeepAwakeRange)
+                    return true;  // beyond cap -> let vanilla put it to sleep (NP_* sim takes over)
+
+                return false;  // suppress vanilla sleep this frame
             }
         }
 
@@ -130,7 +154,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ManNetwork);
             // Multi-Player
-            //WarnJoiningPlayersOfScaryAI
             private static void AddPlayer_Postfix(ManNetwork __instance)
             {
                 // Setup aircraft if Population Injector is N/A

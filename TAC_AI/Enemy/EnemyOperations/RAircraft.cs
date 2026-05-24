@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -11,14 +11,13 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 {
     internal static class RAircraft
     {
-        // ENEMY CONTROLLERS
-        /*  
-            Circle,     // Attack like the AC-130 Gunship, broadside while salvoing [BROKEN]
+        /*  Attack modes (historic doc; modern enum is EAttackMode in AIEnums.cs):
+            Circle,     // D1 REVIVED: AC-130 broadside salvo. Gated on (LargeAircraft || BankOnly) + WeaponAimMod
             Grudge,     // Chase and dogfight whatever hit this aircraft last
             Coward,     // Avoid danger
             Bully,      // Attack other aircraft over ground structures.  If inverted, prioritize ground structures over aircraft
             Pesterer,   // Switch to the next closest possible target after attacking one aircraft.  Do not try to dodge and prioritize attack
-            Spyper,     // Take aim and fire at the best possible moment in our aiming 
+            (Spyper)    // DELETED in D1; standoff sniper role belongs to Starship/Chopper, not fixed-wing
         */
         public static void AttackWoosh(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
@@ -28,24 +27,35 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 
             //Singleton.Manager<ManTechs>.inst.
             if (tank.rbody.IsNull())
-            {   // remove aircraft AI from the world because it's outta player range
-                tank.Recycle();
+            {   // B4: remove aircraft AI from the world because it's outta player range.
+                // Original code called Recycle() then fell through ~130 lines that read
+                // tank.boundsCentreWorldNoCheck / helper.lastEnemyGet on a pool-returned
+                // tank => NRE. Defer the recycle one frame (avoids mutating ManTechs
+                // mid-tick / re-entrancy) and bail out of this tick immediately.
+                DebugTAC_AI.LogWarnPlayerOncePerKey("RAircraft.AttackWoosh:NoRBody:" + tank.name,
+                    KickStart.ModID + ": AttackWoosh on " + tank.name + " with null rbody — deferring Recycle.", null);
+                InvokeHelper.InvokeSingle(() => tank.Recycle(), 0f);
+                return;
             }
 
-            if (mind.CommanderMind == EnemyAttitude.Homing && helper.lastEnemyGet != null)
+            // P13 BUG-2: lastEnemyGet and lastEnemyGet.tank are both guaranteed non-null here —
+            // EnemyOperationsController.Execute now treats a null .tank as "no target" before
+            // dispatching, so the old `lastEnemyGet.IsNotNull()` guard (which only validated the
+            // Visible, never its .tank) is redundant.
+            if (mind.CommanderMind == EnemyAttitude.Homing)
             {
                 if ((helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).magnitude > mind.MaxCombatRange)
                 {
-                    bool isMending = RGeneral.LollyGag(helper, tank, mind, ref direct);
+                    // P13 BUG-1: aircraft mend with the air idle, not the ground LollyGag.
+                    // LollyGagAir applies the altitude/sea/ground snap (below, ~line 280) that
+                    // RGeneral.LollyGag lacks; this matches the Airplane routing in DispatchNoTargetIdle.
+                    bool isMending = LollyGagAir(helper, tank, mind, ref direct);
                     if (isMending)
                         return;
                 }
             }
-            if (helper.lastEnemyGet == null)
-            {
-                LollyGagAir(helper, tank, mind, ref direct);
-                return;
-            }
+            // B7: null-target case centralized in EnemyOperationsController.Execute
+            // (which dispatches Airplane/Chopper to LollyGagAir).
             RGeneral.Engadge(helper, tank, mind);
 
             float enemyExt = helper.lastEnemyGet.GetCheapBounds();
@@ -56,6 +66,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             switch (mind.CommanderAttack)
             {
                 case EAttackMode.Safety:
+                    helper.AISetSettings.ObjectiveRange = spacing + range;   // B9: parallel to RWheeled/RChopper/RStarship writeback
                     helper.AISetSettings.SideToThreat = false;
                     helper.Retreat = true;
                     direct.DriveDest = EDriveDest.FromLastDestination;
@@ -82,83 +93,46 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         }
                     }
                     break;
-                    /*
-                case EnemyAttack.Circle:
-                    helper.SideToThreat = true;
-                    helper.Retreat = false;
-                    if (tank.wheelGrounded)
+                case EAttackMode.Circle:
+                    // D1 revive: AC-130-style broadside salvo for LargeAircraft / BankOnly
+                    // planes when WeaponAimMod is loaded. Allied counterpart at BAviator:103.
+                    // Small fighters can't stably broadside — fall through to default.
                     {
-                        if (!helper.IsTechMoving(helper.EstTopSped / AIGlobals.SpeedPanicDividend))
-                            helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true);
+                        var pilot = helper.MovementController as AIControllerAir;
+                        var planeCore = pilot?.AICore as AI.Movement.AICores.AirplaneAICore;
+                        bool canBroadside = KickStart.isWeaponAimModPresent && pilot != null
+                            && (pilot.LargeAircraft || (planeCore != null && planeCore.BankOnly));
+                        if (!canBroadside) goto default;
+                        helper.AISetSettings.ObjectiveRange = spacing + range;   // B9
+                        helper.AISetSettings.SideToThreat = true;
+                        helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
+                        direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
+                        if (dist < spacing + range)
+                        {
+                            RGeneral.MarkRetreating(helper);   // B10
+                            direct.DriveAwayFacingPerp();
+                        }
                         else
-                            helper.SettleDown();
-                    }
-                    if (dist < spacing + 2)
-                    {
-                        direct.DriveDest = EDriveDest.FromLastDestination;
-                        direct.lastDestination = helper.lastEnemy.tank.boundsCentreWorldNoCheck;
-                    }
-                    else if (mind.Range < spacing + range)
-                    {
-                        direct.DriveDest = EDriveDest.ToLastDestination;
-                        direct.lastDestination = helper.lastEnemy.tank.boundsCentreWorldNoCheck;
-                    }
-                    else
-                    {
-                        helper.BOOST = true;
-                        direct.DriveDest = EDriveDest.ToLastDestination;
-                        direct.lastDestination = helper.lastEnemy.tank.boundsCentreWorldNoCheck;
+                        {
+                            RGeneral.MarkAdvancing(helper);    // B10
+                            direct.DriveToFacingPerp();
+                            if (dist > spacing + (range * 2))
+                                helper.FullBoost = true;
+                        }
+                        if (tank.wheelGrounded)
+                        {
+                            if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
+                                helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
+                            else
+                                helper.SettleDown();
+                        }
                     }
                     break;
-                case EnemyAttack.Spyper:
-                    range = EnemyMind.SpacingRangeSpyper;
-
-                    helper.SideToThreat = true;
-                    helper.Retreat = false;
-                    if (dist < spacing + (range / 2))
-                    {
-                        direct.DriveDest = EDriveDest.FromLastDestination;
-                        direct.lastDestination = helper.lastEnemy.tank.boundsCentreWorldNoCheck;
-                        if (tank.wheelGrounded)
-                        {
-                            if (!helper.IsTechMoving(helper.EstTopSped / AIGlobals.SpeedPanicDividend))
-                                helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true);
-                            else
-                                helper.SettleDown();
-                        }
-                    }
-                    else if (dist < spacing + range)
-                    {
-                        direct.lastDestination = helper.lastEnemy.tank.boundsCentreWorldNoCheck;
-                    }
-                    else if (dist < spacing + (range * 2))
-                    {
-                        if (tank.wheelGrounded)
-                        {
-                            if (!helper.IsTechMoving(helper.EstTopSped / AIGlobals.SpeedPanicDividend))
-                                helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true);
-                            else
-                                helper.SettleDown();
-                        }
-                        direct.DriveDest = EDriveDest.ToLastDestination;
-                        direct.lastDestination = helper.lastEnemy.tank.boundsCentreWorldNoCheck;
-                    }
-                    else
-                    {
-                        if (tank.wheelGrounded)
-                        {
-                            if (!helper.IsTechMoving(helper.EstTopSped / AIGlobals.SpeedPanicDividend))
-                                helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true);
-                            else
-                                helper.SettleDown();
-                        }
-                        helper.BOOST = true;
-                        direct.DriveDest = EDriveDest.ToLastDestination;
-                        direct.lastDestination = helper.lastEnemy.tank.boundsCentreWorldNoCheck;
-                    }
-                    break;*/
-                default:    // Others
-
+                // Note: prior `EnemyAttack.Spyper` commented-arm DELETED (D1) — enum value no longer
+                // exists; fixed-wing snipers belong under `EAttackMode.Ranged` for `Starship/Chopper`
+                // archetypes. Aircraft fall through to `default` for ranged engagement.
+                default:    // T2: Chase/Strong/Random/AutoSet share kinematics — target-selection differentiation lives in TankAIHelper.FindEnemy
+                    helper.AISetSettings.ObjectiveRange = spacing + range;   // B9: parallel to RWheeled/RChopper/RStarship writeback
                     helper.AISetSettings.SideToThreat = false;
                     helper.Retreat = false;
                     direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
@@ -189,6 +163,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     break;
             }
+            mind.MinCombatRange = range;   // B6: publish per-tick combat range to mind for downstream weapon/range checks
         }
 
         public static bool LollyGagAir(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct, bool holdGround = false)
@@ -247,7 +222,6 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     {
                         if ((energy.storageTotal - energy.spareCapacity) / energy.storageTotal > 0.5)
                         {
-                            //flex yee building speeds on them players
                             helper.PendingDamageCheck = !RRepair.EnemyInstaRepair(tank, mind);
                             //helper.AttemptedRepairs++;
                         }
@@ -287,26 +261,13 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     case EnemyAttitude.Miner:   // mine resources
                         RMiner.MineYerOwnBusiness(helper, tank, mind, ref direct);
                         break;
-                    //The case below I still have to think of a reason for them to do the things
                     case EnemyAttitude.Junker:  // Huddle up by blocks on the ground
                         FlutterAround(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.OnRails:
-                        break;
-                    case EnemyAttitude.NPCBaseHost:
-                        break;
-                    case EnemyAttitude.Boss:
-                        break;
-                    case EnemyAttitude.Invader:
-                        break;
-                    case EnemyAttitude.Guardian:
-                        break;
-                    case EnemyAttitude.PartTurret:
-                        break;
-                    case EnemyAttitude.PartStatic:
-                        break;
-                    case EnemyAttitude.PartMimic:
-                        break;
+                    // P13 DEAD-3: removed empty OnRails / NPCBaseHost / Boss / Invader / Guardian /
+                    // PartTurret / PartStatic / PartMimic cases — all were no-op `break`s identical
+                    // to default. Aircraft have no idle behavior for these attitudes; they fall to
+                    // default and then the unconditional altitude/sea/ground snap below.
                     default:
                         break;
                 }
@@ -321,7 +282,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
         }
         public static void FlutterAround(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
-            if (helper.ActionPause == 1)
+            // REVIVED reroll: on expiry pick a new flutter heading + restart (was `== 1`, never hit by the
+            // tick steps). Retuned via the actionPause seconds shim: 1000t = 2.0s flutter hold (was 30t = 0.06s). docs/21.
+            if (helper.ActionPause <= 0)
             {
                 if (mind.GetComponent<AIControllerAir>() && UnityEngine.Random.Range(1, 10) < 6)
                 {
@@ -330,17 +293,15 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 else
                     direct.SetLastDest(GetRANDPos(tank));
-                helper.actionPause = 0;
+                helper.actionPause = 1000;
             }
-            else if (helper.ActionPause == 0)
-                helper.actionPause = 30;
             direct.DriveDest = EDriveDest.ToLastDestination;
         }
 
         public static void EnemyDogfighting(TankAIHelper helper, Tank tank, EnemyMind mind)
         {   // Only accounts for forward weapons
 
-            helper.AttackEnemy = false;
+            helper.WantsToFight = false;
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
 
             if (helper.lastEnemyGet != null)
@@ -348,34 +309,22 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 Vector3 aimTo = (helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).normalized;
                 helper.Urgency += KickStart.AIClockPeriod / 25f;
                 Vector3 foreDirect = tank.rootBlockTrans.InverseTransformDirection(aimTo);
-                //if (KickStart.isWeaponAimModPresent && mind.CommanderAttack == EnemyAttack.Circle && ((AIControllerAir) helper.MovementController).LargeAircraft)
-                //{   // AC-130 broadside attack
-                //    if (Mathf.Abs((tank.rootBlockTrans.right - aimTo).magnitude) < 0.25f || Mathf.Abs((tank.rootBlockTrans.right - aimTo).magnitude) > -0.25f || helper.Urgency >= 30)
-                //    {
-                //        helper.DANGER = true;
-                //        //helper.Urgency = 50;
-                //        helper.SettleDown();
-                //    }
-                //}
-                //else
-                //{   // Normal Dogfighting
+                // D1: prior commented AC-130 broadside arm DELETED — the live revival is in
+                // RAircraft.AttackWoosh's Circle switch arm (uses AIControllerAir.AICore as
+                // AirplaneAICore for the BankOnly check). EnemyDogfighting handles forward-arms only.
                 if ((foreDirect.z > 0.15f && foreDirect.x > -0.5f && foreDirect.x < 0.5f) || helper.Urgency >= 30)
                 {
-                    helper.AttackEnemy = true;
-                    //helper.Urgency = 50;
+                    helper.WantsToFight = true;
                     helper.SettleDown();
                 }
-                //}
             }
             else
             {
                 helper.Urgency = 0;
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
             }
         }
 
-
-        // Utilities
         public static Vector3 GetRANDPos(Tank tank)
         {
             float rangeRAND = 250;

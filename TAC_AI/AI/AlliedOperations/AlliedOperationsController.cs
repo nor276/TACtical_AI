@@ -1,40 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using UnityEngine;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI.AlliedOperations
 {
-    /// <summary>
-    /// Will be implemented later if performance becomes an issue. 
-    ///   Currently the main game bottleneck is the physics engine
-    /// WARNING - MUST BE A STRUCT WITH NO SAVED ITEMS INSIDE!
-    /// </summary>
-    internal interface AIOperation
-    {
-        void Init(TankAIHelper helper);
-        void DeInit(TankAIHelper helper);
-        void MovementActions(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct);
-        void OnSerialize(TankAIHelper helper, Tank tank, bool saving);
-    }
-
     internal class AlliedOperationsController
     {
         private TankAIHelper helper;
 
-        private static Dictionary<AIType, AIOperation> Operations = new Dictionary<AIType, AIOperation>
-        {
-            //{ AIType.Escort, new BEscort()}
-        };
-
         public AlliedOperationsController(TankAIHelper helper)
         {
             this.helper = helper;
-        }
-
-        public void Startup()
-        {
         }
 
         public void Execute()
@@ -44,14 +21,14 @@ namespace TAC_AI.AI.AlliedOperations
             {
                 switch (helper.DediAI)
                 {
-                    /*
                     case AIType.Assault:
-                        // Up your arsenal
-                        BBase.HoldSupport(helper, helper.tank, ref direct);
-                        BGeneral.AidDefend(helper, helper.tank);
-                        break;*/
+                        // Stationary-Assault = turret. ShootToDestroy leads aim and gates
+                        // WantsToFight on aim alignment — what a turret actually wants.
+                        // HoldProtect keeps it anchored (Stationary is non-mobile).
+                        BAssassin.ShootToDestroy(helper, helper.tank);
+                        BBase.HoldProtect(helper, helper.tank, ref direct);
+                        break;
                     default:
-                        // I fight for my friends
                         BBase.HoldProtect(helper, helper.tank, ref direct);
                         BGeneral.AidDefend(helper, helper.tank);
                         break;
@@ -65,42 +42,41 @@ namespace TAC_AI.AI.AlliedOperations
                         switch (helper.DriverType)
                         {
                             case AIDriverType.Tank:
-                                // We move to victory
                                 BGeneral.AidDefend(helper, helper.tank);
                                 BEscort.MotivateMove(helper, helper.tank, ref direct);
                                 break;
 
                             case AIDriverType.Astronaut:
-                                // Grace from Space
                                 BGeneral.AidDefend(helper, helper.tank);
                                 BAstrotech.MotivateSpace(helper, helper.tank, ref direct);
                                 break;
 
                             case AIDriverType.Sailor:
-                                // Yarr
                                 BGeneral.AidDefend(helper, helper.tank);
                                 BBuccaneer.MotivateBote(helper, helper.tank, ref direct);
                                 break;
 
                             case AIDriverType.Pilot:
-                                // Fly and doggyfight
                                 BAviator.Dogfighting(helper, helper.tank);
                                 BAviator.MotivateFly(helper, helper.tank, ref direct);
                                 break;
 
-                            case AIDriverType.Stationary:
-                                // STAY and guard
-                                BGeneral.AidDefend(helper, helper.tank);
-                                BBase.HoldSupport(helper, helper.tank, ref direct);
-                                break;
+                            // P13 TD-3: removed the Escort + Stationary case. It was unreachable —
+                            // the top-level `if (helper.DriverType == AIDriverType.Stationary)` at the
+                            // head of Execute() intercepts every stationary tech before this switch and
+                            // routes it to BBase.HoldProtect (+ AidDefend). Its old body
+                            // (AidDefend + HoldSupport) was behavior-identical anyway, since
+                            // HoldSupport is byte-for-byte equal to HoldProtect.
 
                             case AIDriverType.AutoSet:
-                                // Set ourselves up automatically
-                                DebugTAC_AI.Log(KickStart.ModID + ": AIDriver is set to AutoSet, but this should have been handled beforehand!");
-                                DebugTAC_AI.Log(KickStart.ModID + ": RESETTING TO DEFAULTS");
-                                helper.SetDriverType(AIDriverType.Tank);
+                                // T5: with SetDriverType now resolving AutoSet at the chokepoint,
+                                // reaching dispatch with AutoSet means an upstream caller bypassed
+                                // SetDriverType (e.g. raw `DriverType = AutoSet` via reflection or
+                                // network deserialization). Self-heal and surface loudly.
+                                DebugTAC_AI.LogError(KickStart.ModID + ": AutoSet reached dispatch for "
+                                    + helper.tank.name + " — upstream resolve missing. DediAI=" + helper.DediAI);
+                                helper.ExecuteAutoSetNoCalibrate();
                                 break;
-
 
                             default:
                                 DebugTAC_AI.Log(KickStart.ModID + ": AIDriver is set to an invalid state - " + helper.DriverType);
@@ -110,7 +86,6 @@ namespace TAC_AI.AI.AlliedOperations
                         }
                         break;
                     case AIType.Assault:
-                        // Up your arsenal
                         BAssassin.ShootToDestroy(helper, helper.tank);
                         BAssassin.MotivateKill(helper, helper.tank, ref direct);
                         break;
@@ -122,19 +97,16 @@ namespace TAC_AI.AI.AlliedOperations
                         break;
 
                     case AIType.Prospector:
-                        // We back in the mine
                         BGeneral.SelfDefend(helper, helper.tank);
                         BProspector.MotivateMine(helper, helper.tank, ref direct);
                         break;
 
                     case AIType.Scrapper:
-                        // Grab Scrape and sell
                         BGeneral.SelfDefend(helper, helper.tank);
                         BScrapper.MotivateFind(helper, helper.tank, ref direct);
                         break;
 
                     case AIType.Energizer:
-                        // The thing that keeps going
                         BGeneral.SelfDefend(helper, helper.tank);
                         BEnergizer.MotivateCharge(helper, helper.tank, ref direct);
                         break;
@@ -148,14 +120,17 @@ namespace TAC_AI.AI.AlliedOperations
                         break;
 
                     case AIType.MTStatic:
-                        // Defend and sit like good guard dog
                         BMultiTech.MimicDefend(helper, helper.tank);
                         BMultiTech.MTStatic(helper, helper.tank, ref direct);
                         BMultiTech.BeamLockWithinBounds(helper, helper.tank); //lock rigidbody with closest non-MT Tech on build beam
                         break;
 
                     case AIType.MTMimic:
-                        // Copycat
+                        // P13 TD-1: no MimicDefend/AidDefend companion here by design. MimicAllClosestAlly
+                        // copies the host tech's control state wholesale (FullBoost/FirePROPS etc.), so
+                        // firing is inherited from the copied controls, not computed locally. MTTurret/
+                        // MTStatic differ because they aim themselves via MimicDefend; an independent
+                        // defend call here would fight the copy instead of mirroring the host.
                         BMultiTech.MimicAllClosestAlly(helper, helper.tank, ref direct);
                         break;
 

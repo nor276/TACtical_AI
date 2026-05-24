@@ -1,9 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using TAC_AI.AI.Movement.AICores;
-
 
 namespace TAC_AI.AI {
     

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -23,7 +23,6 @@ namespace TAC_AI.World
         private static readonly int borderSize = 4;
         private static readonly int wF = ButtonWidth - borderSize;
         private static readonly int hF = ButtonHeight - borderSize;
-
 
         private const int MaxCountWidthUnits = 9;
         private const int MaxCountWidthButtons = 3;
@@ -72,7 +71,6 @@ namespace TAC_AI.World
         {
             LastSelectedCount = 0;
         }
-
 
         public static void SetActive(bool active)
         {
@@ -204,7 +202,6 @@ namespace TAC_AI.World
             }
             inst.Invoke("RTSDamageWarningEnd", duration);
         }
-
 
         private static LocExtStringMod LOC_AIStatus = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
@@ -632,7 +629,6 @@ namespace TAC_AI.World
                 }
             }
 
-
             GUI.EndScrollView();
             scrolllSize = VertPosOff + ButtonHeight;
 
@@ -874,7 +870,7 @@ namespace TAC_AI.World
             {
                 var item = lastTanks[step];
                 item.RTSControlled = false;
-                item.lastEnemy = null;
+                item.ReleaseTarget();
                 item.ForceAllAIsToEscort(false);
             }
             ManSFX.inst.PlayUISFX(ManSFX.UISfxType.AIIdle);
@@ -1065,7 +1061,6 @@ namespace TAC_AI.World
             }
         }
 
-
         private static bool hideState = false;
         private static HashSet<ManHUD.HUDElementType> PrevOpen = new HashSet<ManHUD.HUDElementType>(); 
         private static void HideHotbar(bool hide)
@@ -1117,7 +1112,6 @@ namespace TAC_AI.World
             CommandBarSmall.x = (ManWorldRTS.RTSScaledWidth - CommandBarSmall.width) / 2;
             CommandBarSmall.y = ManWorldRTS.RTSScaledHeight - CommandBarSmall.height;
         }
-
 
         private const int AIRTSDisplayToolID = 8016;
         private static Rect toolWindow = new Rect(0, 0, 200, 80);   // the "window"
@@ -1202,7 +1196,6 @@ namespace TAC_AI.World
                 if (!Init(helper))
                     DebugTAC_AI.Exception("TACtical_AI.PlayerRTSUI.RTSUnitDisp: Tried to init a null or unloaded Tech");
             }
-
 
             public bool Init(TankAIHelper helper)
             {

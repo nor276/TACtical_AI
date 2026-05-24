@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -27,17 +27,6 @@ namespace TAC_AI
             if (oInst == default)
             {
                 oInst = new TerraTechETCUtil.ModDataHandle(KickStart.ModID);
-                /*
-                try
-                {
-                    KickStart.PatchMod();
-                }
-                catch (Exception e)
-                {
-                    DebugTAC_AI.Log(KickStart.ModID + ": Error on patch");
-                    DebugTAC_AI.Log(e);
-                }
-                */
             }
         }
         public IEnumerable<float> InitIterator()
@@ -58,7 +47,10 @@ namespace TAC_AI
                     TerraTechETCUtil.ModStatusChecker.EncapsulateSafeInit(KickStart.ModID,
                         KickStart.MainOfficialInit, KickStart.DeInitALL);
                 }
-                catch { }
+                catch (Exception e)
+                {
+                    DebugTAC_AI.LogError(KickStart.ModID + ": KickStartTAC_AI.Init - MainOfficialInit failed: " + e);
+                }
                 isInit = true;
             }
             else
@@ -83,7 +75,6 @@ namespace TAC_AI
             if (ManUI.inst.HasInitialised)
                 DebugTAC_AI.DoShowWarnings();
         }
-
 
     }
 #endif

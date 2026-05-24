@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
@@ -22,7 +22,6 @@ namespace TAC_AI
         const TTMsgType AIRTSAttack = (TTMsgType)4321;
         const TTMsgType AIEnemyType = (TTMsgType)4322;
         const TTMsgType AIEnemySiege = (TTMsgType)4323;
-
 
         public class AITypeChangeMessage : MessageBase
         {
@@ -153,6 +152,17 @@ namespace TAC_AI
                 this.netTechID = netTechID;
                 this.enemyType = (int)EnemyType;
             }
+            public override void Deserialize(NetworkReader reader)
+            {
+                netTechID = reader.ReadUInt32();
+                enemyType = reader.ReadInt32();
+            }
+
+            public override void Serialize(NetworkWriter writer)
+            {
+                writer.Write(netTechID);
+                writer.Write(enemyType);
+            }
 
             public uint netTechID;
             public int enemyType;
@@ -168,6 +178,21 @@ namespace TAC_AI
                 MaxHP = totalHP;
                 Starting = start;
             }
+            public override void Deserialize(NetworkReader reader)
+            {
+                Team = reader.ReadInt32();
+                TeamTargeted = reader.ReadInt32();
+                MaxHP = reader.ReadInt64();
+                Starting = reader.ReadBoolean();
+            }
+
+            public override void Serialize(NetworkWriter writer)
+            {
+                writer.Write(Team);
+                writer.Write(TeamTargeted);
+                writer.Write(MaxHP);
+                writer.Write(Starting);
+            }
 
             public int Team;
             public int TeamTargeted;
@@ -175,20 +200,26 @@ namespace TAC_AI
             public bool Starting;
         }
 
-
-
         private static int localConnectionID { get { return ManNetwork.inst.Client.connection.connectionId; } }
 
-
-        // AIRTSCommandMessage
         public static void TryBroadcastRTSCommand(uint netTechID, Vector3 Pos)
         {
-            if (HostExists) try
+            if (!ManNetwork.IsNetworked) return;
+            try
+            {
+                var msg = new AIRTSCommandMessage(netTechID, Pos);
+                if (ManNetwork.IsHost)
                 {
-                    DebugTAC_AI.LogNet("Sent new TryBroadcastRTSCommand update to all");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRTSPosCommand, new AIRTSCommandMessage(netTechID, Pos), Host);
+                    DebugTAC_AI.LogNet("Sent RTSCommand fan-out to clients (host)");
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRTSPosCommand, msg, Host);
                 }
-                catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastRTSCommand!"); }
+                else
+                {
+                    DebugTAC_AI.LogNet("Sent RTSCommand upstream to host (client)");
+                    Singleton.Manager<ManNetwork>.inst.SendToServer(AIRTSPosCommand, msg);
+                }
+            }
+            catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastRTSCommand!"); }
         }
         public static void OnClientAcceptRTSCommand(NetworkMessage netMsg)
         {
@@ -214,6 +245,8 @@ namespace TAC_AI
                 NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
                 find.tech.GetHelperInsured().DirectRTSDest(reader.Position);
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerAcceptRTSCommand update, ordering tech " + find.name + " to " + reader.Position);
+                // Echo to all clients except the original sender so they sync.
+                Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRTSPosCommand, reader, Host);
             }
             catch
             {
@@ -221,15 +254,24 @@ namespace TAC_AI
             }
         }
 
-        // AIRTSControlMessage
         public static void TryBroadcastRTSControl(uint netTechID, bool isRTS)
         {
-            if (HostExists) try
+            if (!ManNetwork.IsNetworked) return;
+            try
+            {
+                var msg = new AIRTSControlMessage(netTechID, isRTS);
+                if (ManNetwork.IsHost)
                 {
-                    DebugTAC_AI.LogNet("Sent new TryBroadcastRTSControl update to all");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRTSPosControl, new AIRTSControlMessage(netTechID, isRTS), Host);
+                    DebugTAC_AI.LogNet("Sent RTSControl fan-out to clients (host)");
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRTSPosControl, msg, Host);
                 }
-                catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastRTSControl!"); }
+                else
+                {
+                    DebugTAC_AI.LogNet("Sent RTSControl upstream to host (client)");
+                    Singleton.Manager<ManNetwork>.inst.SendToServer(AIRTSPosControl, msg);
+                }
+            }
+            catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastRTSControl!"); }
         }
         public static void OnClientAcceptRTSControl(NetworkMessage netMsg)
         {
@@ -255,6 +297,8 @@ namespace TAC_AI
                 NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
                 find.tech.GetHelperInsured().isRTSControlled = reader.RTSControl;
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerAcceptRTSControl update, Tech " + find.name + "'s RTS control is " + reader.RTSControl);
+                // Echo to all clients except the original sender so they sync.
+                Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRTSPosControl, reader, Host);
             }
             catch
             {
@@ -263,15 +307,24 @@ namespace TAC_AI
             }
         }
 
-        // AIRTSAttackComm
         public static void TryBroadcastRTSAttack(uint netTechID, uint TargetNetTechID)
         {
-            if (HostExists) try
+            if (!ManNetwork.IsNetworked) return;
+            try
+            {
+                var msg = new AIRTSAttackComm(netTechID, TargetNetTechID);
+                if (ManNetwork.IsHost)
                 {
-                    DebugTAC_AI.LogNet("Sent new TryBroadcastRTSAttack update to all");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRTSAttack, new AIRTSAttackComm(netTechID, TargetNetTechID), Host);
+                    DebugTAC_AI.LogNet("Sent RTSAttack fan-out to clients (host)");
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRTSAttack, msg, Host);
                 }
-                catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastRTSAttack!"); }
+                else
+                {
+                    DebugTAC_AI.LogNet("Sent RTSAttack upstream to host (client)");
+                    Singleton.Manager<ManNetwork>.inst.SendToServer(AIRTSAttack, msg);
+                }
+            }
+            catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastRTSAttack!"); }
         }
         public static void OnClientAcceptRTSAttack(NetworkMessage netMsg)
         {
@@ -301,6 +354,8 @@ namespace TAC_AI
                 var helper = find.tech.GetHelperInsured();
                 helper.lastEnemy = targeting.tech.visible;
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerAcceptRTSAttack update,  tech " + find.name + "'s RTS target is " + targeting.tech.name);
+                // Echo to all clients except the original sender so they sync.
+                Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRTSAttack, reader, Host);
             }
             catch
             {
@@ -308,18 +363,24 @@ namespace TAC_AI
             }
         }
 
-        // AITypeChangeMessage
         public static void TryBroadcastNewAIState(uint netTechID, AIType AIType, AIDriverType AIDriver)
         {
-            if (HostExists)
+            if (!ManNetwork.IsNetworked) return;
+            try
             {
-                try
+                var msg = new AITypeChangeMessage(netTechID, AIType, AIDriver);
+                if (ManNetwork.IsHost)
                 {
-                    DebugTAC_AI.LogNet("Sent new AdvancedAI update to all");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIADVTypeChange, new AITypeChangeMessage(netTechID, AIType, AIDriver), Host);
+                    DebugTAC_AI.LogNet("Sent AdvancedAI fan-out to clients (host)");
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIADVTypeChange, msg, Host);
                 }
-                catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send new AdvancedAI update, shouldn't be too bad in the long run"); }
+                else
+                {
+                    DebugTAC_AI.LogNet("Sent AdvancedAI upstream to host (client)");
+                    Singleton.Manager<ManNetwork>.inst.SendToServer(AIADVTypeChange, msg);
+                }
             }
+            catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send new AdvancedAI update, shouldn't be too bad in the long run"); }
         }
         public static void OnClientSetNewAIState(NetworkMessage netMsg)
         {
@@ -347,8 +408,10 @@ namespace TAC_AI
                 NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
                 var helper = find.tech.GetHelperInsured();
                 helper.TrySetAITypeRemote(netMsg.GetSender(), reader.AIType, reader.AIDriving);
-                DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerSetNewAIState update, tech " + find.name + " changing to " + helper.DediAI.ToString() 
+                DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerSetNewAIState update, tech " + find.name + " changing to " + helper.DediAI.ToString()
                     + " | Driver: " + helper.DriverType.ToString());
+                // Echo to all clients except the original sender so they sync.
+                Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIADVTypeChange, reader, Host);
             }
             catch
             {
@@ -356,20 +419,24 @@ namespace TAC_AI
             }
         }
 
-        // AIRetreatMessage
-        /// <summary>
-        /// sent from both clients and server
-        /// </summary>
-        /// <param name="team"></param>
-        /// <param name="retreat"></param>
         public static void TryBroadcastNewRetreatState(int team, bool retreat)
         {
-            if (HostExists) try
+            if (!ManNetwork.IsNetworked) return;
+            try
+            {
+                var msg = new AIRetreatMessage(team, retreat);
+                if (ManNetwork.IsHost)
                 {
-                    DebugTAC_AI.LogNet("Sent new TryBroadcastNewRetreatState update to all");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRetreatRequest, new AIRetreatMessage(team, retreat), Host);
+                    DebugTAC_AI.LogNet("Sent NewRetreatState fan-out to clients (host)");
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIRetreatRequest, msg, Host);
                 }
-                catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastNewRetreatState update, shouldn't be too bad in the long run"); }
+                else
+                {
+                    DebugTAC_AI.LogNet("Sent NewRetreatState upstream to host (client)");
+                    Singleton.Manager<ManNetwork>.inst.SendToServer(AIRetreatRequest, msg);
+                }
+            }
+            catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastNewRetreatState update, shouldn't be too bad in the long run"); }
         }
         public static void OnClientSetRetreatState(NetworkMessage netMsg)
         {
@@ -393,6 +460,8 @@ namespace TAC_AI
             {
                 AIECore.TeamRetreat(reader.Team, reader.Retreat);
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerSetRetreatState update, changing retreat states of (" + reader.Team +") to retreat " + reader.Retreat);
+                // Echo to all clients except the original sender so they sync.
+                Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRetreatRequest, reader, Host);
             }
             catch
             {
@@ -400,18 +469,12 @@ namespace TAC_AI
             }
         }
 
-        // AIEnemyState
-        /// <summary>
-        /// SERVER SENT
-        /// </summary>
-        /// <param name="netTechID"></param>
-        /// <param name="smartz"></param>
         public static void TryBroadcastNewEnemyState(uint netTechID, EnemySmarts smartz)
         {
             if (HostExists && ManNetwork.IsHost) try
                 {
                     DebugTAC_AI.LogNet("Sent new TryBroadcastNewEnemyState update to all");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIRetreatRequest, new AIEnemySet(netTechID, smartz));
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIEnemyType, new AIEnemySet(netTechID, smartz));
                 }
                 catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastNewEnemyState update, shouldn't be too bad in the long run"); }
         }
@@ -435,13 +498,12 @@ namespace TAC_AI
             DebugTAC_AI.Assert(true, KickStart.ModID + ": OnServerEnemyAISetup should not be sent to host.  This should not be happening.");
         }
 
-        // AIEnemySiege
         public static void TryBroadcastNewEnemySiege(int Team, int TeamTargeted, long HP, bool starting)
         {
             if (HostExists && ManNetwork.IsHost) try
                 {
                     DebugTAC_AI.LogNet("Sent new TryBroadcastNewEnemySiege update to all but host");
-                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIRetreatRequest, 
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIEnemySiege,
                         new AIEnemyStagedSiege(Team, TeamTargeted, HP, starting));
                 }
                 catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastNewEnemySiege update, shouldn't be too bad in the long run"); }
@@ -468,23 +530,17 @@ namespace TAC_AI
             DebugTAC_AI.Assert(true, KickStart.ModID + ": OnServerEnemySiegeUpdate should not be sent to host.  This should not be happening.");
         }
 
-
         public static class Patches
         {
-            /// <summary>
-            /// Note: Both sides must subscribe to work!
-            /// </summary>
             [HarmonyPatch(typeof(NetPlayer), "OnStartClient")]
             static class OnStartClient
             {
                 static void Postfix(NetPlayer __instance)
                 {
-                    // Standard
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRetreatRequest, new ManNetwork.MessageHandler(OnClientSetRetreatState));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIADVTypeChange, new ManNetwork.MessageHandler(OnClientSetNewAIState));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIEnemyType, new ManNetwork.MessageHandler(OnClientEnemyAISetup));
 
-                    // RTS
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRTSPosCommand, new ManNetwork.MessageHandler(OnClientAcceptRTSCommand));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRTSPosControl, new ManNetwork.MessageHandler(OnClientAcceptRTSControl));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRTSAttack, new ManNetwork.MessageHandler(OnClientAcceptRTSAttack));
@@ -501,12 +557,10 @@ namespace TAC_AI
                 {
                     if (!HostExists)
                     {
-                        // Standard
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRetreatRequest, new ManNetwork.MessageHandler(OnServerSetRetreatState));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIADVTypeChange, new ManNetwork.MessageHandler(OnServerSetNewAIState));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIEnemyType, new ManNetwork.MessageHandler(OnServerEnemyAISetup));
 
-                        // RTS
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRTSPosCommand, new ManNetwork.MessageHandler(OnServerAcceptRTSCommand));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRTSPosControl, new ManNetwork.MessageHandler(OnServerAcceptRTSControl));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRTSAttack, new ManNetwork.MessageHandler(OnServerAcceptRTSAttack));

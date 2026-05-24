@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -13,67 +13,35 @@ using System.Text;
 
 namespace TAC_AI.AI
 {
-    internal class AIControllerDefault : MonoBehaviour, IMovementAIController, IPathfindable
+    internal class AIControllerDefault : MovementControllerBase, IPathfindable
     {
-        internal static FieldInfo boostGet = typeof(BoosterJet).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
-
-        private Tank _tank;
-        public Tank Tank
-        {
-            get => _tank;
-            internal set => _tank = value;
-        }
-        private TankAIHelper _helper;
-        public TankAIHelper Helper
-        {
-            get => _helper;
-            internal set => _helper = value;
-        }
-        private IMovementAICore _AI;
-        public IMovementAICore AICore
-        {
-            get => _AI;
-            internal set => _AI = value;
-        }
-        private Enemy.EnemyMind _mind;
-        public Enemy.EnemyMind EnemyMind
-        {
-            get => _mind;
-            internal set => _mind = value;
-        }
+        internal static FieldInfo boostGet = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
         //Manuvering (Post-Pathfinding)
-        /// <summary> The point where the AI is driving towards.  This is NOT the destination! </summary>
-        public Vector3 PathPoint { get => PathPointMain.ScenePosition; }// Where land and spaceships coordinate movement
-        /// <summary> The point where the AI is driving towards.  This is NOT the destination! </summary>
+        public override Vector3 PathPoint => PathPointMain.ScenePosition;// Where land and spaceships coordinate movement
         private WorldPosition PathPointMain = WorldPosition.FromScenePosition(Vector3.zero);// Where land and spaceships coordinate movement
         public Vector3 PathPointSet
         {
             set
             {
-                if (value.IsNaN() || float.IsInfinity(value.x) || float.IsInfinity(value.z))
+                // P08 B-NEW9-2: Y-axis infinity check was missing. Air-target altitude math is the
+                // most likely source of an infinite Y; without this guard it propagates into the
+                // stored WorldPosition and downstream `PathPoint` consumers.
+                if (value.IsNaN() || float.IsInfinity(value.x) || float.IsInfinity(value.y) || float.IsInfinity(value.z))
                 {
                     DebugTAC_AI.Assert("AIControllerDefault.PathPointSet - lastDestination was NaN or infinity.  Defaulting to own position");
                     PathPointMain = WorldPosition.FromScenePosition(Tank.boundsCentreWorldNoCheck);
+                    return;
                 }
-                /*
-                if (value.IsNaN())
-                    DebugTAC_AI.Exception("AIControllerDefault.PathPointSet - lastDestination was NaN!");
-                if (float.IsInfinity(value.x) || float.IsInfinity(value.z))
-                    DebugTAC_AI.Exception("AIControllerDefault.PathPointSet - lastDestination was Inf!");
-                */
                 PathPointMain = WorldPosition.FromScenePosition(value);
             }
         }// Where land and spaceships coordinate movement
-        public float GetDrive => _AI.GetDrive;
 
-        //Tech Drive Data Gathering
         public Vector3 BoostBias = Vector3.zero;// Center of thrust of all boosters, center of boost
         //public float BoosterThrustBias = 0.5f;
 
-        //AI Pathfinding
         public bool AutoPathfind { get; set; } = false;
-        public bool Do3DPathing => _helper.Attempt3DNavi;
+        public bool Do3DPathing => Helper.Attempt3DNavi;
         public AIEAutoPather Pathfinder { get; set; }
         public WaterPathing WaterPathing { get; set; }
         public float PathingPrecision { get; set; } = 10;
@@ -134,8 +102,9 @@ namespace TAC_AI.AI
             if (pos == null)
             {
                 PathPlanned.Clear();
-                return; // Clearing 
+                return; // Clearing
             }
+            PathPlanned.Clear();
             if (DebugTAC_AI.NoLogPathing)
             {
                 if (pos.Count == 0)
@@ -171,8 +140,7 @@ namespace TAC_AI.AI
             }
         }
 
-
-        public void DriveDirector(ref EControlCoreSet core)
+        public override void DriveDirector(ref EControlCoreSet core)
         {
             if (this.Helper == null)
             {
@@ -196,7 +164,7 @@ namespace TAC_AI.AI
                 this.AICore.DriveDirectorEnemy(this.EnemyMind, ref core);
             }
         }
-        public void DriveDirectorRTS(ref EControlCoreSet core)
+        public override void DriveDirectorRTS(ref EControlCoreSet core)
         {
             if (this.Helper == null)
             {
@@ -204,7 +172,6 @@ namespace TAC_AI.AI
                 DebugTAC_AI.Log(KickStart.ModID + ": AI " + tankName + ":  FIRED DriveDirectorRTS WITHOUT THE REQUIRED TankAIHelper MODULE!!!");
                 return;
             }
-
 
             if (this.Helper.AIAlign == AIAlignment.Player)// Allied
             {
@@ -218,76 +185,48 @@ namespace TAC_AI.AI
             }
             else//ENEMY
             {
-                this.AICore.DriveDirectorEnemy(this.EnemyMind, ref core);
+                // Deferred-10 fix: was calling the non-RTS enemy director, leaving the
+                // RTS-specific enemy director dead. Now uses the RTS variant when RTS is active.
+                this.AICore.DriveDirectorEnemyRTS(this.EnemyMind, ref core);
             }
         }
 
-        public void DriveMaintainer(ref EControlCoreSet core)
+        public override void DriveMaintainer(ref EControlCoreSet core)
         {
             AICore.DriveMaintainer(Helper, Tank, ref core);
         }
 
-        public void Initiate(Tank tank, TankAIHelper helper, EnemyMind mind = null)
+        protected override IMovementAICore SelectCore(EnemyMind mind)
         {
-            this.Tank = tank;
-            this.Helper = helper;
-            this.EnemyMind = mind;
-
-            if (mind.IsNull())
+            // I: the (DriverType | EvilCommander) -> CoreKind mapping is owned by MovementDispatch
+            // (single source of truth, shared with the container choice in RecalMoveAIController*).
+            // Unmapped values fall back to Land + warn-once rather than throwing - SelectCore runs on
+            // the per-tick recalibrate path, where a throw would poison every other tech that frame.
+            MovementCoreKind kind = mind.IsNull()
+                ? MovementDispatch.CoreForPlayer(Helper.DriverType)
+                : MovementDispatch.CoreForEnemy(mind.EvilCommander);
+            if (kind == MovementCoreKind.None)
             {
-                //if (helper.isAstrotechAvail && helper.DediAI == AIECore.DediAIType.Aviator)
-                //    InitiateForVTOL(tank, this);
-                switch (helper.DriverType)
-                {
-                    case AIDriverType.AutoSet:
-                        //AICore = new VehicleAICore();
-                        AICore = new LandAICore();
-                        break;
-                    case AIDriverType.Tank:
-                        AICore = new LandAICore();
-                        break;
-                    case AIDriverType.Sailor:
-                        AICore = new SeaAICore();
-                        break;
-                    case AIDriverType.Astronaut:
-                        AICore = new SpaceAICore();
-                        break;
-                    case AIDriverType.Stationary: // Fallback when unanchored stationary
-                        AICore = new SpaceAICore();
-                        break;
-                    default:
-                        throw new Exception("Invalid control type for Non-NPT Vehicle " + helper.DriverType.ToString());
-                }
-                //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " has been assigned Vehicle AI with " + helper.DriverType.ToString() + ".");
+                string who = mind.IsNull() ? "DriverType '" + Helper.DriverType + "'" : "EvilCommander '" + mind.EvilCommander + "'";
+                DebugTAC_AI.LogWarnPlayerOncePerKey("AIControllerDefault.unmapped." + who,
+                    KickStart.ModID + ": AIControllerDefault.SelectCore: unmapped " + who
+                    + " on " + (Tank.IsNotNull() ? Tank.name : "<null>") + " - falling back to LandAICore.", null);
+                kind = MovementCoreKind.Land;
             }
-            else
+            switch (kind)
             {
-                switch (mind.EvilCommander)
-                {
-                    case EnemyHandling.Wheeled:
-                        AICore = new LandAICore();
-                        break;
-                    case EnemyHandling.Starship:
-                        AICore = new SpaceAICore();
-                        break;
-                    case EnemyHandling.Naval:
-                        AICore = new SeaAICore();
-                        break;
-                    case EnemyHandling.SuicideMissile:
-                        AICore = new SpaceAICore();
-                        break;
-                    case EnemyHandling.Stationary: // Fallback when unanchored stationary
-                        AICore = new SpaceAICore();
-                        break;
-                    default:
-                        throw new Exception("Invalid control type for NPT Vehicle " + mind.EvilCommander.ToString());
-                }
-                //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " has been assigned Non-Player Vehicle AI with " + mind.EvilCommander.ToString() + ".");
+                case MovementCoreKind.Sea:   return new SeaAICore();
+                case MovementCoreKind.Space: return new SpaceAICore();
+                default:                     return new LandAICore();
             }
-            AICore.Initiate(tank, this);
+        }
 
-            tank.AttachEvent.Subscribe(OnAttach);
-            tank.DetachEvent.Subscribe(OnDetach);
+        protected override void OnPostInitiate()
+        {
+            // Composition-change reaction is owned by TankAIHelper.OnBlockAttached/OnBlockDetaching
+            // (sets dirtyAI -> CheckRebuildAlignment -> recalibrate). Ground/sea/space controllers hold
+            // no per-controller state to refresh on a block change, so they subscribe to nothing
+            // (cf. AIControllerStatic; AIControllerAir keeps its handlers only to maintain Grounded).
             CheckBoosters();
             DebugTAC_AI.LogAISetup(KickStart.ModID + ": Added ground AI for " + Tank.name);
         }
@@ -304,7 +243,6 @@ namespace TAC_AI.AI
 
             foreach (ModuleBooster module in Tank.blockman.IterateBlockComponents<ModuleBooster>())
             {
-                //Get the slowest spooling one
                 foreach (FanJet jet in module.transform.GetComponentsInChildren<FanJet>())
                 {
                     float thrust = (float)RawTechBase.thrustRate.GetValue(jet);
@@ -368,39 +306,19 @@ namespace TAC_AI.AI
                 Helper.MaxBoost();
         }
 
-
-        public void OnMoveWorldOrigin(IntVector3 move)
+        public override void OnMoveWorldOrigin(IntVector3 move)
         {
 
         }
-        public Vector3 GetDestination()
+        public override Vector3 GetDestination()
         {
             return Helper.lastDestinationCore;
         }
 
-        public void UpdateEnemyMind(EnemyMind mind)
+        protected override void OnRecycle()
         {
-            this.EnemyMind = mind;
-        }
-
-        public void OnAttach(TankBlock block, Tank tank)
-        {
-        }
-        public void OnDetach(TankBlock block, Tank tank)
-        {
-        }
-
-        public void Recycle()
-        {
-            this.AICore = null;
-            if (this.IsNotNull())
-            {
-                this.SetAutoPathfinding(false);
-                Tank.AttachEvent.Unsubscribe(OnAttach);
-                Tank.DetachEvent.Unsubscribe(OnDetach);
-                //DebugTAC_AI.Log(KickStart.ModID + ": Removed ground AI from " + Tank.name);
-                DestroyImmediate(this);
-            }
+            this.SetAutoPathfinding(false);
+            //DebugTAC_AI.Log(KickStart.ModID + ": Removed ground AI from " + Tank.name);
         }
     }
 }

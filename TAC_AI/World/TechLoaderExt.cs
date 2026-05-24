@@ -1,4 +1,4 @@
-﻿
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,9 +12,6 @@ using HarmonyLib;
 
 namespace TAC_AI.World
 {
-    /// <summary>
-    /// Makes the TechSelector usable for Mods, and for general other case usages
-    /// </summary>
     public class TechLoaderExt
     {
         private static FieldInfo GetUI = typeof(UISnapshotsPanelHUD).GetField("m_SnapshotViewModel",
@@ -193,14 +190,6 @@ namespace TAC_AI.World
             }
             catch { }
         }
-        /// <summary>
-        /// To use the Tech Loader UI. 
-        /// Note it returns null if the tech selected is NULL or the window is reopened for a different purpose.
-        /// </summary>
-        /// <param name="CallbackOnSelected">To invoke</param>
-        /// <param name="PrevSnap">The last snapshot you want this to default to</param>
-        /// <param name="overrideRequest">If you don't want an exception thrown if there is already a request on the UI</param>
-        /// <exception cref="InvalidOperationException">If there is already another TechLoader UI operation in progress</exception>
         public static void Open(Action<Snapshot> CallbackOnSelected, Snapshot PrevSnap, bool UsePlaceInstead, bool overrideRequest = false)
         {
             Insure();
@@ -293,14 +282,6 @@ namespace TAC_AI.World
                 throw new Exception("Error - " + error, e);
             }
         }
-        /// <summary>
-        /// To use the Tech Loader UI. 
-        /// Note it returns null if the folder selected is NULL or the window is reopened for a different purpose.
-        /// </summary>
-        /// <param name="CallbackOnSelected">To invoke</param>
-        /// <param name="PrevFolder">The last folder you want this to default to</param>
-        /// <param name="overrideRequest">If you don't want an exception thrown if there is already a request on the UI</param>
-        /// <exception cref="InvalidOperationException">If there is already another TechLoader UI operation in progress</exception>
         public static void AssignFolder(Action<string> CallbackOnSelected, string PrevFolder, bool overrideRequest = false)
         {
             Insure();
@@ -400,7 +381,6 @@ namespace TAC_AI.World
                 ManSnapshots.inst.SetFolder(tech, folderName);
         }
     }
-
 
     internal class TechSelectorExtender
     {

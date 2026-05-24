@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -9,9 +9,9 @@ using UnityEngine;
 
 namespace TAC_AI.AI
 {
-    internal class AIControllerAir : MonoBehaviour, IMovementAIController
+    internal class AIControllerAir : MovementControllerBase
     {
-        internal static FieldInfo boostGet = typeof(BoosterJet).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
+        internal static FieldInfo boostGet = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
         //internal static FieldInfo boostDir = typeof(BoosterJet).GetField("m_LocalBoostDirection", BindingFlags.NonPublic | BindingFlags.Instance);
         //internal static FieldInfo fanDir = typeof(FanJet).GetField("m_LocalBoostDirection", BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -22,80 +22,43 @@ namespace TAC_AI.AI
             VTOL,       // Both Horizontal and vertical flight
         }
 
-        private Tank _tank;
-        public Tank Tank
-        {
-            get => _tank;
-            internal set => _tank = value;
-        }
-        private TankAIHelper _helper;
-        public TankAIHelper Helper
-        {
-            get => _helper;
-            internal set => _helper = value;
-        }
-        private IMovementAICore _AI;
-        public IMovementAICore AICore => _AI;
-        private Enemy.EnemyMind _mind;
-        public Enemy.EnemyMind EnemyMind
-        {
-            get => _mind;
-            internal set => _mind = value;
-        }
-
-        public FlightType FlyStyle;             // Dictates the way the AI should fly the Tech
+        // Controller-internal flight-mode cache, set by each AICore.Initiate and read by this
+        // controller's own throttle / wing / mayday logic (with its init-ordering semantics).
+        // External / cross-pipeline consumers must query IAirMovementAICore (IsRotorcraft / IsFixedWing)
+        // on AICore instead - this is no longer a cross-pipeline back-channel.
+        internal FlightType FlyStyle;
 
         //Manuvering (Post-Pathfinding)
-        /// <summary>
-        /// Where we try to fly to
-        /// </summary>
-        public Vector3 PathPoint { get => PathPointSet; }// Aircraft-specific destination handling
+        public override Vector3 PathPoint => PathPointSet;// Aircraft-specific destination handling
         public Vector3 PathPointSet = Vector3.zero; // Aircraft-specific destination handling
         public float DestSuccessRad // When we have reached our airborne destination
         {
             get { try { return Helper.AutoSpacing; } catch { return 10; } }
         }
-        public float GetDrive => _AI.GetDrive;
-
 
         // Forward for aircraft, Upwards for helicopters
         public float AdvisedThrottle = 0;               // Throttle to use when chasing or cruising
         public float MainThrottle = 0;                  // Ideal Throttle to chase after
         public float CurrentThrottle = 0;               // Throttle the craft knows it's going at
 
-
-        // Systems Check
         public BlockManager.BlockIterator<ModuleBooster> Engines => Tank.blockman.IterateBlockComponents<ModuleBooster>();     // keep track of aircraft propultion
         public BlockManager.BlockIterator<ModuleAirBrake> Brakes => Tank.blockman.IterateBlockComponents<ModuleAirBrake>();     // keep tracck of airbrakes
         public BlockManager.BlockIterator<ModuleWing> Wings => Tank.blockman.IterateBlockComponents<ModuleWing>();          // keep track of the wings
         public bool NoProps = false;            // Do we have to rely on fuel only?
         public bool SkewedFlightCenter = false; // Are we going to struggle when turning?
 
-        //Tech Flight Data Gathering
         public float lastDataGatherTime = 0;
         public Vector3 PropBias = Vector3.zero; // Center of thrust (RAW) of all forwards props
         public float FwdThrust = 0;
         public float UpThrust = 0;
         public Vector3 BoostBias = Vector3.zero;// Center of thrust of all boosters, center of boost
         public float BoosterThrust = 0;
-        /// <summary>
-        /// Thrust to Weight Ratio - Minimum % max thrust needed to overcome mass
-        /// </summary>
         public float UpTtWRatio = 0;
 
-        /// <summary>
-        /// The lower this is, the slower it is
-        /// </summary>
         public float SlowestPropLerpSpeed = 1;  // Slow action demand based on propeller responsiveness
-        /// <summary>
-        /// Increases as SlowestPropLerpSpeed decreases
-        /// </summary>
         public float PropLerpValue = 10;        // aux value used for some engine calculations
         public float AerofoilSluggishness = 1;  // Slow action demand based on aerofoil responsiveness
         public float RollStrength = 1;          // How far to roll 90 degrees
-        /// <summary>
-        /// The higher the values, the less stiff the controls will be
-        /// </summary>
         public Vector3 FlyingChillFactor = Vector3.one * 30;
 
         //Error-Checking
@@ -109,15 +72,10 @@ namespace TAC_AI.AI
         public bool TargetGrounded = false;     // Are we dealing with a target that is on the ground?
         public bool LowerEngines = false;       // Choppers: Too high! Too high!  Airplanes: Conserve booster fuel
 
-
-        public void Initiate(Tank tank, TankAIHelper helper, Enemy.EnemyMind mind = null)
+        protected override void OnPreInitiate()
         {
-            Tank = tank;
-            Helper = helper;
-            EnemyMind = mind;
-
-            tank.AttachEvent.Subscribe(OnAttach);
-            tank.DetachEvent.Subscribe(OnDetach);
+            Tank.AttachEvent.Subscribe(OnAttach);
+            Tank.DetachEvent.Subscribe(OnDetach);
 
             CurrentThrottle = 0;
             ErrorsInTakeoff = 0;
@@ -126,120 +84,40 @@ namespace TAC_AI.AI
             Grounded = false;
             TargetGrounded = false;
 
-            // SETUP
-            CheckAllFlightBlocks();
+            CheckAllFlightBlocks();   // computes PropBias / BoostBias / NoProps - SelectCore reads these
             CurrentThrottle = 0;
 
-
-            //Now determine type of craft
             DebugTAC_AI.Info(KickStart.ModID + ": (2) Tech " + Tank.name + " PropBias " + PropBias + ", BoostBias " + BoostBias);
-            if (mind.IsNull())
-            {
-                //if (helper.isAstrotechAvail && helper.DediAI == AIECore.DediAIType.Aviator)
-                //    InitiateForVTOL(tank, this);
-                if (!NoProps)
-                {
-                    if (PropBias.y > 0.6f)
-                    {   // Likely a helicopter
-                        _AI = new HelicopterAICore();
-                        AICore.Initiate(tank, this);
-                    }
-                    else if (PropBias.y > 0.3f)
-                    {   // Likely a VTOL
-                        _AI = new VtolAICore();
-                        AICore.Initiate(tank, this);
-                    }
-                    else
-                    {   // Likely an airplane
-                        _AI = new AirplaneAICore();
-                        AICore.Initiate(tank, this);
-                    }
-                }
-                else
-                {
-                    if (BoostBias.y > 0.6f)
-                    {   // Likely a helicopter
-                        _AI = new HelicopterAICore();
-                        AICore.Initiate(tank, this);
-                    }
-                    else if (BoostBias.y > 0.3f)
-                    {   // Likely a VTOL
-                        _AI = new VtolAICore();
-                        AICore.Initiate(tank, this);
-                    }
-                    else
-                    {   // Likely an airplane
-                        _AI = new AirplaneAICore();
-                        AICore.Initiate(tank, this);
-                    }
-                }
-                DebugTAC_AI.LogAISetup(KickStart.ModID + ": Tech " + tank.name + " has been assigned Non-NPT aircraft AI with flight mentality " + FlyStyle.ToString() + ", Roll intensity of " + RollStrength + ", Prop lerp of " + PropLerpValue + " and flying chill of " + FlyingChillFactor);
-            }
-            else
-            {
-                if (!NoProps)
-                {
-                    if (PropBias.y > 0.6f)
-                    {   // Likely a helicopter
-                        _AI = new HelicopterAICore();
-                        AICore.Initiate(tank, this);
-                        mind.EvilCommander = Enemy.EnemyHandling.Chopper;
-                    }
-                    else if (PropBias.y > 0.3f)
-                    {   // Likely a VTOL
-                        _AI = new VtolAICore();
-                        AICore.Initiate(tank, this);
-                        mind.EvilCommander = Enemy.EnemyHandling.Airplane;
-                    }
-                    else
-                    {   // Likely an airplane
-                        _AI = new AirplaneAICore();
-                        AICore.Initiate(tank, this);
-                        mind.EvilCommander = Enemy.EnemyHandling.Airplane;
-                    }
-                }
-                else
-                {
-                    if (BoostBias.y > 0.6f)
-                    {   // Likely a helicopter
-                        _AI = new HelicopterAICore();
-                        AICore.Initiate(tank, this);
-                        mind.EvilCommander = Enemy.EnemyHandling.Chopper;
-                    }
-                    else if (BoostBias.y > 0.3f)
-                    {   // Likely a VTOL
-                        _AI = new VtolAICore();
-                        AICore.Initiate(tank, this);
-                        mind.EvilCommander = Enemy.EnemyHandling.Airplane;
-                    }
-                    else
-                    {   // Likely an airplane
-                        _AI = new AirplaneAICore();
-                        AICore.Initiate(tank, this);
-                        mind.EvilCommander = Enemy.EnemyHandling.Airplane;
-                    }
-                }
-                DebugTAC_AI.LogAISetup(KickStart.ModID + ": Tech " + tank.name + " has been assigned Non-Player aircraft AI with " + mind.EvilCommander.ToString() + " mentality " + FlyStyle.ToString() + ", Roll intensity of " + RollStrength + ", Prop lerp of " + PropLerpValue + " and flying chill of " + FlyingChillFactor);
-            }
         }
-        public void UpdateEnemyMind(Enemy.EnemyMind mind)
-        {
-            this.EnemyMind = mind;
-        }
-        public void Recycle()
-        {
-            _AI = null;
-            if (this.IsNotNull())
-            {
-                Tank.AttachEvent.Unsubscribe(OnAttach);
-                Tank.DetachEvent.Unsubscribe(OnDetach);
-                //DebugTAC_AI.Log(KickStart.ModID + ": Removed aircraft AI from " + Tank.name);
-                DestroyImmediate(this);
-            }
-        }
-        public void Reset()
-        {
 
+        protected override IMovementAICore SelectCore(Enemy.EnemyMind mind)
+        {
+            // Air sub-core is chosen purely from thrust geometry. The player and enemy ladders were
+            // identical (P08 G.7 stopped the enemy branch from writing EvilCommander back), so they
+            // unify here. NoProps techs fly on boosters, so they bias off BoostBias instead of PropBias.
+            Vector3 bias = NoProps ? BoostBias : PropBias;
+            if (bias.y > 0.6f)
+                return new HelicopterAICore();   // vertical flight
+            if (bias.y > 0.3f)
+                return new VtolAICore();          // both horizontal and vertical
+            return new AirplaneAICore();          // horizontal flight
+        }
+
+        protected override void OnPostInitiate()
+        {
+            // FlyStyle / RollStrength / PropLerpValue / FlyingChillFactor are populated by
+            // CheckAllFlightBlocks (OnPreInitiate) and the chosen core's Initiate (run just before this).
+            if (EnemyMind == null)
+                DebugTAC_AI.LogAISetup(KickStart.ModID + ": Tech " + Tank.name + " has been assigned Non-NPT aircraft AI with flight mentality " + FlyStyle.ToString() + ", Roll intensity of " + RollStrength + ", Prop lerp of " + PropLerpValue + " and flying chill of " + FlyingChillFactor);
+            else
+                DebugTAC_AI.LogAISetup(KickStart.ModID + ": Tech " + Tank.name + " has been assigned Non-Player aircraft AI with " + EnemyMind.EvilCommander.ToString() + " mentality " + FlyStyle.ToString() + ", Roll intensity of " + RollStrength + ", Prop lerp of " + PropLerpValue + " and flying chill of " + FlyingChillFactor);
+        }
+
+        protected override void OnRecycle()
+        {
+            Tank.AttachEvent.Unsubscribe(OnAttach);
+            Tank.DetachEvent.Unsubscribe(OnDetach);
+            //DebugTAC_AI.Log(KickStart.ModID + ": Removed aircraft AI from " + Tank.name);
         }
         private void CheckEngines(bool firstCheck = false)
         {
@@ -258,7 +136,6 @@ namespace TAC_AI.AI
 
             foreach (ModuleBooster module in Engines)
             {
-                //Get the slowest spooling one
                 foreach (FanJet jet in module.transform.GetComponentsInChildren<FanJet>(true))
                 {
                     float thrust = (float)RawTechBase.thrustRate.GetValue(jet);
@@ -266,11 +143,11 @@ namespace TAC_AI.AI
                     Vector3 localFwd = jet.LocalThrustDirection;
                     Vector3 rawVec = localFwd * thrust;
                     if (localFwd.z < 0)
-                        FwdThrust += Mathf.Max(localFwd.z * thrustRev, 0);
+                        FwdThrust += -localFwd.z * thrustRev;
                     else
                         FwdThrust += Mathf.Max(localFwd.z * thrust, 0);
                     if (localFwd.y < 0)
-                        UpThrust += Mathf.Max(localFwd.y * thrustRev, 0);
+                        UpThrust += -localFwd.y * thrustRev;
                     else
                         UpThrust += Mathf.Max(localFwd.y * thrust, 0);
                     biasDirection += new Vector3(Mathf.Abs(rawVec.x), Mathf.Abs(rawVec.y), Mathf.Abs(rawVec.z));
@@ -300,7 +177,6 @@ namespace TAC_AI.AI
                         if (localFwd.y > 0)
                             UpThrust += Mathf.Max(rawVec.y, 0);
 
-                        // Steering hovers do not count for biasDirection
                         //biasDirection += new Vector3(Mathf.Abs(rawVec.x), Mathf.Abs(rawVec.y), Mathf.Abs(rawVec.z));
                     }
                 }
@@ -309,7 +185,6 @@ namespace TAC_AI.AI
             // this assumes IDEAL, which isn't always the case.  We have to compensate later on!
             float GravityForce = Tank.rbody.mass * Tank.GetGravityScale() * TankAIManager.GravMagnitude;
             UpTtWRatio = UpThrust / GravityForce;
-
 
             if (FwdThrust == 0 && UpThrust == 0)
             {
@@ -339,15 +214,11 @@ namespace TAC_AI.AI
             SlowestPropLerpSpeed = lowestDelta;
             PropLerpValue = AIGlobals.PropLerpStrictness / SlowestPropLerpSpeed;
         }
-        /// <summary>
-        /// MUST come AFTER CheckEngines()!
-        /// </summary>
         private void CheckWings()
         {
             float aerofoilSpeed = 100;
             foreach (ModuleWing module in Wings)
             {
-                //Get teh slowest spooling one
                 foreach (ModuleWing.Aerofoil foil in module.m_Aerofoils)
                 {
                     if (foil.flapTurnSpeed > 0.01f)
@@ -393,13 +264,12 @@ namespace TAC_AI.AI
         }
         private void CheckAllFlightBlocks()
         {
-            // SETUP
             CheckEngines(true);
             CheckWings();
         }
 
         //Navigation Director - set airborne positions for the plane to fly to based on lastDestination
-        public void DriveDirector(ref EControlCoreSet core)
+        public override void DriveDirector(ref EControlCoreSet core)
         {
             TankAIHelper helper = Helper;
             Tank tank = Tank;
@@ -421,7 +291,6 @@ namespace TAC_AI.AI
                     {
                         return;
                     }
-                    //Try fighting the controls to land safely
                     return;
                 }
                 if (!this.TargetGrounded)
@@ -437,7 +306,7 @@ namespace TAC_AI.AI
             }
             return;
         }
-        public void DriveDirectorRTS(ref EControlCoreSet core)
+        public override void DriveDirectorRTS(ref EControlCoreSet core)
         {
             TankAIHelper helper = Helper;
             Tank tank = Tank;
@@ -459,7 +328,6 @@ namespace TAC_AI.AI
                     {
                         return;
                     }
-                    //Try fighting the controls to land safely
                     return;
                 }
                 core.lastDestination = AIEPathing.OffsetFromGroundA(helper.RTSDestination, helper);
@@ -467,18 +335,18 @@ namespace TAC_AI.AI
             }
             else if (helper.AIAlign == AIAlignment.NonPlayer) //enemy
             {
-                //if (!this.TargetGrounded)
-                //    core.lastDestination = AIEPathing.OffsetFromGroundA(helper.lastDestination, helper);
-
-                this.AICore.DriveDirectorEnemy(EnemyMind, ref core);
+                // No core.lastDestination ground-offset here on purpose: DriveDirectorEnemyRTS applies its
+                // own OffsetFromGroundA + PreventCollisionWithGround (!TargetGrounded-guarded) to PathPointSet,
+                // the value actually steered to. (The old line referenced helper.lastDestination, since removed.)
+                // Deferred-10 fix: was calling the non-RTS enemy director (see AIControllerDefault).
+                this.AICore.DriveDirectorEnemyRTS(EnemyMind, ref core);
             }
             return;
         }
 
         //Flight Maintainer - handle the flight between airborne positions
-        public void DriveMaintainer(ref EControlCoreSet core)
+        public override void DriveMaintainer(ref EControlCoreSet core)
         {
-            //Universal handler
             TankAIHelper helper = this.Helper;
             Tank tank = this.Tank;
 
@@ -497,32 +365,18 @@ namespace TAC_AI.AI
                 helper.MaxBoost();
 
             this.AICore.DriveMaintainer(helper, tank, ref core);
-            /*
-            if (!AIEPathing.IsUnderMaxAltPlayer(PathPoint.y))
-                DebugTAC_AI.Log(KickStart.ModID + ":!!! - Tech " + tank.name + " has PathPoint [" + PathPoint.y + "] above max alt player [" + 
-                    (AIGlobals.AirWanderMaxHeight + Singleton.playerPos.y) + "]");
-            */
             return;
         }
 
-
-        public void OnMoveWorldOrigin(IntVector3 move)
+        public override void OnMoveWorldOrigin(IntVector3 move)
         {
             PathPointSet += move;
         }
-        public Vector3 GetDestination()
+        public override Vector3 GetDestination()
         {
             return Helper.lastDestinationCore;
         }
 
-        // Action Updaters
-        /// <summary>
-        /// Returns true if the craft is likely never going to recover
-        /// </summary>
-        /// <param name="thisControl"></param>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
-        /// <param name="pilot"></param>
         private bool TestForMayday(TankAIHelper helper, Tank tank)
         {
             if (helper.PendingDamageCheck)
@@ -575,23 +429,9 @@ namespace TAC_AI.AI
                 Grounded = TestForMayday(tank.GetHelperInsured(), tank);
         }
         private void OnDetach(TankBlock block, Tank tank)
-        {   //Disabled for now as some irrelievent warning that doesn't have a label is spamming the logs
-            /*
-            if (tank.blockman.GetRootBlock().IsNull())
-            {
-                if (tank.GetComponent<AIEAirborne.AirAssistance>().IsNotNull())
-                    tank.GetComponent<AIEAirborne.AirAssistance>().Recycle();
-                return;
-            }
-            var pilot = tank.GetComponent<AIEAirborne.AirAssistance>();
-            if (this.IsNull())
-                return;
-            var mem = tank.GetComponent<AIERepair.DesignMemory>();
-            if (mem.IsNull())
-                return;
-            if (AIERepair.SystemsCheck(tank))
-                this.Grounded = TestForMayday(tank.GetHelperInsured(), tank, this);
-            */
+        {
+            // P08 dead-code removal: entire body was commented out (~17 lines of abandoned damage-
+            // check / Grounded re-eval). Modern equivalent runs through TankAIHelper.OnBlockDetaching.
         }
         public void UpdateThrottle(TankAIHelper helper)
         {
@@ -616,7 +456,6 @@ namespace TAC_AI.AI
                         boostJets = helper.FullBoost;
                 }
 
-                // Still try to move wheels and other things
                 if (CurrentThrottle + (SlowestPropLerpSpeed * Time.deltaTime) < MainThrottle)
                 {
                     CurrentThrottle += SlowestPropLerpSpeed * Time.deltaTime;

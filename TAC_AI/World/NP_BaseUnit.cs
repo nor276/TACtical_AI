@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -49,9 +49,6 @@ namespace TAC_AI.World
         public bool isSiegeBase = false;
         public bool isTechBuilder = false;
 
-        /// <summary>
-        /// If this Tech has a terminal, it can build any tech from the population
-        /// </summary>
         public bool HasTerminal = false;
 
         public override bool Exists()
@@ -70,7 +67,6 @@ namespace TAC_AI.World
         internal override void MovementSceneDelta(float timeDelta)
         { 
         }
-
 
         internal NP_BaseUnit(ManSaveGame.StoredTech techIn, NP_Presence_Automatic team) :
             base(techIn, team, techIn.m_TechData.GetMainCorporations().FirstOrDefault())
@@ -95,11 +91,6 @@ namespace TAC_AI.World
             return 0;
         }
 
-        /// <summary>
-        /// Deal damage to this Tech
-        /// </summary>
-        /// <param name="dealt"></param>
-        /// <returns>True if tech destroyed</returns>
         public override bool RecieveDamage(int Dealt)
         {
             ManEnemyWorld.GetTeam(tech.m_TeamID).SetDefendMode(tilePos);

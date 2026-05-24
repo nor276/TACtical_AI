@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -115,7 +115,7 @@ namespace TAC_AI.World
             }
             else if (purpose == BasePurpose.HasReceivers && RLoadedBases.FetchNearbyResourceCounts(Team) < AIGlobals.MinResourcesReqToCollect)
             {
-                thisIsTrue = false;
+                thisIsTrue = true;
                 DebugTAC_AI.Log(KickStart.ModID + ": HasTooMuchOfType - Team " + Team + " Does not have enough mineables in range to build Reciever bases.");
             }
             else
@@ -128,11 +128,6 @@ namespace TAC_AI.World
             return thisIsTrue;
         }
 
-
-        /// <summary>
-        /// Tile-based target-finding 
-        /// </summary>
-        /// <param name="ETU"></param>
         public static void GetScannedTilesAroundTech(NP_TechUnit ETU)
         {
             NP_Presence_Automatic EP = ETU.teamInst;
@@ -292,8 +287,6 @@ namespace TAC_AI.World
                 WithinBox(ManEnemyWorld.EnemyRaidProvokeExtents);
         }
 
-
-        // Base Operations
         public static bool CanPurgeTeam(NP_Presence EP, NP_BaseUnit EBU)
         {
             return KickStart.CullFarEnemyBases && AIGlobals.CanPurgeTeamNotPlayerOwned(EP.Team) && 
@@ -596,8 +589,6 @@ namespace TAC_AI.World
             }
         }
 
-
-        // Utilities
         /*
         internal static bool IsLocationGridEmpty(Vector3 expansionCenter)
         {
@@ -791,7 +782,6 @@ namespace TAC_AI.World
             }
             return validLocation;
         }
-
 
         private static bool IsActivelySieging(NP_Presence EP)
         {

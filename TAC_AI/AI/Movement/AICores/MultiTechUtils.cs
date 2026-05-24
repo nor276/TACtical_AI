@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -9,11 +9,6 @@ namespace TAC_AI.AI.Movement.AICores
 {
     internal static class MultiTechUtils
     {
-        /// <summary>
-        /// THIS IS A DIRECTOR
-        /// </summary>
-        /// <param name="help"></param>
-        /// <param name="tank"></param>
         internal static Vector3 HandleMultiTech(TankAIHelper help, Tank tank, ref EControlCoreSet core)
         {
             Vector3 targPos;

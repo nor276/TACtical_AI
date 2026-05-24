@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -33,7 +33,6 @@ namespace TAC_AI.AI
             lastDest = prev.lastDestination;
         }
 
-
         public void STOP(TankAIHelper helper)
         {
             DriveDest = EDriveDest.None;
@@ -54,7 +53,6 @@ namespace TAC_AI.AI
             helper.ThrottleState = AIThrottleState.ForceSpeed;
             helper.DriveVar = -1;
         }
-
 
         public void ResetActions()
         {
@@ -105,21 +103,13 @@ namespace TAC_AI.AI
         public EDriveDest DriveDest
         {
             get => _DriveDest;
-            set {
-                //DriveDestBacktrace.Append(" - case " + StackTraceUtility.ExtractStackTrace() + "\n");
-                _DriveDest = value;
-            }
+            set => _DriveDest = value;
         }
         public EDriveFacing DriveDir
         {
             get => _DriveDir;
-            set
-            {
-                //DriveDirBacktrace.Append(" - case " + StackTraceUtility.ExtractStackTrace() + "\n");
-                _DriveDir = value;
-            }
+            set => _DriveDir = value;
         }
-        /// <summary>The final destination, not the point we are driving to!</summary>
         public Vector3 lastDestination
         {
             get => lastDest;
@@ -135,8 +125,6 @@ namespace TAC_AI.AI
         private EDriveFacing _DriveDir;
         public EDrivePathing DrivePathing;
         public ESteeringStrength TurningStrictness { get; set; }
-        //public StringBuilder DriveDestBacktrace;
-        //public StringBuilder DriveDirBacktrace;
 
         public static EControlCoreSet Default => new EControlCoreSet(EDriveDest.None, EDriveFacing.Stop);
 
@@ -145,10 +133,11 @@ namespace TAC_AI.AI
             _DriveDest = direct.DriveDest;
             _DriveDir = direct.DriveDir;
             DrivePathing = EDrivePathing.OnlyImmedeate;
-            lastDest = direct.lastDestination;
+            // P08 B-NEW10-4: bypass-of-NaN-guard fix. Constructor was assigning `lastDest` field
+            // directly; route through the `lastDestination` property so the NaN check fires.
+            lastDest = Vector3.zero;
             TurningStrictness = ESteeringStrength.Lazy;
-            //DriveDestBacktrace = new StringBuilder();
-            //DriveDirBacktrace = new StringBuilder();
+            lastDestination = direct.lastDestination;
         }
         private EControlCoreSet(EDriveDest move, EDriveFacing facing)
         {
@@ -157,15 +146,6 @@ namespace TAC_AI.AI
             DrivePathing = EDrivePathing.OnlyImmedeate;
             lastDest = Vector3.zero;
             TurningStrictness = ESteeringStrength.Lazy;
-            //DriveDestBacktrace = new StringBuilder();
-            //DriveDirBacktrace = new StringBuilder();
-        }
-        public void MergePrevCommands(EControlOperatorSet direct)
-        {
-            if (DriveDest == EDriveDest.None)
-                DriveDest = direct.DriveDest;
-            if (DriveDir == EDriveFacing.Stop)
-                DriveDir = direct.DriveDir;
         }
         public void Stop()
         {
@@ -219,77 +199,51 @@ namespace TAC_AI.AI
         public override string ToString()
         {
             return "EControlCoreSet - " + DriveDest.ToString() + " | " + DriveDir.ToString() + " | " + lastDestination;
-            /*
-            return "EControlCoreSet - " + DriveDest.ToString() + " = " + DriveDestBacktrace.ToString() + 
-                " | " + DriveDir.ToString() + " = " + DriveDirBacktrace.ToString()  + " | " + lastDestination;*/
         }
     }
 
     /// <summary>
-    /// What the AI does when attacking
+    /// Combat-target-selection mode. Movement layer is uniform per locomotion (RWheeled/RChopper/...)
+    /// — the per-mode differentiation lives in <see cref="TAC_AI.AI.TankAIHelper.FindEnemy"/>
+    /// (Random rotates targets, Strong picks largest, Chase sticks, Closest/default picks nearest).
+    /// FSM `default:` arms covering Chase/Strong/Random is intentional (T2).
     /// </summary>
     public enum EAttackMode
     {
+        /// <summary>Sentinel: resolved by <see cref="TAC_AI.AI.EWeapSetup.GetAttackStrat"/> on next
+        /// `TankAIHelper.OnRecycle`/equivalent — auto-picks from weapon loadout. Never reaches the
+        /// combat FSM as `AutoSet`. The GUI slider (GUIAIManager.cs:1279) excludes this value.</summary>
         AutoSet,
-        /// <summary> Circle the enemy while shooting at them
-        /// <para>Use for: Skirmishers, Mid-long-ranged units with fast turrets [GSO Gigaton, VEN Rapid Cannon, HE HG Cannon, BF Arc Missiles, RR Sonic Blaster TAC Terminator] </para>
-        /// <para>!! Only active with TweakTech or WeaponAimMod (because no target leading) !! </para></summary>
         Circle,
-        /// <summary> Chase last assailant head-on until death regardless of range [default for SuicideMissile]
-        /// <para>Use for: Homing missiles, Dualling units, Eradicators hellbent on removing the player from existance</para> </summary>
         Chase,
-        /// <summary> Attack the weakest tech in range. 
-        /// <para>Use for: Riots, Area Denial</para> </summary>
         Strong,
-        /// <summary> Attack random techs. 
-        /// <para>Use for: Interceptors, Raiders</para> </summary>
         Random,
-        /// <summary> Attack player from afar because we are a F^bro-fracker. 
-        /// <para>Use for: Artillery, Motherships</para> </summary>
         Ranged,
-        /// <summary> Avoid danger.  
-        /// <para>Use for: Any Non-Combat Tech </para></summary>
         Safety
     }
 
     /// <summary>
-    /// We can only be going to one location at once!
+    /// Drive-destination semantics for the Maintainer phase.
+    /// **Ordering is LOAD-BEARING**: LandAICore.DriveMaintainer (and Sea/Space/Vehicle equivalents)
+    /// use `>= ToLastDestination` comparisons to mean "has a targeted destination or stronger"
+    /// (accepts AvoidenceActive / ToBase / ToMine / Override). Inserting a new value mid-list, or
+    /// renumbering, will silently change drive behaviour. Add new values at the end.
     /// </summary>
     public enum EDriveDest
     {   //Control the AI drive direction
         None, // No target
 
         // Coordinate-Based Targets
-        /// <summary>
-        /// Drive away from target
-        /// </summary>
         FromLastDestination,
 
-        /// <summary>
-        /// Drive to target
-        /// </summary>
         ToLastDestination,
 
-        /// <summary>
-        /// The avoidence system is trying to unstuck tech
-        /// </summary>
         AvoidenceActive,
 
-
-        // Dynamically Changing Targets
-        /// <summary>
-        /// Counts also as [recharge home, block rally]
-        /// </summary>
         ToBase,
 
-        /// <summary>
-        /// Counts also as [loose block, target enemy, target to charge]
-        /// </summary>
         ToMine,
 
-        /// <summary>
-        /// Allows ForceSetDrive to pass through unhindered
-        /// </summary>
         Override
     }
 
@@ -299,9 +253,6 @@ namespace TAC_AI.AI
         Strict,
         MaxSteering
     }
-    /// <summary>
-    /// Facing towards destination, regardless of drive direction
-    /// </summary>
     public enum EDriveFacing
     {   //Control the AI drive direction
         Stop,

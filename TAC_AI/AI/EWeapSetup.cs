@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -6,17 +6,15 @@ using UnityEngine;
 
 namespace TAC_AI.AI
 {
-    // Sets up all important AI statistics based on AI core
     internal static class EWeapSetup
     {
         internal static readonly FieldInfo deals = typeof(WeaponRound).GetField("m_Damage", BindingFlags.NonPublic | BindingFlags.Instance),
             bDPS = typeof(BeamWeapon).GetField("m_DamagePerSecond", BindingFlags.NonPublic | BindingFlags.Instance),
-            burn = typeof(BoosterJet).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
+            burn = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
         // Bully-like
         internal const int OHKOCapableDamage = 1750;
 
-        // Spyper AI
         internal const int SnipeVelo = 140;
         internal const int RangedRange = 75;
         internal static HashSet<BlockTypes> ranged = new HashSet<BlockTypes>()
@@ -33,7 +31,6 @@ namespace TAC_AI.AI
                         BlockTypes.EXP_MissilePod_424,
         };
 
-        // Circle AI
         internal const int CircleRange = 170;
         internal const int MinCircleSpeed = 140;
 
@@ -251,7 +248,7 @@ namespace TAC_AI.AI
                 case AIType.Aviator:
                     if (helper.MovementController is AIControllerAir air)
                     {
-                        if (air.FlyStyle == AIControllerAir.FlightType.Helicopter)
+                        if (air.AICore is TAC_AI.AI.Movement.AICores.IAirMovementAICore aircore && aircore.IsRotorcraft)
                         {   // Try use our height to our advantage
                             if (smolTech)
                             {
@@ -378,6 +375,7 @@ namespace TAC_AI.AI
                     }
                     break;
             }
+            helper.TurretFraction = count > 0 ? (float)circleWeaps / count : 0f;
             return attack;
         }
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -12,7 +12,6 @@ using TAC_AI.World;
 using TerraTechETCUtil;
 using UnityEngine;
 using static System.Net.WebRequestMethods;
-
 
 namespace TAC_AI.Templates
 {
@@ -96,7 +95,6 @@ namespace TAC_AI.Templates
                 AllowPlayerCommandEnemies = false;
             }
         }
-
 
         internal class GUIDisplayTechLoader : MonoBehaviour
         {
@@ -325,7 +323,6 @@ namespace TAC_AI.Templates
                 catch { }
             }
 
-
             StepMenuPlacer();
 
             if (GUILayout.Button(InstantLoad ? redStart + "Instant ON</b></color>" : redStart + "Instant Off</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
@@ -521,7 +518,6 @@ namespace TAC_AI.Templates
             }
             AltUI.Tooltip.GUITooltip("1-Setup: Exports your LOCAL RawTechs as a batchNew.json");
 
-
             StepMenuPlacer();
 
             if (GUILayout.Button(redStart + "REPLACE EDIT</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
@@ -590,9 +586,7 @@ namespace TAC_AI.Templates
             }
             AltUI.Tooltip.GUITooltip("3-Test: Imports batchEdit.json to replace the currently loaded population");
 
-
             StepMenuPlacer();
-
 
             if (GUILayout.Button(redStart + "COM PUSH PUBLIC</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
             {
@@ -630,9 +624,7 @@ namespace TAC_AI.Templates
             AltUI.Tooltip.GUITooltip("4-Finalize: Exports batchEdit.json to the commBatch.RTList file, maing it public." +
                         "  You still have to drag it into UnityEditor though");
 
-
             StepMenuPlacer();
-
 
             if (GUILayout.Button(redStart + "PURGE DUPLICATES</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
             {
@@ -686,7 +678,6 @@ namespace TAC_AI.Templates
                 catch { }
             }
             StepMenuPlacer();*/
-
 
             if (GUILayout.Button(AINoAttackPlayer ? redStart + "Attack Player Off</b></color>" : redStart + "Attack Player ON</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
             {
@@ -1530,7 +1521,6 @@ namespace TAC_AI.Templates
             DebugTAC_AI.Log(KickStart.ModID + ": Force-Closed Raw Techs Debug menu!");
         }
 
-
         private void Update()
         {
             if (Input.GetKey(KeyCode.LeftControl))
@@ -1724,11 +1714,6 @@ namespace TAC_AI.Templates
                 });
         }
 
-
-
-
-
-        // Utilities
         internal static bool CheckValidMode()
         {
 #if DEBUG

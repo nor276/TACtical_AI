@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -8,9 +8,6 @@ using TAC_AI.World;
 
 namespace TAC_AI
 {
-    /// <summary>
-    /// Handles NON-PLAYER Techs.  Needs to be reset and recollected each save reload.  Also does not maintain connections with Techs that are unloaded or destroyed.
-    /// </summary>
     public class TechUnitGroup : ListHashSet<TankAIHelper>
     {
         public Func<int> Team;
@@ -22,21 +19,11 @@ namespace TAC_AI
             PlaySFX = playSFX;
         }
 
-        /// <summary>
-        /// true values move to the front
-        /// </summary>
-        /// <param name="func"></param>
-        /// <returns></returns>
         public TechUnitGroup ReorderBy(Func<TankAIHelper, bool> func)
         {
             this.InsertionSort((x) => func(x) ? 1 : 0);
             return this;
         }
-        /// <summary>
-        /// true values move to the back
-        /// </summary>
-        /// <param name="func"></param>
-        /// <returns></returns>
         public TechUnitGroup ReorderByDescending(Func<TankAIHelper, bool> func)
         {
             this.InsertionSort((x) => func(x) ? 0 : 1);

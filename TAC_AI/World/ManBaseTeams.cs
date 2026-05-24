@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using SafeSaves;
@@ -15,15 +15,10 @@ namespace TAC_AI
 {
     public enum TeamRelations : int
     {
-        /// <summary>Attack, but can be swayed with Bribe</summary>
         Enemy,
-        /// <summary>Don't attack unless attacked once -> Attack the attacker</summary>
         SubNeutral,
-        /// <summary>Don't attack at all.  Usually indestructable.</summary>
         Neutral,
-        /// <summary>Fight on the player's side</summary>
         Friendly,
-        // Special
         AITeammate,
         SameTeam = 9001,
     }
@@ -31,15 +26,9 @@ namespace TAC_AI
     {
         public static bool IsValid(this TeamBasePointer point) => point != null && point.valid;
     }
-    /// <summary>
-    ///  Can represent both a tech that is present and not present
-    /// </summary>
     public interface TeamBasePointer
     {
         string Name { get; }
-        /// <summary>
-        ///  MAY NOT ALWAYS BE PRESENT
-        /// </summary>
         Tank tank { get; }
         int BuildBucks { get; }
         void AddBuildBucks(int value);
@@ -56,9 +45,6 @@ namespace TAC_AI
         public int teamID;
         internal int Team => teamID;
         public string teamName;
-        /// <summary>
-        /// DO NOT MODIFY DIRECTLY, use AddBuildBucks() and related instead!
-        /// </summary>
         public int buildBucks;
         internal int BuildBucks => buildBucks;
         public int SetBuildBucks
@@ -98,37 +84,67 @@ namespace TAC_AI
             }
         }
         internal bool bankrupt = false;
-        /// <summary> This team has not enough Build Bucks </summary>
         internal bool Bankrupt => bankrupt;
 
-        internal TeamBasePointer HQ => _HQ;
-        private TeamBasePointer _HQ = null;
+        // Persisted HQ identity. -1 = unset; survives save/load and is resolved lazily
+        // because the actual base may not have streamed in yet at load time.
+        public int hqVisibleID = -1;
+        [JsonIgnore] private TeamBasePointer _HQ = null;
+        internal TeamBasePointer HQ
+        {
+            get
+            {
+                if (_HQ.IsValid()) return _HQ;
+                _HQ = null;
+                if (hqVisibleID > 0)
+                {
+                    _HQ = ResolveHQFromSavedID();
+                    if (_HQ.IsValid()) return _HQ;
+                }
+                return _HQ;
+            }
+        }
+        private TeamBasePointer ResolveHQFromSavedID()
+        {
+            // Loaded base?
+            foreach (var f in RLoadedBases.IterateTeamBaseFunders(Team))
+            {
+                if (f != null && f.tank != null && f.tank.visible != null && f.tank.visible.ID == hqVisibleID)
+                    return f;
+            }
+            // Unloaded base?
+            var pres = ManEnemyWorld.GetTeam(Team);
+            if (pres != null)
+            {
+                foreach (NP_BaseUnit u in pres.EBUs)
+                    if (u != null && u.ID == hqVisibleID) return u;
+            }
+            return null;  // base not yet streamed in; try again next access
+        }
+        private void SetHQInternal(TeamBasePointer p)
+        {
+            _HQ = p;
+            if (p is RLoadedBases.EnemyBaseFunder ebf && ebf.tank != null && ebf.tank.visible != null)
+                hqVisibleID = ebf.tank.visible.ID;
+            else if (p is NP_BaseUnit nbu)
+                hqVisibleID = nbu.ID;
+            else
+                hqVisibleID = -1;
+        }
         public int PlayerTeam = int.MinValue;
-        /// <summary>
-        /// The fallback relation for any unknown relations
-        /// </summary>
         public int relationInt = (int)TeamRelations.Enemy;
 
-        /// <summary>
-        /// This rises each time the team is attacked by other teams it isn't an Enemy, if it gets too high, relations shall drop
-        /// </summary>
         [JsonIgnore]
         public float angerThreshold = 0;
-        /// <summary> DO NOT SET - PUBLIC FOR SERIALIZATION </summary>
         public bool Infighting = false;
         internal bool IsInfighting => Infighting;
-        /// <summary>This means the team cannot be changed, or have it's relations changed with any other teams</summary>
         public bool IsReadonly = false;
 
-        /// <summary>
-        /// Should NEVER be changed under ANY circumstances!
-        /// </summary>
         internal TeamRelations defaultRelations
         {
             get => (TeamRelations)relationInt;
             set { relationInt = (int)value; }
         }
-        /// <summary> teamID, TeamAlignment</summary>
         public Dictionary<int, TeamRelations> align = new Dictionary<int, TeamRelations>();
 
         internal IEnumerable<Tank> AllTechsIterator => TankAIManager.GetTeamTanks(teamID);
@@ -139,7 +155,10 @@ namespace TAC_AI
         {
             if (IsReadonly || ManSpawn.IsPlayerTeam(teamID))
                 return true;
-            if (ManEnemyWorld.GetTeam(Team) != null)
+            // Require the unloaded-sim presence to actually have units, not just exist.
+            // An empty NP_Presence_Automatic record used to keep orphan teams alive forever.
+            var pres = ManEnemyWorld.GetTeam(Team);
+            if (pres != null && (pres.EBUs.Count > 0 || pres.EMUs.Count > 0))
                 return true;
             if (AllTechsIterator.Any())
                 return true;
@@ -151,8 +170,6 @@ namespace TAC_AI
             return false;
         }
 
-
-        /// <summary> SERIALIZATION (or default attack-all teams) ONLY </summary>
         public EnemyTeamData() {}
         public EnemyTeamData(int team, bool infighting, TeamRelations defaultRelations = TeamRelations.Enemy)
         {
@@ -176,9 +193,6 @@ namespace TAC_AI
         }
         public TeamRelations GetRelations(int teamOther, TeamRelations fallback = TeamRelations.Enemy) => 
             ManBaseTeams.GetRelationsWritablePriority(teamID, teamOther, fallback);
-        /// <summary>
-        /// DO NOT CALL THIS FROM ANYWHERE OTHER THAN ManBaseTeams
-        /// </summary>
         internal TeamRelations Alignment_Internal(int teamOther)
         {
             switch (teamOther)
@@ -196,21 +210,6 @@ namespace TAC_AI
                 return Infighting ? TeamRelations.Enemy : TeamRelations.SameTeam;
             else
             {
-                /*
-                if (ManBaseTeams.TryGetBaseTeam(teamOther, out other))
-
-                {
-                    if (other.align.TryGetValue(teamOther, out relate))
-                    {
-                        if (align.TryGetValue(teamOther, out var relate2))
-                            return relate2 < relate ? relate2 : relate;
-                        return relate;
-                    }
-                    else if (align.TryGetValue(teamOther, out relate))
-                        return relate;
-                }
-                else 
-                */
                 if (align.TryGetValue(teamOther, out var relate))
                     return relate;
             }
@@ -244,10 +243,8 @@ namespace TAC_AI
                 " has IsReadonly set to true!  Check for this first using ManTeams.CanAlterRelations()");
             // */  DebugTAC_AI.Assert("Team " + teamID + " has IsReadonly set to true!  Check for this first using ManTeams.CanAlterRelations()");
 #endif
-            //We do nothing
         }
 
-        // EnemyPurchase
         public void AddBuildBucks(int toAdd)
         {
             if (IsReadonly)
@@ -318,7 +315,9 @@ namespace TAC_AI
             TeamRelations TRP = Alignment_Internal(team);
             if (TRP >= TeamRelations.AITeammate)
                 return;
-            TeamRelations TRN = (TeamRelations)Mathf.Clamp((int)TRP + 1, 0, Enum.GetValues(typeof(TeamRelations)).Length);
+            // P14: clamp to the real relation band [Enemy, AITeammate]. The enum includes SameTeam(9001),
+            // so Enum.GetValues(...).Length was 6 (not the intended max 4); this also drops a per-call alloc.
+            TeamRelations TRN = (TeamRelations)Mathf.Clamp((int)TRP + 1, (int)TeamRelations.Enemy, (int)TeamRelations.AITeammate);
             if (AIGlobals.ShowDebugFeedBack)
             {
                 switch (TRN)
@@ -360,7 +359,8 @@ namespace TAC_AI
                 if (AIGlobals.DamageAngerDropRelations > angerThreshold)
                     return false;
             }
-            TeamRelations TRN = (TeamRelations)Mathf.Clamp((int)TRP - 1, 0, Enum.GetValues(typeof(TeamRelations)).Length);
+            // P14: clamp to the real relation band [Enemy, AITeammate] (see ImproveRelations_Internal).
+            TeamRelations TRN = (TeamRelations)Mathf.Clamp((int)TRP - 1, (int)TeamRelations.Enemy, (int)TeamRelations.AITeammate);
             DebugTAC_AI.Log("Degrade in relations between " + TeamNamer.GetTeamName(team) + " and " +
                 TeamNamer.GetTeamName(teamID) + ", " + TRP + " -> " + TRN);
             if (AIGlobals.ShowDebugFeedBack)
@@ -394,9 +394,20 @@ namespace TAC_AI
             return true;
         }
 
+        // P14: external callers may not flip Infighting on a read-only (default) team. The
+        // default-team seed sets read-only LonerEnemyTeam infighting via the constructor and
+        // SetInfighting_Internal, both of which bypass this guard.
         public void SetInfighting(bool state)
         {
-            //if (!IsReadonly)
+            if (IsReadonly)
+            {
+                ReadonlyComplaint();
+                return;
+            }
+            SetInfighting_Internal(state);
+        }
+        internal void SetInfighting_Internal(bool state)
+        {
             Infighting = state;
         }
         public void Set(int team, TeamRelations relate) => ManBaseTeams.SetRelations(teamID, team, relate);
@@ -408,7 +419,9 @@ namespace TAC_AI
                 return;
             }
             align[team] = relate;
-            if (ManBaseTeams.inst.teams.TryGetValue(team, out var val) && val.Alignment_Internal(teamID) != relate)
+            // P14 BUG: skip the symmetric mirror when the partner is a read-only default team —
+            // writing its align poisons it (it answers relations from defaultRelations, not align).
+            if (ManBaseTeams.inst.teams.TryGetValue(team, out var val) && !val.IsReadonly && val.Alignment_Internal(teamID) != relate)
             {
                 val.align[teamID] = relate;
             }
@@ -432,12 +445,6 @@ namespace TAC_AI
             Set(team, TeamRelations.Enemy);
         }
 
-        /// <summary>
-        /// This is VERY lazy.  There's only a small chance it will actually transfer the funds to the real strongest base.
-        /// <para>This is normally handled automatically by the manager, but you can call this if you want to move the cash NOW</para>
-        /// </summary>
-        /// <param name="funds">The EnemyBaseFunder that contains the money to move</param>
-        /// <returns>True if it actually moved the money</returns>
         public bool SetHQToStrongestOrRandomBase()
         {
             if (IsReadonly)
@@ -452,7 +459,7 @@ namespace TAC_AI
                 if (baseSize < blockC)
                 {
                     baseSize = blockC;
-                    _HQ = item;
+                    SetHQInternal(item);
                 }
             }
             var teamInstU = ManEnemyWorld.GetTeam(Team);
@@ -464,11 +471,11 @@ namespace TAC_AI
                     if (baseSize < blockC)
                     {
                         baseSize = blockC;
-                        _HQ = fundC;
+                        SetHQInternal(fundC);
                     }
                 }
             }
-            if (prevHQ != _HQ)
+            if (prevHQ != _HQ && _HQ != null)
                 DebugTAC_AI.LogTeams(KickStart.ModID + ": Base " + _HQ.Name + " is assigned as new HQ for team " + teamID);
             return true;
         }
@@ -526,21 +533,48 @@ namespace TAC_AI
         public Dictionary<int, int> TradingSellOffers = new Dictionary<int, int>();
         [SSaveField]
         public HashSet<int> HiddenVisibles = new HashSet<int>();
+        [SSaveField]
+        // Tile coords where LastSecondAddBaseToWorldTile has already spawned a base.
+        // Survives tile recycling and save/load so the same deterministic base isn't
+        // re-spawned under a new team ID on every revisit.
+        public HashSet<IntVector2> seededSpawnCoords = new HashSet<IntVector2>();
 
         public static void PickupRecycled(Visible vis)
         {
             vis.RecycledEvent.Unsubscribe(PickupRecycled);
-            inst.TradingSellOffers.Remove(vis.ID);
+            if (inst != null && inst.TradingSellOffers != null)
+                inst.TradingSellOffers.Remove(vis.ID);
+        }
+
+        // Drop sell-offer entries whose Visible no longer exists or is no longer a
+        // trading-station-team tech. Symmetric pre-save and post-load purge self-heals
+        // both race-orphans (RecycledEvent vs SafeSaves snapshot) and legacy orphans
+        // from previously-corrupted saves. (B-07)
+        private static int PurgeOrphanedSellOffers(string phase)
+        {
+            if (inst?.TradingSellOffers == null || inst.TradingSellOffers.Count == 0)
+                return 0;
+            var manVis = Singleton.Manager<ManVisible>.inst;
+            if (manVis == null) return 0;
+            List<int> dead = null;
+            foreach (var kv in inst.TradingSellOffers)
+            {
+                TrackedVisible tv = manVis.GetTrackedVisible(kv.Key);
+                if (tv == null)
+                    (dead ?? (dead = new List<int>())).Add(kv.Key);
+            }
+            if (dead == null) return 0;
+            foreach (int id in dead) inst.TradingSellOffers.Remove(id);
+            DebugTAC_AI.Log("ManBaseTeams - " + phase + " purged " + dead.Count + " orphan TradingSellOffers.");
+            return dead.Count;
         }
 
         public int ready = 0;
         [SSaveField]
         private int lowTeam = AIGlobals.EnemyTeamsRangeStart;
-        /// <summary> Team, Amount </summary>
         public static Event<int, int> BuildBucksUpdatedEvent = new Event<int, int>();
         public static Event<int> TeamAlignmentDeltaEvent = new Event<int>();
         public static Event<int> TeamRemovedEvent = new Event<int>();
-
 
         public static void Initiate()
         {
@@ -559,7 +593,7 @@ namespace TAC_AI
             if (!inst.teams.TryGetValue(team, out var ETDG))
             {
                 EnemyTeamData ETD = new EnemyTeamData(lockedReadOnly, team, infighting, defaultRelations);
-                ETD.SetInfighting(infighting);
+                ETD.SetInfighting_Internal(infighting);   // P14: seed path bypasses the read-only guard
                 inst.teams.Add(team, ETD);
             }
             else if (fixup)
@@ -581,21 +615,17 @@ namespace TAC_AI
                 doFixup = true;
             }
 
+            // P14 BUG: a read-only default team must never carry per-pair align rows (its relations
+            // come from defaultRelations + the Alignment_Internal special cases). Scrub unconditionally
+            // so a poisoned / legacy-serialized row self-heals even when relationInt and Infighting
+            // still read correct (doFixup == false).
+            if (lockedReadOnly && ETD.align.Count > 0)
+                ETD.align.Clear();
+
             if (doFixup)
             {
-                if (lockedReadOnly)
-                {
-                    int prevTeam = ETD.Team;
-                    ETD.SetInfighting(infighting);
-                    ETD.align.Clear();
-                    ETD.defaultRelations = defaultRelations;
-                    //TankAIManager.UpdateEntireTeam(team); 
-                }
-                else
-                {
-                    ETD.SetInfighting(infighting);
-                    ETD.defaultRelations = defaultRelations;
-                }
+                ETD.SetInfighting_Internal(infighting);   // P14: seed path bypasses the read-only guard
+                ETD.defaultRelations = defaultRelations;
             }
         }
         private static void SanityCheckTeam(int team)
@@ -637,7 +667,6 @@ namespace TAC_AI
             CreateDefaultTeam(ManSpawn.NeutralTeam, TeamRelations.Neutral, false, true, fixup);
             CreateDefaultTeam(SpecialAISpawner.trollTeam, TeamRelations.Enemy, false, true, fixup);
 
-            // MP
             if (ManNetwork.IsNetworked)
             {
                 CreateDefaultTeam(1073741824, TeamRelations.Enemy, false, false, fixup);
@@ -659,29 +688,8 @@ namespace TAC_AI
                 }
             }
         }
-        public static void SanityCheckIfDefaultTeam(EnemyTeamData team)
-        {
-            switch (team.Team)
-            {
-                case ManSpawn.DefaultPlayerTeam:
-                    SetDefaultTeam(team, TeamRelations.Enemy, false, false);
-                    break;
-                case AIGlobals.DefaultEnemyTeam:
-                    SetDefaultTeam(team, TeamRelations.Enemy, false, true);
-                    break;
-                case AIGlobals.LonerEnemyTeam:
-                    SetDefaultTeam(team, TeamRelations.Enemy, true, true);
-                    break;
-                case ManSpawn.NeutralTeam:
-                    SetDefaultTeam(team, TeamRelations.Neutral, false, true);
-                    break;
-                case SpecialAISpawner.trollTeam:
-                    SetDefaultTeam(team, TeamRelations.Enemy, false, true);
-                    break;
-                default:
-                    break;
-            }
-        }
+        // P14: removed orphan SanityCheckIfDefaultTeam (zero callers). Its intended job — scrubbing a
+        // poisoned default-team align — is now done unconditionally in SetDefaultTeam.
         public static void DeInit()
         {
             if (inst == null)
@@ -693,15 +701,31 @@ namespace TAC_AI
             inst = null;
         }
 
+        // Canonical session-state reset. Called from every mode boundary so newly-added
+        // [SSaveField] collections only need their cleanup added in one place. Keeps
+        // collections non-null (mid-session readers don't NPE).
+        private static void ResetSessionState(string reason)
+        {
+            if (inst == null) return;
+            int teamCount   = inst.teams?.Count             ?? 0;
+            int hiddenCount = inst.HiddenVisibles?.Count    ?? 0;
+            int seededCount = inst.seededSpawnCoords?.Count ?? 0;
+            int offersCount = inst.TradingSellOffers?.Count ?? 0;
+            if (inst.teams != null)             inst.teams.Clear();
+            if (inst.HiddenVisibles != null)    inst.HiddenVisibles.Clear();
+            if (inst.seededSpawnCoords != null) inst.seededSpawnCoords.Clear();
+            if (inst.TradingSellOffers != null) inst.TradingSellOffers.Clear();
+            inst.ready   = 0;
+            inst.lowTeam = AIGlobals.EnemyTeamsRangeStart;
+            DebugTAC_AI.Log("ManBaseTeams.ResetSessionState(" + reason + ") - cleared "
+                + teamCount + " teams, " + hiddenCount + " hidden visibles, "
+                + seededCount + " seeded coords, " + offersCount + " sell offers.");
+        }
+
         public static void OnModeSwitch()
         {
-            try
-            {
-                inst.teams.Clear();
-                inst.ready = 0;
-                inst.lowTeam = AIGlobals.EnemyTeamsRangeStart;
-            }
-            catch { }
+            try { ResetSessionState("OnModeSwitch"); }
+            catch (Exception e) { DebugTAC_AI.LogError("ManBaseTeams.OnModeSwitch failed", e); }
         }
         public static void OnModeStart(Mode mode)
         {
@@ -710,9 +734,8 @@ namespace TAC_AI
                 InsureDefaultTeams(false);
                 CheckNeedNetworkHooks(mode);
             }
-            catch { }
+            catch (Exception e) { DebugTAC_AI.LogError("ManBaseTeams.OnModeStart failed", e); }
         }
-
 
         public static void OnTeamDestroyedCheck(int team)
         {
@@ -723,13 +746,17 @@ namespace TAC_AI
                 inst.teams.Remove(team);
             }
         }
+        // P14: intentionally ungated (NOT a missing HasAnyTechsLeftAlive check). This applies a
+        // host-authoritative ToClientsOnly removal — the host already confirmed HasAnyTechsLeftAlive
+        // in OnTeamDestroyedCheck before broadcasting. Re-deriving the predicate here would be wrong:
+        // the client's local presence/visible state lags the host and could refuse a removal the host
+        // committed, permanently desyncing inst.teams. The client must obey unconditionally.
         public static void OnTeamDestroyedRemoteClient(int team)
         {
             DebugTAC_AI.Log("OnTeamDestroyedRemote - Team " + TeamNamer.GetTeamName(team) + " has been completely obliterated!");
             TeamRemovedEvent.Send(team);
             inst.teams.Remove(team);
         }
-
 
         private static IEnumerable<EnemyTeamData> IterateALLTeams(Func<EnemyTeamData, bool> ETD)
         {
@@ -755,70 +782,91 @@ namespace TAC_AI
                     yield return item;
             }
         }
+        // Floor strictly above int.MinValue so we keep a sentinel and never wrap.
+        private const int LowTeamFloor = int.MinValue + 1;
+
+        private static bool TryReclaimDeadTeamID(out int reclaimed)
+        {
+            // Reap dynamic teams with no live techs left; recycle their IDs.
+            // OnTeamDestroyedCheck only fires on the LAST tech-destroyed event, so abandoned
+            // / unloaded factions can leak IDs until this sweep catches them.
+            List<int> dead = null;
+            foreach (var kv in inst.teams)
+            {
+                var ETD = kv.Value;
+                if (ETD == null || ETD.IsReadonly) continue;
+                if (AIGlobals.IsPlayerTeam(kv.Key)) continue;
+                if (kv.Key > AIGlobals.EnemyTeamsRangeStart) continue;  // only dynamic range
+                if (!ETD.HasAnyTechsLeftAlive())
+                    (dead ?? (dead = new List<int>())).Add(kv.Key);
+            }
+            if (dead == null) { reclaimed = 0; return false; }
+            foreach (var id in dead)
+            {
+                TeamRemovedEvent.Send(id);
+                inst.teams.Remove(id);
+            }
+            reclaimed = dead.Max();  // prefer the highest (closest to start) free slot
+            return true;
+        }
+
         private static int GetNewTeamID()
         {
-            try
-            {
-                while (inst.teams.ContainsKey(inst.lowTeam))
-                    inst.lowTeam--;
-                return inst.lowTeam;
-            }
-            finally
-            {
+            // Advance lowTeam past any occupied IDs, bounded by LowTeamFloor.
+            while (inst.lowTeam > LowTeamFloor && inst.teams.ContainsKey(inst.lowTeam))
                 inst.lowTeam--;
+
+            if (inst.lowTeam <= LowTeamFloor || inst.teams.ContainsKey(inst.lowTeam))
+            {
+                // Pool exhausted: try to GC dead factions and reuse a slot.
+                if (TryReclaimDeadTeamID(out int recycled))
+                {
+                    DebugTAC_AI.LogError("ManBaseTeams: recycled dead team ID " + recycled +
+                        " (live teams: " + inst.teams.Count + ")");
+                    return recycled;
+                }
+                throw new InvalidOperationException(
+                    "ManBaseTeams: dynamic team ID space exhausted (" +
+                    inst.teams.Count + " live teams, lowTeam=" + inst.lowTeam + ")");
             }
+
+            int id = inst.lowTeam;
+            inst.lowTeam--;
+            return id;
         }
         public static EnemyTeamData GetNewBaseTeam(TeamRelations defaultRelations)
         {
-            checked
-            {
-                try
-                {
-                    int newTeamID = GetNewTeamID();
-                    var valNew = new EnemyTeamData(newTeamID, false, defaultRelations);
-                    inst.teams.Add(newTeamID, valNew);
-                    return valNew;
-                }
-                catch (OverflowException)
-                {
-                    DebugTAC_AI.Assert("GetNewBaseTeam has run out of indicies!");
-                    return InsureBaseTeam(AIGlobals.EnemyTeamsRangeStart);
-                }
-            }
+            int newTeamID = GetNewTeamID();
+            var valNew = new EnemyTeamData(newTeamID, false, defaultRelations);
+            inst.teams.Add(newTeamID, valNew);
+            return valNew;
         }
         public static EnemyTeamData GetTeamAIBaseTeam(int team)
         {
-            checked
+            var findable = IterateBaseTeams(x => x.Alignment_Internal(team) == TeamRelations.AITeammate).FirstOrDefault();
+            if (findable != null)
+                return findable;
+            int newTeamID = GetNewTeamID();
+            var valNew = new EnemyTeamData(newTeamID, false);
+            valNew.PlayerTeam = team;
+            inst.teams.Add(newTeamID, valNew);
+            SetRelations(valNew.teamID, team, TeamRelations.AITeammate);
+            DebugTAC_AI.Assert("Team " + valNew.teamName + " has spawned as a player auto team!");
+            if (!IsPlayerOwnedAIBaseTeam(valNew.teamID))
+                DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but not properly marked as player's AI base team");
+            // P14: verify against `team` (the team the AITeammate relation was just written to),
+            // not the static local `playerTeam`. In MP/co-op `team` can differ from the local player
+            // team, where querying playerTeam hit a missing align key -> Enemy fallback -> a spurious
+            // FatalError on a legitimate ally-team creation.
+            if (GetRelationsWithWriteablePriority(valNew.teamID, team, out EnemyTeamData ETD))
             {
-                try
-                {
-                    var findable = IterateBaseTeams(x => x.Alignment_Internal(team) == TeamRelations.AITeammate).FirstOrDefault();
-                    if (findable != null)
-                        return findable;
-                    int newTeamID = GetNewTeamID();
-                    var valNew = new EnemyTeamData(newTeamID, false);
-                    valNew.PlayerTeam = team;
-                    inst.teams.Add(newTeamID, valNew);
-                    SetRelations(valNew.teamID, team, TeamRelations.AITeammate);
-                    DebugTAC_AI.Assert("Team " + valNew.teamName + " has spawned as a player auto team!");
-                    if (!IsPlayerOwnedAIBaseTeam(valNew.teamID))
-                        DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but not properly marked as player's AI base team");
-                    if (GetRelationsWithWriteablePriority(valNew.teamID, playerTeam, out EnemyTeamData ETD))
-                    {
-                        TeamRelations TR = ETD.Alignment_Internal(ETD.teamID == playerTeam ? ETD.teamID : playerTeam);
-                        if (TR != TeamRelations.AITeammate)
-                            DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but marked as " + TR);
-                    }
-                    else
-                        DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but is NOT REGISTERED IN TEAMS");
-                    return valNew;
-                }
-                catch (OverflowException)
-                {
-                    DebugTAC_AI.Assert("GetNewBaseTeam has run out of indicies!");
-                    return InsureBaseTeam(AIGlobals.EnemyTeamsRangeStart);
-                }
+                TeamRelations TR = ETD.Alignment_Internal(ETD.teamID == team ? valNew.teamID : team);
+                if (TR != TeamRelations.AITeammate)
+                    DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but marked as " + TR);
             }
+            else
+                DebugTAC_AI.FatalError("Team " + valNew.teamName + " is player auto team but is NOT REGISTERED IN TEAMS");
+            return valNew;
         }
         internal static EnemyTeamData InsureBaseTeam(int team)
         {
@@ -863,24 +911,25 @@ namespace TAC_AI
         }
         public static EnemyTeamData GetRandomExistingBaseTeam()
         {
-            var Enumer = IterateBaseTeams();
-            int count = Enumer.Count();
-            if (count < 1)
-            {
+            // P14 BUG: snapshot once (IterateBaseTeams is a lazy iterator over teams.Values, so
+            // Count() + ElementAt walked it twice in possibly-different order) and index with
+            // Random.Range(0, Count) — the int overload is upper-exclusive, so the old
+            // Range(0, count - 1) could never select the last team.
+            List<EnemyTeamData> teams = IterateBaseTeams().ToList();
+            if (teams.Count < 1)
                 return null;
-            }
-            return Enumer.ElementAt(UnityEngine.Random.Range(0, count - 1));
+            return teams[UnityEngine.Random.Range(0, teams.Count)];
         }
         public static bool TryGetExistingBaseTeamWithPlayerAlignment(TeamRelations relations, out EnemyTeamData data)
         {
-            var Enumer = IterateBaseTeams(x => x.Alignment_Internal(playerTeam) == relations);
-            int count = Enumer.Count();
-            if (count < 1)
+            // P14 BUG: see GetRandomExistingBaseTeam — snapshot once + upper-exclusive Range(0, Count).
+            List<EnemyTeamData> teams = IterateBaseTeams(x => x.Alignment_Internal(playerTeam) == relations).ToList();
+            if (teams.Count < 1)
             {
                 data = null;
                 return false;
             }
-            data = Enumer.ElementAt(UnityEngine.Random.Range(0, count - 1));
+            data = teams[UnityEngine.Random.Range(0, teams.Count)];
             return data != null;
         }
 
@@ -918,25 +967,8 @@ namespace TAC_AI
             return 0;
         }
 
-
-        // Relations
-        private static bool GetRelationsOnlyWritable(int teamID1, int teamID2, out EnemyTeamData ETD)
-        {
-            if (teamID2 < teamID1)
-            {   // Lowest team gets searched first
-                int swapper = teamID1;
-                teamID1 = teamID2;
-                teamID2 = swapper;
-            }
-            // ALWAYS prioritize the non-immutable ones to get the correct alignment!
-            if (inst.teams.TryGetValue(teamID1, out ETD) && !ETD.IsReadonly)
-                return true;
-            if (inst.teams.TryGetValue(teamID2, out ETD))
-                return true;
-            if (inst.teams.TryGetValue(teamID1, out ETD))
-                return true;
-            return false;
-        }
+        // P14: removed dead GetRelationsOnlyWritable (zero callers; byte-identical to
+        // GetRelationsWithWriteablePriority below).
         private static bool GetRelationsWithWriteablePriority(int teamID1, int teamID2, out EnemyTeamData ETD)
         {
             if (teamID2 < teamID1)
@@ -992,9 +1024,6 @@ namespace TAC_AI
             }
             return fallback;
         }
-        /// <summary>
-        /// MUTED for now.  We will now use boolean checking to insure this NEVER happens
-        /// </summary>
         private static void ComplainOnIllegalTeamModification()
         {
 #if DEBUG
@@ -1150,7 +1179,7 @@ namespace TAC_AI
                     continue;
                 int Team = item.Team;
                 if (item.angerThreshold > 0)
-                    item.angerThreshold = Mathf.Max(0, item.angerThreshold - AIGlobals.DamageAngerCoolPerSec);
+                    item.angerThreshold = Mathf.Max(0, item.angerThreshold - AIGlobals.DamageAngerCoolRatePerSec * AIGlobals.EnemyTeamAwarenessUpdateDelay);
                 if (AIECore.RetreatingTeams.Contains(Team))
                 {
                     float averageTechDMG = 0;
@@ -1161,7 +1190,7 @@ namespace TAC_AI
                         count++;
                     }
                     if (averageTechDMG == 0)
-                        return;
+                        continue;   // P14 BUG: was `return` — aborted the whole loop, skipping ManageBases for every later team that tick
                     averageTechDMG /= count;
                     if (averageTechDMG <= AIGlobals.RetreatBelowTeamDamageThreshold)
                         AIECore.TeamRetreat(Team, false, true);
@@ -1192,123 +1221,144 @@ namespace TAC_AI
 
         public void MigrateTeamsToNewSaveFormat()
         {
-            int count = 0;
+            int count = 0, perTechFailures = 0;
+            // Snapshot post-default team table so a catastrophic mid-migration failure
+            // can roll back rather than leave OnWorldLoad running against torn state.
+            var snapshot = new Dictionary<int, EnemyTeamData>(inst.teams);
+            int pTeam;
+            HashSet<int> loaded;
             try
             {
-                int playerTeam = ManPlayer.inst.PlayerTeam;
-                HashSet<int> loaded = new HashSet<int>(); // INFREQUENTLY CALLED
+                pTeam = ManPlayer.inst.PlayerTeam;
+                loaded = new HashSet<int>(); // INFREQUENTLY CALLED
                 foreach (var item in ManTechs.inst.IterateTechs())
-                {
                     loaded.Add(item.visible.ID);
-                }
-                if (Singleton.Manager<ManSaveGame>.inst.CurrentState.m_StoredTiles != null)
+            }
+            catch (Exception ePre)
+            {
+                DebugTAC_AI.LogError(KickStart.ModID + ": MigrateTeamsToNewSaveFormat ABORTED pre-scan", ePre);
+                return;  // nothing mutated yet
+            }
+
+            void MigrateOne(ManSaveGame.StoredTech tech, IntVector2 coord)
+            {
+                try
                 {
-                    foreach (var item in new Dictionary<IntVector2, ManSaveGame.StoredTile>(Singleton.Manager<ManSaveGame>.inst.CurrentState.m_StoredTiles))
+                    if (loaded.Contains(tech.m_ID)) return;
+                    switch (GetLegacyNPTTeamType(tech.m_TeamID))
+                    {
+                        case NP_Types.Friendly:   InsureBaseTeam(tech.m_TeamID).SetFriendly(pTeam); break;
+                        case NP_Types.Neutral:    InsureBaseTeam(tech.m_TeamID).defaultRelations = TeamRelations.Neutral; break;
+                        case NP_Types.SubNeutral: InsureBaseTeam(tech.m_TeamID).defaultRelations = TeamRelations.SubNeutral; break;
+                        case NP_Types.Enemy:      InsureBaseTeam(tech.m_TeamID).SetEnemy(pTeam); break;
+                    }
+                    count++;
+                }
+                catch (Exception ePer)
+                {
+                    perTechFailures++;
+                    DebugTAC_AI.LogError(KickStart.ModID + ": Migrate skipped tech ID=" + tech.m_ID +
+                        " team=" + tech.m_TeamID + " tile=" + coord, ePer);
+                }
+            }
+
+            // P14: the two passes below (m_StoredTiles = awake tiles, m_StoredTilesJSON = dormant
+            // tiles) are disjoint by tile coordinate — the engine keeps them mutually exclusive
+            // (ManSaveGame moves a tile between them, never copies, and asserts no overlap). A team ID
+            // may still appear in both passes (techs split across awake + sleeping tiles), but MigrateOne
+            // classifies purely from GetLegacyNPTTeamType(tech.m_TeamID) — a pure function of the team ID
+            // — so both passes make the identical, idempotent relation write. The apparent
+            // "last-write-wins" is a no-op overwrite, not a defect; a per-team dedupe would only skew the
+            // per-tech count and is intentionally NOT added.
+            try
+            {
+                var state = Singleton.Manager<ManSaveGame>.inst.CurrentState;
+                if (state.m_StoredTiles != null)
+                {
+                    foreach (var item in new Dictionary<IntVector2, ManSaveGame.StoredTile>(state.m_StoredTiles))
                     {
                         ManSaveGame.StoredTile storedTile = item.Value;
                         if (storedTile != null && storedTile.m_StoredVisibles.TryGetValue(1, out List<ManSaveGame.StoredVisible> techs)
                             && techs.Count > 0)
                         {
                             foreach (ManSaveGame.StoredVisible Vis in techs)
-                            {
-                                if (Vis is ManSaveGame.StoredTech tech && !loaded.Contains(tech.m_ID))
-                                {
-                                    switch (GetLegacyNPTTeamType(tech.m_TeamID))
-                                    {
-                                        case NP_Types.Friendly:
-                                            InsureBaseTeam(tech.m_TeamID).SetFriendly(playerTeam);
-                                            break;
-                                        case NP_Types.Neutral:
-                                            InsureBaseTeam(tech.m_TeamID).defaultRelations = TeamRelations.Neutral;
-                                            break;
-                                        case NP_Types.SubNeutral:
-                                            InsureBaseTeam(tech.m_TeamID).defaultRelations = TeamRelations.SubNeutral;
-                                            break;
-                                        case NP_Types.Enemy:
-                                            InsureBaseTeam(tech.m_TeamID).SetEnemy(playerTeam);
-                                            break;
-                                    }
-                                    count++;
-                                }
-                            }
+                                if (Vis is ManSaveGame.StoredTech t) MigrateOne(t, item.Key);
                         }
                     }
                 }
-                if (Singleton.Manager<ManSaveGame>.inst.CurrentState.m_StoredTilesJSON != null)
+                if (state.m_StoredTilesJSON != null)
                 {
-                    foreach (var item in new Dictionary<IntVector2, string>(Singleton.Manager<ManSaveGame>.inst.CurrentState.m_StoredTilesJSON))
+                    foreach (var item in new Dictionary<IntVector2, string>(state.m_StoredTilesJSON))
                     {
                         ManSaveGame.StoredTile storedTile = null;
-                        ManSaveGame.LoadObjectFromRawJson(ref storedTile, item.Value, false, false);
+                        try { ManSaveGame.LoadObjectFromRawJson(ref storedTile, item.Value, false, false); }
+                        catch (Exception eJson)
+                        {
+                            perTechFailures++;
+                            DebugTAC_AI.LogError(KickStart.ModID + ": Migrate JSON tile parse failed at " + item.Key, eJson);
+                            continue;
+                        }
                         if (storedTile != null && storedTile.m_StoredVisibles.TryGetValue(1, out List<ManSaveGame.StoredVisible> techs)
                             && techs.Count > 0)
                         {
                             foreach (ManSaveGame.StoredVisible Vis in techs)
-                            {
-                                if (Vis is ManSaveGame.StoredTech tech && !loaded.Contains(tech.m_ID))
-                                {
-                                    switch (GetLegacyNPTTeamType(tech.m_TeamID))
-                                    {
-                                        case NP_Types.Friendly:
-                                            InsureBaseTeam(tech.m_TeamID).SetFriendly(playerTeam);
-                                            break;
-                                        case NP_Types.Neutral:
-                                            InsureBaseTeam(tech.m_TeamID).defaultRelations = TeamRelations.Neutral;
-                                            break;
-                                        case NP_Types.SubNeutral:
-                                            InsureBaseTeam(tech.m_TeamID).defaultRelations = TeamRelations.SubNeutral;
-                                            break;
-                                        case NP_Types.Enemy:
-                                            InsureBaseTeam(tech.m_TeamID).SetEnemy(playerTeam);
-                                            break;
-                                    }
-                                    count++;
-                                }
-                            }
+                                if (Vis is ManSaveGame.StoredTech t) MigrateOne(t, item.Key);
                         }
-
                     }
                 }
-                if (count > 0)
-                    DebugTAC_AI.Log(KickStart.ModID + ": MigrateTeamsToNewSaveFormat Handled " + count + " Techs");
+                if (count > 0 || perTechFailures > 0)
+                    DebugTAC_AI.Log(KickStart.ModID + ": MigrateTeamsToNewSaveFormat Handled " + count +
+                        " Techs (" + perTechFailures + " per-tech failures)");
             }
             catch (Exception e)
             {
-                DebugTAC_AI.Log(KickStart.ModID + ": MigrateTeamsToNewSaveFormat FAILED at " + count + " Techs - " + e);
+                // Non-isolable outer failure: roll back to pre-migration snapshot.
+                inst.teams = snapshot;
+                DebugTAC_AI.LogError(KickStart.ModID + ": MigrateTeamsToNewSaveFormat FATAL at " + count +
+                    " Techs - rolled back to " + snapshot.Count + " teams", e);
             }
         }
-
 
         public static void OnWorldSave()
         {
             try
             {
                 if (inst == null)
-                    DebugTAC_AI.Log("ManBaseTeams - Save failed, saving instance null??");
-                /*
-                foreach (var item in inst.teams)
                 {
-                    DebugTAC_AI.LogDevOnly("  Team " + item.Value.teamName + ", relation " + item.Value.Alignment_Internal(playerTeam));
-                }*/
+                    DebugTAC_AI.LogError("ManBaseTeams - Save failed, saving instance null??");
+                    return;
+                }
+                PurgeOrphanedSellOffers("pre-save");
+                if (inst.teams != null)
+                {
+                    foreach (var item in inst.teams)
+                    {
+                        DebugTAC_AI.LogDevOnly("  Team " + item.Value.teamName + ", relation " + item.Value.Alignment_Internal(playerTeam));
+                    }
+                }
                 DebugTAC_AI.Log("ManBaseTeams - Saved " + inst.teams.Count + " NPT base teams.");
             }
-            catch { }
+            catch (Exception e) { DebugTAC_AI.LogError("ManBaseTeams.OnWorldSave failed", e); }
         }
         public static void OnWorldFinishSave()
         {
             try
             {
-                DebugTAC_AI.Log("ManBaseTeams - Saved " + inst.teams.Count + " NPT base teams.");
+                if (inst?.teams != null)
+                    DebugTAC_AI.Log("ManBaseTeams - Saved " + inst.teams.Count + " NPT base teams.");
             }
-            catch { }
+            catch (Exception e) { DebugTAC_AI.LogError("ManBaseTeams.OnWorldFinishSave failed", e); }
         }
         public static void OnWorldPreLoad()
         {
             try
             {
+                ResetSessionState("OnWorldPreLoad");
+                // null sentinel: OnWorldLoad treats teams==null as "no disk data, fresh world".
+                // ResetSessionState only Clear()s, so set null afterward.
                 inst.teams = null;
             }
-            catch { }
+            catch (Exception e) { DebugTAC_AI.LogError("ManBaseTeams.OnWorldPreLoad failed", e); }
         }
         public static void OnWorldLoad()
         {
@@ -1316,6 +1366,11 @@ namespace TAC_AI
             {
                 if (inst.HiddenVisibles == null)
                     inst.HiddenVisibles = new HashSet<int>();
+                // SafeSaves may leave this null on saves created before the field existed.
+                if (inst.seededSpawnCoords == null)
+                    inst.seededSpawnCoords = new HashSet<IntVector2>();
+                if (inst.TradingSellOffers == null)
+                    inst.TradingSellOffers = new Dictionary<int, int>();
                 if (inst.teams == null)
                 {
                     InsureDefaultTeams(false);
@@ -1325,9 +1380,7 @@ namespace TAC_AI
                 }
                 else
                 {
-                    // Clean up any "corrupted" teams
                     InsureDefaultTeams(true);
-                    // Continue with loading
                     foreach (var item in inst.teams)
                     {
                         //DebugTAC_AI.LogDevOnly("  Team " + item.Value.teamName + ", relation " + item.Value.Alignment_Internal(playerTeam));
@@ -1335,13 +1388,15 @@ namespace TAC_AI
                     }
                     DebugTAC_AI.Log("ManBaseTeams - Loaded " + inst.teams.Count + " NPT base teams.");
                 }
+                // Post-deserialization orphan purge: drop sell-offer entries whose visible
+                // no longer exists in this session (legacy save corruption or race-orphan).
+                PurgeOrphanedSellOffers("post-load");
             }
             catch (Exception e)
             {
-                DebugTAC_AI.Log("ManBaseTeams - FAILED with " + e);
+                DebugTAC_AI.LogError("ManBaseTeams.OnWorldLoad FAILED", e);
             }
         }
-
 
         internal class GUIManaged
         {
@@ -1403,8 +1458,6 @@ namespace TAC_AI
             }
         }
 
-
-
         private static bool NetReady = false;
         private static Dictionary<int, byte> ToSend = null;
         public static void CheckNeedNetworkHooks(Mode mode)
@@ -1438,106 +1491,78 @@ namespace TAC_AI
         {
             if (ToSend.ContainsKey(team))
                 return;
-            ToSend.Add(team, 0);
+            ToSend[team] = 0;
         }
         public static void OnNetTeamAlignChange(int team)
         {
             if (ToSend.TryGetValue(team, out byte val) && val > 0)
                 return;
-            ToSend.Add(team, 1);
+            ToSend[team] = 1;  // indexer: tolerates pre-existing BB(=0) entry, upgrades to align(=1)
         }
         public static void OnNetTeamDestroyed(int team)
         {
-            if (ToSend.ContainsKey(team))
-            {
-                ToSend[team] = 2;
-                return;
-            }
-            ToSend.Add(team, 2);
+            ToSend[team] = 2;  // indexer: always wins; removal supersedes BB/align
         }
+
+        // Hard cap per packet to stay under the byte length prefix AND keep payload
+        // well below typical MTU. Per-tick drains may emit multiple packets.
+        private const int MaxPerPacket = 200;
 
         public static void PushTeamDeltasToClients()
         {
-            if (ToSend.Any())
+            if (ToSend.Count == 0) return;
+            // Priority drain: removals (2) first, then BB (0), then align (1).
+            // Order matters because a dropped/reordered tail packet must not leave the
+            // client believing a removed team is still alive.
+            var ordered = new List<KeyValuePair<int, byte>>(ToSend);
+            ordered.Sort((a, b) =>
             {
-                netHook.TryBroadcast(new NetworkedAITeamUpdate());
+                int ra = a.Value == 2 ? 0 : (a.Value == 0 ? 1 : 2);
+                int rb = b.Value == 2 ? 0 : (b.Value == 0 ? 1 : 2);
+                return ra.CompareTo(rb);
+            });
+            ToSend.Clear();
+            for (int i = 0; i < ordered.Count; i += MaxPerPacket)
+            {
+                int take = Math.Min(MaxPerPacket, ordered.Count - i);
+                netHook.TryBroadcast(new NetworkedAITeamUpdate(ordered, i, take));
             }
         }
 
         public class NetworkedAITeamUpdate : MessageBase
         {
+            // Empty ctor required for Mirror/UNet deserialization.
             public NetworkedAITeamUpdate() { }
+            // Producer ctor: takes an explicit slice of a drained list so Serialize is
+            // pure (no static ToSend access, no mutation, safe to re-serialize/retry).
+            private readonly List<KeyValuePair<int, byte>> _payload;
+            private readonly int _start, _len;
+            public NetworkedAITeamUpdate(List<KeyValuePair<int, byte>> payload, int start, int len)
+            {
+                _payload = payload; _start = start; _len = len;
+            }
 
             public override void Serialize(NetworkWriter write)
             {
-                try
+                int count = _len;
+                write.Write((byte)count);  // count is always <= MaxPerPacket (200) <= byte.MaxValue
+                for (int i = 0; i < count; i++)
                 {
-                    int count = ToSend.Count;
-                    if (count <= byte.MaxValue)
+                    var item = _payload[_start + i];
+                    if (inst.teams.TryGetValue(item.Key, out EnemyTeamData ETD))
                     {
-                        write.Write((byte)count);
-                        foreach (var item in ToSend)
+                        switch (item.Value)
                         {
-                            if (inst.teams.TryGetValue(item.Key, out EnemyTeamData ETD))
-                            {
-                                switch (item.Value)
-                                {
-                                    case 0:
-                                        PackTeamBBInfo(ref write, ETD);
-                                        break;
-                                    case 1:
-                                        PackTeamInfo(ref write, ETD);
-                                        break;
-                                    case 2:
-                                        PackTeamRemovedInfo(ref write, item.Key);
-                                        break;
-                                    default:
-                                        break;
-                                }
-                            }
-                            else
-                            {
-                                PackTeamRemovedInfo(ref write, item.Key);
-                            }
+                            case 0: PackTeamBBInfo(ref write, ETD); break;
+                            case 1: PackTeamInfo(ref write, ETD); break;
+                            case 2: PackTeamRemovedInfo(ref write, item.Key); break;
+                            default: break;
                         }
                     }
-                else
+                    else
                     {
-                        DebugTAC_AI.Assert("Team netupdates EXCEEDED " + byte.MaxValue + "!!!");
-                        count = byte.MaxValue;
-                        write.Write(byte.MaxValue);
-                        foreach (var item in ToSend)
-                        {
-                            if (inst.teams.TryGetValue(item.Key, out EnemyTeamData ETD))
-                            {
-                                switch (item.Value)
-                                {
-                                    case 0:
-                                        PackTeamBBInfo(ref write, ETD);
-                                        break;
-                                    case 1:
-                                        PackTeamInfo(ref write, ETD);
-                                        break;
-                                    case 2:
-                                        PackTeamRemovedInfo(ref write, item.Key);
-                                        break;
-                                    default:
-                                        break;
-                                }
-                            }
-                            else
-                            {
-                                PackTeamRemovedInfo(ref write, item.Key);
-                            }
-                            count--;
-                            if (count == 0)
-                                break;
-                        }
+                        PackTeamRemovedInfo(ref write, item.Key);
                     }
-                } 
-                finally
-                {
-                    ToSend.Clear();
                 }
             }
             public override void Deserialize(NetworkReader read)
@@ -1556,7 +1581,6 @@ namespace TAC_AI
                     DebugTAC_AI.Log("TAC_AI: FAILED to process NetworkedAITeamUpdate.Deserialize() on step [" + step + "], teams might be corrupted!!! - " + e);
                 }
             }
-
 
             private void PackTeamInfo(ref NetworkWriter write, EnemyTeamData ETD)
             {
@@ -1617,12 +1641,8 @@ namespace TAC_AI
                     DebugTAC_AI.Log("TAC_AI: FAILED to process UnpackTeamAlignmentInfo(), teams might be corrupted!!! - " + e);
                 }
             }
-
-
-            [EnumFlag]
-            public uint PackingInfo;
-            public int TeamID;
-            public int BribeAmount;
+            // P14: removed unused PackingInfo / TeamID / BribeAmount fields (never read; not on the
+            // wire — Serialize/Deserialize use the payload list, and OnReceiveTeamUpdate ignores them).
         }
         private static NetworkHook<NetworkedAITeamUpdate> netHook = new NetworkHook<NetworkedAITeamUpdate>(
             "TAC_AI.NetworkedAITeamUpdate", OnReceiveTeamUpdate, NetMessageType.ToClientsOnly);
@@ -1631,21 +1651,12 @@ namespace TAC_AI
         {
             netHook.Enable();
         }
-        /// <summary>
-        /// Just permits it to carry on
-        /// </summary>
-        /// <param name="update"></param>
-        /// <param name="isServer"></param>
-        /// <returns></returns>
         internal static bool OnReceiveTeamUpdate(NetworkedAITeamUpdate update, bool isServer)
         {
             return true;
         }
 
-
-
         // ------------------------------------
-        //               LEGACY
         // ------------------------------------
 
         private static bool IsLegacyBaseTeam(int team)
@@ -1708,7 +1719,6 @@ namespace TAC_AI
         {
             return team >= FriendlyBaseTeamsStart && team <= FriendlyBaseTeamsEnd;
         }
-
 
     }
 }

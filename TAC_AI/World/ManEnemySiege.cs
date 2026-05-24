@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
@@ -34,7 +34,6 @@ namespace TAC_AI.World
                 { LocalisationEnums.Languages.Japanese, "攻撃者の体力: "},
             });
 
-
         private static string displayName = "UN-INIT";
         private static int TotalHP = 100;
         private static int CurrentHP = 0;
@@ -53,10 +52,8 @@ namespace TAC_AI.World
         private int Team = 0;
         private readonly List<Tank> techsInvolved = new List<Tank>();
 
-
         private static readonly FieldInfo attackBar = typeof(ManBlockLimiter).GetField("m_MaximumUsage", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly FieldInfo attackName = typeof(UIBlockLimit).GetField("m_TotalCountLabel", BindingFlags.NonPublic | BindingFlags.Instance);
-
 
         internal static void Init()
         {
@@ -211,7 +208,6 @@ namespace TAC_AI.World
                     }
                     else
                     {   // It's VERY stuck.  Over the edge of the loaded WorldTiles yet not loaded out of the world yet.
-                        //   Scrap to prevent issues
                         //UnloadedBases.RecycleLoadedTechToTeam(tech);
                         //SpecialAISpawner.Purge(tech);
                     }
@@ -229,8 +225,6 @@ namespace TAC_AI.World
                 EndSiege(shouldCooldown: defeatedAllUnits);
             }
         }
-
-
 
         public static void EndSiege(bool immedeate = false, bool shouldCooldown = false)
         {
@@ -321,7 +315,6 @@ namespace TAC_AI.World
             UIBlockLimit UIBL = (UIBlockLimit)Singleton.Manager<ManHUD>.inst.GetHudElement(ManHUD.HUDElementType.BlockLimit);
             if (!UIBL)
                 return;
-            //raidingTeam
             Text tex = (Text)attackName.GetValue(UIBL);
             displayName = LOC_Health.ToString();
             tex.text = displayName + LOC_EnRoute.ToString();
@@ -361,9 +354,6 @@ namespace TAC_AI.World
 
         float delay = 0;
         private readonly List<Tank> techsFrozen = new List<Tank>();
-        /// <summary>
-        /// Techs that may fall out of the world and thus should be monitored
-        /// </summary>
         private readonly List<Tank> techsFringe = new List<Tank>();
         private void CheckShouldRun()
         {
@@ -410,10 +400,7 @@ namespace TAC_AI.World
             }
         }
 
-        // Blue is 0
         // Red is -1
-        // Green is 1
-        // Yellow is 2
         const int dispVal = 100;
         public void UpdatePercentBar(int combinedEnemyHealth)
         {
@@ -433,7 +420,6 @@ namespace TAC_AI.World
             UIBlockLimit UIBL = (UIBlockLimit)Singleton.Manager<ManHUD>.inst.GetHudElement(ManHUD.HUDElementType.BlockLimit);
             if (!UIBL)
                 return;
-            //raidingTeam
             Text tex = (Text)attackName.GetValue(UIBL);
             tex.text = displayName + combinedEnemyHealth + "/" + TotalHP;
             attackName.SetValue(UIBL, tex);

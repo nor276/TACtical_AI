@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -21,17 +21,12 @@ namespace TAC_AI
         {
             internal static Type target = typeof(GameCursor);
             /*
-            // NEW
             AIOrderAttack
             AIOrderEmpty
             AIOrderMove
             AIOrderSelect
             */
 
-            /// <summary>
-            /// See CursorChanger for more information
-            /// </summary>
-            /// <param name="__result"></param>
             [HarmonyPriority(-200)]
             internal static void GetCursorState_Postfix(ref GameCursor.CursorState __result)
             {
@@ -340,7 +335,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(UIMiniMapLayerTech);
 
-            // AddInNewUIElements
             private static void TryGetIconForTrackedVisible_Postfix(ref TrackedVisible trackedVisible, ref Color iconColour)
             {
                 switch (trackedVisible.RadarType)
@@ -375,7 +369,6 @@ namespace TAC_AI
         {
             internal static Type target = typeof(UIRadialTechControlMenu);
             //static readonly FieldInfo techExtras = typeof(UIRadialTechControlMenu).GetField("m_AllowTargetRefinement", BindingFlags.NonPublic | BindingFlags.Instance);
-            //DetectAIRadialAction
             internal static void Show_Prefix(UIRadialTechControlMenu __instance, ref object context)
             {
                 OpenMenuEventData nabData = (OpenMenuEventData)context;
@@ -391,7 +384,6 @@ namespace TAC_AI
                     DebugTAC_AI.Log(KickStart.ModID + ": TANK IS NULL!");
                 }
             }
-            //DetectAIRadialMenuAction
             internal static void OnAIOptionSelected_Prefix(UIRadialTechControlMenu __instance, ref UIRadialTechControlMenu.PlayerCommands command)
             {
                 //DebugTAC_AI.Log(KickStart.ModID + ": click menu FIRED!!!  input = " + command.ToString() + " | num = " + (int)command);
@@ -420,7 +412,6 @@ namespace TAC_AI
             internal static Type target = typeof(UIScreenPauseMenu);
 
             static readonly FieldInfo rtsCam = typeof(UIScreenPauseMenu).GetField("m_FreeCam", BindingFlags.NonPublic | BindingFlags.Instance);
-            //AllowRTSInCampaign
             private static void Show_Postfix(UIScreenPauseMenu __instance)
             {
                 Toggle cam = (Toggle)rtsCam.GetValue(__instance);

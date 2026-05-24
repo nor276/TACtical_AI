@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,9 +11,6 @@ using Nuterra.BlockInjector;
 
 namespace TerraTechETCUtil
 {
-    /// <summary>
-    /// A temporary way of doing reverse block lookups for the time being
-    /// </summary>
     public class BlockIndexer : MonoBehaviour
     {
         private static BlockIndexer inst;
@@ -21,12 +18,6 @@ namespace TerraTechETCUtil
         private static string FolderDivider => TAC_AI.Templates.RawTechExporter.up;
         private static bool Compiled = false;
 
-
-        /// <summary>
-        /// Searches Block Injector for the block based on root GameObject name.
-        /// </summary>
-        /// <param name="mem">The name of the block's root GameObject.  This is also set in the Official Mod Tool by the Name ID (filename of the .json), not the name you give it.</param>
-        /// <returns>The Block Type to use if it found it, otherwise returns BlockTypes.GSOCockpit_111</returns>
         public static BlockTypes StringToBlockType(string mem)
         {
             if (!Enum.TryParse(mem, out BlockTypes type))
@@ -42,12 +33,6 @@ namespace TerraTechETCUtil
             }
             return type;
         }
-        /// <summary>
-        /// Searches the ENTIRE GAME for the block based on root GameObject name.
-        /// </summary>
-        /// <param name="mem">The name of the block's root GameObject.  This is also set in the Official Mod Tool by the Name ID (filename of the .json), not the name you give it.</param>
-        /// <param name="BT">The Block Type to use if it found it</param>
-        /// <returns>True if it found it in Block Injector</returns>
         public static bool StringToBlockType(string mem, out BlockTypes BT)
         {
             if (!Enum.TryParse(mem, out BT))
@@ -63,12 +48,6 @@ namespace TerraTechETCUtil
             }
             return true;
         }
-        /// <summary>
-        /// Searches Block Injector for the block based on root GameObject name.
-        /// </summary>
-        /// <param name="mem">The name of the block's root GameObject.  This is also set in the Official Mod Tool by the Name ID (filename of the .json), not the name you give it.</param>
-        /// <param name="BT">The Block Type to use if it found it</param>
-        /// <returns>True if it found it in Block Injector</returns>
         public static bool StringToBIBlockType(string mem, out BlockTypes BT) // BLOCK INJECTOR
         {
             BT = BlockTypes.GSOAIController_111;
@@ -114,8 +93,6 @@ namespace TerraTechETCUtil
             return false;
         }
 
-
-        // Logless block loader
         private static Dictionary<string, int> ModdedBlocksGrabbed;
         private static readonly FieldInfo allModdedBlocks = typeof(ManMods).GetField("m_BlockIDReverseLookup", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly Dictionary<int, BlockTypes> errorNames = new Dictionary<int, BlockTypes>();
@@ -126,9 +103,6 @@ namespace TerraTechETCUtil
             errorNames.Clear();
             Compiled = false;
         }
-        /// <summary>
-        /// Builds the lookup to use when using block names to find BlockTypes
-        /// </summary>
         public static void ConstructBlockLookupListDelayed()
         {
             if (Compiled)
@@ -144,9 +118,6 @@ namespace TerraTechETCUtil
             ConstructBlockLookupList();
         }
 
-        /// <summary>
-        /// Builds the lookup to use when using block names to find BlockTypes
-        /// </summary>
         public static void ConstructBlockLookupList()
         {
             if (Compiled)
@@ -184,12 +155,6 @@ namespace TerraTechETCUtil
             Compiled = true;
         }
 
-        /// <summary>
-        /// Delay this until AFTER Block Injector to setup the lookups
-        /// </summary>
-        /// <summary>
-        /// Call at least once to hook up to modding
-        /// </summary>
         public static void PrepareModdedBlocksSearch()
         {
             ModdedBlocksGrabbed = (Dictionary<string, int>)allModdedBlocks.GetValue(Singleton.Manager<ManMods>.inst);
@@ -241,7 +206,6 @@ namespace TerraTechETCUtil
             Debug.Log("TACtical_AI: ConstructModdedIDList - compiled " + Offi_UnOf.Count());
 #endif
         }
-
 
         private static bool TryGetMismatchNames(string name, ref BlockTypes type)
         {

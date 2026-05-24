@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using SafeSaves;
@@ -17,9 +17,7 @@ namespace TAC_AI.World
         public static ManWorldRTS inst;
         public static int MaxCommandDistance = 9001;//500;
         public static int MaxAllowedSizeForHighlight = 3;
-        /// <summary> Converted Photo Mode </summary>
         public static bool PlayerIsInRTS = false;
-        /// <summary> The controlling Tech command hotkey </summary>
         public static bool PlayerRTSOverlay = false;
         public static bool RTSControl => PlayerIsInRTS || PlayerRTSOverlay;
         public static bool QueuedRelease = false;
@@ -34,7 +32,6 @@ namespace TAC_AI.World
 
         public static RTSCursorState cursorState = RTSCursorState.Empty;
         private static bool ControlState = false;
-
 
         internal static bool dirtyLocalPlayer = false;
 
@@ -114,12 +111,6 @@ namespace TAC_AI.World
                 Subject = null;
                 TypeSwitch = (AIType)AIType.Null;
             }
-            /// <summary>
-            /// Note: setting "type" to null will 
-            /// </summary>
-            /// <param name="helper"></param>
-            /// <param name="subject"></param>
-            /// <param name="type"></param>
             public CommandLink(TankAIHelper helper, Visible subject, AIType type)
             {
                 if (subject == null)
@@ -238,22 +229,22 @@ namespace TAC_AI.World
             }
         }
 
+        // Single source of truth for RTS unit-group bucket count. Save/load/UI all
+        // index by this constant so a future schema bump is one-line.
+        public const int UnitGroupCount = 10;
+
+        private static List<List<T>> NewBuckets<T>()
+        {
+            var l = new List<List<T>>(UnitGroupCount);
+            for (int i = 0; i < UnitGroupCount; i++) l.Add(new List<T>());
+            return l;
+        }
+
         [SSaveField]
         public Dictionary<int, List<CommandLink>> TechMovementQueue = new Dictionary<int, List<CommandLink>>();
         [SSaveField]
         public List<List<int>> UnitGroupsSerial = null;
-        public List<List<TrackedVisible>> UnitGroups = new List<List<TrackedVisible>> {
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()},
-            {new List<TrackedVisible>()}
-        };
+        public List<List<TrackedVisible>> UnitGroups = NewBuckets<TrackedVisible>();
 
         internal static void RecalcUIScale() =>
             RTSUIMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one * RTSUIScale);
@@ -264,7 +255,6 @@ namespace TAC_AI.World
                 return;
             inst = new GameObject("PlayerRTSControl").AddComponent<ManWorldRTS>();
             DebugTAC_AI.Log(KickStart.ModID + ": Created PlayerRTSControl.");
-            //ManPointer.inst.MouseEvent.Subscribe(OnMouseEvent); - Only updates when in active game, not spectator
             Singleton.Manager<ManGameMode>.inst.ModeSwitchEvent.Subscribe(OnWorldReset);
             Singleton.Manager<CameraManager>.inst.CameraSwitchEvent.Subscribe(OnCameraChange);
             TankAIManager.TechRemovedEvent.Subscribe(ReleaseControl);
@@ -316,7 +306,10 @@ namespace TAC_AI.World
                     SelectHalo.halos.Add(RTSHaloState.Hover, RawTechExporter.CreateMaterial("O_HoverSelect.png", mat));
                     SelectHalo.halos.Add(RTSHaloState.Select, RawTechExporter.CreateMaterial("O_AllySelect.png", mat));
                 }
-                catch { }
+                catch (Exception eMat)
+                {
+                    DebugTAC_AI.LogError(KickStart.ModID + ": DelayedInitiate - failed to register one or more SelectHalo materials (Default will be used for missing): " + eMat);
+                }
 
                 //SelectHalo.SelectCirclePrefab.AddComponent<MeshRenderer>().material = mat;
                 var ps = SelectHalo.SelectCirclePrefab.AddComponent<ParticleSystem>();
@@ -353,8 +346,13 @@ namespace TAC_AI.World
                 DebugTAC_AI.Log(KickStart.ModID + ": Created SelectCircle.");
             }
 
+            // Destroy before re-Instantiate — DelayedInitiate fires per DLC content load AND on every
+            // runtime strategic-AI/RTS-HUD toggle (see DEAD-2 revive). Without the guard, previous
+            // windows get orphaned in the hierarchy on every call.
+            if (SelectWindow != null) Destroy(SelectWindow);
             SelectWindow = Instantiate(new GameObject("TechSelectRect"));
             SelectWindow.AddComponent<GUIRectSelect>();
+            if (autoWindow != null) Destroy(autoWindow);
             autoWindow = Instantiate(new GameObject("AutoPilot"));
             autoWindow.AddComponent<GUIRectAuto>();
         }
@@ -439,7 +437,6 @@ namespace TAC_AI.World
                 }
             }
         }
-
 
         public static Vector3 GetPlayerTargetOffset(Vector3 target)
         {
@@ -970,7 +967,6 @@ namespace TAC_AI.World
             }
         }
 
-
         public bool StartControlling(TankAIHelper helper, ListHashSet<TankAIHelper> controlled)
         {
             if (helper.tank.netTech?.NetPlayer)
@@ -1032,8 +1028,6 @@ namespace TAC_AI.World
             }
         }
 
-
-
         public static bool HasMovementQueue(TankAIHelper helper)
         {
             if (inst)
@@ -1094,7 +1088,6 @@ namespace TAC_AI.World
             nextCommand = null;
             return false;
         }
-
 
         public static void SetSelectHalo(TankAIHelper helper, bool selectedHalo)
         {
@@ -1354,7 +1347,11 @@ namespace TAC_AI.World
                     int ID = TechMovementQueue.ElementAt(step).Key;
                     TrackedVisible TV = ManVisible.inst.GetTrackedVisible(ID);
                     if (TV == null)
+                    {
                         TechMovementQueue.Remove(ID);
+                        numStep--;
+                        continue;
+                    }
                     TankAIHelper helper = TV.visible?.tank?.GetHelperInsured();
                     if (helper?.tank?.visible == null || !helper.tank.visible.isActive)
                     {
@@ -1370,8 +1367,10 @@ namespace TAC_AI.World
                         step++;
                 }
             }
-            catch
+            catch (Exception e)
             {
+                DebugTAC_AI.FirstFire("RemoveNullFromQueue.swallow",
+                    "RemoveNullFromQueue threw — " + e.GetType().Name + ": " + e.Message);
             }
         }
 
@@ -1416,6 +1415,18 @@ namespace TAC_AI.World
                     SetVisOfAll(isRTSState);
                     linesLastUsed = linesUsed;
                     linesUsed = 0;
+                    // P12 BUG-4: own the player-RTS hold-fire command on this single per-frame clock.
+                    // Previously WeaponMaintainer self-promoted FIRE_ALL on the per-tick clock while
+                    // BGeneral.ResetValues cleared it on the slower operations clock, racing into a
+                    // one-tick FireControl flicker. ResetValues is guarded to not stomp a live held
+                    // command (see BGeneral.ResetValues).
+                    if (!ManNetwork.IsNetworked && LocalPlayerTechsControlled.Count > 0 &&
+                        AIGlobals.PlayerClientFireCommand())
+                    {
+                        foreach (TankAIHelper fireHelper in LocalPlayerTechsControlled)
+                            if (fireHelper != null && fireHelper.AIAlign == AIAlignment.Player)
+                                fireHelper.FIRE_ALL = true;
+                    }
                     if (isRTSState)
                     {
                         bool notOverMenus = !ManModGUI.IsMouseOverModGUI || BoxSelecting;
@@ -1423,7 +1434,6 @@ namespace TAC_AI.World
                         //UpdateCameraOverride();
                         UpdateCursor();
 
-                        // Handle Selection
                         if (!PlayerRTSUI.BuilderMenuOpen || !ManPointer.inst.IsInteractionBlocked)
                         {   // Detect clicks off of game UI to re-enable the selection
                             if (Input.GetMouseButtonUp(0))
@@ -1468,7 +1478,6 @@ namespace TAC_AI.World
                             }
                             isBoxSelecting = isDragging && Input.GetMouseButton(0);
 
-
                             HandleGroups();
                             if (Input.GetKeyDown(KickStart.CommandBoltsHotkey))
                             {
@@ -1482,7 +1491,6 @@ namespace TAC_AI.World
                             LocalPlayerTechsControlled.ReorderByDescending(x => x.tank.blockman.blockCount).ReorderByDescending(x => x.tank.IsAnchored);
                         }
 
-                        // Handle RTS unit guidence lines
                         if (!AIGlobals.HideHud)
                             UpdateLines();
 
@@ -1508,54 +1516,61 @@ namespace TAC_AI.World
             }
         }
 
-
+        // Normalize a persisted bucket list to the current schema's bucket count.
+        // Pad short saves with empty buckets; log+drop overflow buckets from oversized saves.
+        private static void NormalizeSerial(List<List<int>> serial)
+        {
+            while (serial.Count < UnitGroupCount) serial.Add(new List<int>());
+            if (serial.Count > UnitGroupCount)
+            {
+                int dropped = 0;
+                for (int i = UnitGroupCount; i < serial.Count; i++)
+                    dropped += serial[i]?.Count ?? 0;
+                DebugTAC_AI.LogError("ManWorldRTS - UnitGroupsSerial has " + serial.Count +
+                    " buckets (expected " + UnitGroupCount + "); dropping " + dropped + " entries from overflow buckets.");
+                serial.RemoveRange(UnitGroupCount, serial.Count - UnitGroupCount);
+            }
+        }
 
         public static void OnWorldSave()
         {
             try
             {
                 if (inst == null)
-                    DebugTAC_AI.Log("ManWorldRTS - Save failed, saving instance null??");
-                if (inst.UnitGroupsSerial == null)
                 {
-                    inst.UnitGroupsSerial = new List<List<int>>
-                    {
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()},
-                        {new List<int>()}
-                    };
+                    DebugTAC_AI.Log("ManWorldRTS - Save failed, saving instance null??");
+                    return;
                 }
-                for (int i = 0; i < inst.UnitGroups.Count; i++)
+                // Always rebuild the serial buffer from scratch: a non-null UnitGroupsSerial
+                // means the previous save cycle's OnWorldFinishSave never ran (e.g. another
+                // save handler threw mid-chain). Trusting leftover state caused B-08
+                // (double-append corrupts the persisted list on every subsequent save).
+                if (inst.UnitGroupsSerial == null || inst.UnitGroupsSerial.Count != UnitGroupCount)
+                    inst.UnitGroupsSerial = NewBuckets<int>();
+                else
+                    for (int i = 0; i < inst.UnitGroupsSerial.Count; i++)
+                        inst.UnitGroupsSerial[i].Clear();
+
+                for (int i = 0; i < UnitGroupCount; i++)
                 {
                     var group = inst.UnitGroups[i];
                     var serialGroup = inst.UnitGroupsSerial[i];
                     foreach (var item in group)
-                    {
                         serialGroup.Add(item.ID);
-                    }
-                    if (serialGroup.Any())
+                    if (serialGroup.Count > 0)
                         DebugTAC_AI.Log("ManWorldRTS - Saved [" + serialGroup.Count + "] entries to Group " + i);
                 }
-
-
-                //DebugTAC_AI.Log("ManWorldRTSSave - Saved.");
             }
             catch (Exception e)
             {
-                DebugTAC_AI.Log("ManWorldRTS - OnWorldSave error " + e);
+                DebugTAC_AI.LogError("ManWorldRTS - OnWorldSave error", e);
             }
         }
         public static void OnWorldFinishSave()
         {
             try
             {
+                if (inst?.UnitGroupsSerial == null) return;
                 foreach (var item in inst.UnitGroupsSerial)
                     item.Clear();
                 inst.UnitGroupsSerial.Clear();
@@ -1564,7 +1579,7 @@ namespace TAC_AI.World
             }
             catch (Exception e)
             {
-                DebugTAC_AI.Log("ManWorldRTS - OnWorldFinishSave error " + e);
+                DebugTAC_AI.LogError("ManWorldRTS - OnWorldFinishSave error", e);
             }
         }
         public static void OnWorldPreLoad()
@@ -1576,7 +1591,7 @@ namespace TAC_AI.World
             }
             catch (Exception e)
             {
-                DebugTAC_AI.Log("ManWorldRTS - OnWorldPreLoad error " + e);
+                DebugTAC_AI.LogError("ManWorldRTS - OnWorldPreLoad error", e);
             }
         }
         public static void OnWorldLoad()
@@ -1586,13 +1601,20 @@ namespace TAC_AI.World
                 if (inst.TechMovementQueue == null)
                     inst.TechMovementQueue = new Dictionary<int, List<CommandLink>>();
 
-
                 if (inst.UnitGroupsSerial != null)
                 {
-                    for (int i = 0; i < inst.UnitGroups.Count; i++)
+                    if (inst.UnitGroupsSerial.Count != UnitGroupCount)
+                        DebugTAC_AI.Log("ManWorldRTS - UnitGroupsSerial bucket count " +
+                            inst.UnitGroupsSerial.Count + " != expected " + UnitGroupCount + "; normalizing.");
+                    NormalizeSerial(inst.UnitGroupsSerial);
+                    // Defense-in-depth: bound by Min of all three sources even though
+                    // NormalizeSerial pads UnitGroupsSerial to UnitGroupCount and
+                    // UnitGroups is constructed via NewBuckets at the same size.
+                    int upper = Math.Min(UnitGroupCount, Math.Min(inst.UnitGroups.Count, inst.UnitGroupsSerial.Count));
+                    for (int i = 0; i < upper; i++)
                     {
                         var group = inst.UnitGroups[i];
-                        var serialGroup = inst.UnitGroupsSerial[i];
+                        var serialGroup = inst.UnitGroupsSerial[i] ?? new List<int>();
                         foreach (var item in serialGroup)
                         {
                             TrackedVisible TV = ManVisible.inst.GetTrackedVisible(item);
@@ -1614,11 +1636,9 @@ namespace TAC_AI.World
             }
             catch (Exception e)
             {
-                DebugTAC_AI.Log("ManWorldRTS - OnWorldLoad error " + e);
+                DebugTAC_AI.LogError("ManWorldRTS - OnWorldLoad error", e);
             }
         }
-
-
 
         private static WorldPosition lastCameraPos;
         private const float followTime = 1.4f;
@@ -1711,7 +1731,6 @@ namespace TAC_AI.World
                     }
                 }
             }
-            // Create and update all shown unit target paths in the world
             foreach (var extended in TechMovementQueue)
             {
                 TrackedVisible TV = ManVisible.inst.GetTrackedVisible(extended.Key);
@@ -2019,7 +2038,11 @@ namespace TAC_AI.World
             foreach (var item in TechMovementQueue)
             {
                 TrackedVisible TV = ManVisible.inst.GetTrackedVisible(item.Key);
+                if (TV == null)
+                    continue;
                 TankAIHelper helper = TV.visible?.tank?.GetHelperInsured();
+                if (helper?.tank?.visible == null)
+                    continue;
                 //DebugTAC_AI.Log(" dist " + (help.tank.boundsCentreWorldNoCheck - help.RTSDestination).magnitude + " vs " + help.lastTechExtents * (1 + (help.recentSpeed / 12)));
                 if (helper.RTSCommand == null || helper.RTSCommand.TestSuccess(helper))
                 {
@@ -2238,8 +2261,6 @@ namespace TAC_AI.World
             return vector.x > x && vector.x < num && vector.y > y && vector.y < num2;
         }
 
-
-
         internal class GUIRectSelect : MonoBehaviour
         {
             internal void OnGUI()
@@ -2309,8 +2330,6 @@ namespace TAC_AI.World
             }
         }
 
-
-        // Player autopilot
         private static GameObject autoWindow;
         private const int PlayerAutopilotID = 8009;
         internal class GUIRectAuto : MonoBehaviour

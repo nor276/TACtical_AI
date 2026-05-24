@@ -1,11 +1,10 @@
-﻿using UnityEngine;
+using UnityEngine;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI.AlliedOperations
 {
     internal static class BBuccaneer {
-        //Same as Airship but levels out with the sea and avoids terrain
         public static void MotivateBote(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
             //The Handler that tells the naval ship (Escort) what to do movement-wise
@@ -15,7 +14,6 @@ namespace TAC_AI.AI.AlliedOperations
 
             if (!KickStart.isWaterModPresent)
             {
-                //Fallback to normal escort if no watermod present
                 helper.DediAI = AIType.Escort;
                 return;
             }
@@ -37,10 +35,8 @@ namespace TAC_AI.AI.AlliedOperations
             float dist = helper.GetDistanceFromTask(helper.lastPlayer.tank.boundsCentreWorldNoCheck, helper.lastPlayer.GetCheapBounds());
             float range = helper.MaxObjectiveRange + helper.lastTechExtents + playerExt;
 
-
             if ((bool)helper.lastEnemyGet && !helper.Retreat)
             {   // combat pilot will take care of the rest
-                //OBSTRUCTION MANAGEMENT
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.PlayerAISpeedPanicDividend))
                 {
                     helper.TryHandleObstruction(hasMessaged, dist, true, true, ref direct);
@@ -57,7 +53,7 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.DriveVar = -1;
                 //direct.lastDestination = helper.lastPlayer.centrePosition;
                 if (helper.unanchorCountdown > 0)
-                    helper.unanchorCountdown--;
+                    { /* unanchorCountdown self-counts via its AITimer now */ }
                 if (helper.AutoAnchor && helper.PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)
                 {
                     if (tank.Anchors.NumIsAnchored > 0)
@@ -75,7 +71,7 @@ namespace TAC_AI.AI.AlliedOperations
                 //direct.lastDestination = OffsetToSea(helper.lastPlayer.centrePosition, helper);
                 helper.DelayedAnchorClock = 0;
                 if (helper.unanchorCountdown > 0)
-                    helper.unanchorCountdown--;
+                    { /* unanchorCountdown self-counts via its AITimer now */ }
                 if (helper.AutoAnchor && helper.PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)
                 {
                     if (tank.Anchors.NumIsAnchored > 0)
@@ -94,8 +90,6 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
                 helper.DriveVar = 1f;
 
-
-                //DISTANCE WARNINGS
                 if (dist > range * 2)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Oh Crafty they are too far!");
@@ -114,7 +108,6 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.AvoidStuff = true;
                     helper.UrgencyOverload = 0;
                 }
-                //URGENCY REACTION
                 if (helper.Urgency > 20)
                 {
                     //FARRR behind! BOOSTERS NOW!
@@ -125,7 +118,6 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 else if (helper.Urgency > 2)
                 {
-                    //Behind and we must catch up
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Wait for meeeeeeeeeee!");
                     helper.AvoidStuff = false;
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -135,7 +127,6 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 else if (helper.Urgency > 1 && helper.recentSpeed < 10)
                 {
-                    //bloody tree moment
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": GET OUT OF THE WAY NUMBNUT!");
                     helper.AvoidStuff = false;
                     helper.FIRE_ALL = true;
@@ -143,14 +134,12 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.DriveVar = 0.5f;
                     helper.UrgencyOverload += KickStart.AIClockPeriod / 5f;
                 }
-                //OBSTRUCTION MANAGEMENT
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.PlayerAISpeedPanicDividend))
                 {
                     helper.TryHandleObstruction(hasMessaged, dist, true, true, ref direct);
                 }
                 else if (!helper.IsTechMovingAbs(helper.EstTopSped / 2))
                 {
-                    // Moving a bit too slow for what we can do
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Trying to catch up!");
                     helper.Urgency += KickStart.AIClockPeriod / 5f;
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -158,14 +147,12 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 else
                 {
-                    //Things are going smoothly
                     helper.AvoidStuff = true;
                     helper.SettleDown();
                 }
             }
             else if (dist < (range / 2))
             {
-                //Likely stationary
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Settling");
                 //direct.lastDestination = OffsetToSea(tank.transform.position, helper);
                 helper.AvoidStuff = true;
@@ -183,7 +170,6 @@ namespace TAC_AI.AI.AlliedOperations
             }
             else
             {
-                //Likely idle
                 OnIdle(helper, tank, ref direct, ref hasMessaged);
             }
         }

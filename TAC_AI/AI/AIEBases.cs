@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -112,7 +112,6 @@ namespace TAC_AI.AI
                 target.x = target.x + subdivisionUnit;
             }
         }
-
 
         private static Vector3[] location = new Vector3[9];
         internal static bool TryFindOpenBuildLocation(Tank tank, Vector3 targetWorld, float placeSize, float searchRadius, int radiusDivisions, out Vector3 pos, bool IgnoreCurrentlyBuilding = false)
@@ -235,7 +234,6 @@ namespace TAC_AI.AI
             pos = expansionCenter;
             return false;
         }
-
 
         internal static bool TryFindOpenLocationDirect(Tank tank, Vector3 expansionCenter, float placeRadius, out Vector3 pos)
         {

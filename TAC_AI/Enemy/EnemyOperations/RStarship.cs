@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -12,12 +12,6 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     internal static class RStarship
     {
         //Same as RWheeled but has multi-plane support
-        /// <summary>
-        /// Positions are handled by the AI Core
-        /// </summary>
-        /// <param name="helper"></param>
-        /// <param name="tank"></param>
-        /// <param name="mind"></param>
         public static void AttackZoom(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             //The Handler that tells the Tank (Escort) what to do movement-wise
@@ -25,7 +19,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             helper.Attempt3DNavi = true;
             helper.AvoidStuff = true;
 
-            if (mind.CommanderMind == EnemyAttitude.Homing && helper.lastEnemyGet?.tank)
+            // P13 BUG-2: lastEnemyGet.tank guaranteed non-null here — the centralized null-target
+            // guard in EnemyOperationsController now rejects a null .tank too, not just the Visible.
+            if (mind.CommanderMind == EnemyAttitude.Homing)
             {
                 if ((helper.lastEnemyGet.tank.boundsCentreWorld - tank.boundsCentreWorld).magnitude > mind.MaxCombatRange)
                 {
@@ -34,15 +30,16 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         return;
                 }
             }
-            else if (!helper.lastEnemyGet?.tank)
-            {
-                RGeneral.LollyGag(helper, tank, mind, ref direct);
-                return;
-            }
+            // B7: null-target case centralized in EnemyOperationsController.Execute.
             RGeneral.Engadge(helper, tank, mind);
 
             float enemyExt = helper.lastEnemyGet.GetCheapBounds();
             float dist = helper.GetDistanceFromTask(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck, enemyExt);
+            // T3: needsToSlowDown applied in Ranged + default arms only (Safety/Circle skipped).
+            // Pre-switch `ThrottleState = ForceSpeed` at line 40 enforces forward lift physics
+            // for starships; applying Yield in Safety/Circle would freeze a fleeing/orbiting
+            // starship (stall). RChopper applies the same arms but adds a ladder-demotion use
+            // appropriate for hover physics.
             bool needsToSlowDown = helper.IsOrbiting();
             float range;
             float spacing = helper.lastTechExtents + enemyExt;
@@ -76,7 +73,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 case EAttackMode.Circle:
                     range = AIGlobals.SpacingRangeHoverer;
                     helper.AISetSettings.ObjectiveRange = spacing + range;
-                    //helper.SideToThreat = true;
+                    // Circle intentionally `SideToThreat = false` — cannot strafe while firing shells, will miss (artillery alignment).
                     helper.AISetSettings.SideToThreat = false;
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     helper.AutoSpacing = range;
@@ -108,6 +105,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         helper.ThrottleState = AIThrottleState.Yield;
                     if (dist < spacing + range)
                     {
+                        RGeneral.MarkRetreating(helper);   // B10
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                         else
@@ -118,14 +116,13 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     else if (dist < spacing + (range * 1.5f))
                     {
+                        RGeneral.MarkAdvancing(helper);    // B10
                         helper.ThrottleState = AIThrottleState.PivotOnly;
-                        /*
-                        direct.DriveDest = EDriveDest.None;
-                        direct.DriveDir = EDriveFacing.Forwards;*/
                         direct.DriveAwayFacingTowards();
                     }
                     else if (dist < spacing + (range * 2))
                     {
+                        RGeneral.MarkAdvancing(helper);    // B10
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                         else
@@ -134,6 +131,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     else
                     {
+                        RGeneral.MarkAdvancing(helper);    // B10
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                         else
@@ -142,7 +140,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         direct.DriveToFacingTowards();
                     }
                     break;
-                default:
+                default:    // T2: Chase/Strong/Random/AutoSet share kinematics — target-selection differentiation lives in TankAIHelper.FindEnemy
                     range = AIGlobals.SpacingRangeHoverer;
                     helper.AISetSettings.ObjectiveRange = spacing + range;
                     helper.AISetSettings.SideToThreat = false;
@@ -151,6 +149,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         helper.ThrottleState = AIThrottleState.Yield;
                     if (!mind.LikelyMelee && dist < spacing + 2)
                     {
+                        RGeneral.MarkRetreating(helper);   // B10
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                         else
@@ -160,12 +159,14 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     else if (!mind.LikelyMelee && dist < spacing + range)
                     {
+                        RGeneral.MarkAdvancing(helper);    // B10
                         helper.ThrottleState = AIThrottleState.PivotOnly;
                         direct.DriveToFacingTowards();
-                        
+
                     }
                     else if (dist < spacing + (range * 1.25f))
                     {
+                        RGeneral.MarkAdvancing(helper);    // B10
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                         else
@@ -174,6 +175,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     else
                     {
+                        RGeneral.MarkAdvancing(helper);    // B10
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                         else

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -32,7 +32,6 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 
                 BGeneral.ResetValues(helper, ref direct);
 
-                // VALIDATION CHECKS OF TRACTOR BED FILL STATUS
                 if (helper.CollectedTarget)
                 {
                     errorCode = 2;
@@ -74,7 +73,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                         direct.Reverse(helper);
-                        helper.actionPause -= KickStart.AIClockPeriod / 5;
+                        { /* actionPause self-counts via its AITimer now */ }
                         return;
                     }
                     errorCode = 6;
@@ -102,7 +101,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                                 else
                                 {
                                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                                    { /* actionPause self-counts via its AITimer now */ }
                                     helper.ThrottleState = AIThrottleState.Yield;
                                     helper.SettleDown();
                                     helper.DropAllItemsInCollectors();
@@ -129,7 +128,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                                 else
                                 {
                                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                                    { /* actionPause self-counts via its AITimer now */ }
                                     helper.ThrottleState = AIThrottleState.Yield;
                                     helper.SettleDown();
                                     helper.DropAllItemsInCollectors();
@@ -156,7 +155,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and unloading!");
                                 helper.AvoidStuff = false;
-                                helper.actionPause -= KickStart.AIClockPeriod / 5;
+                                { /* actionPause self-counts via its AITimer now */ }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                             }
@@ -179,7 +178,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Yielding base approach...");
                                 helper.AvoidStuff = false;
-                                helper.actionPause -= KickStart.AIClockPeriod / 5;
+                                { /* actionPause self-counts via its AITimer now */ }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                             }
@@ -194,7 +193,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             else
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                                helper.actionPause -= KickStart.AIClockPeriod / 5;
+                                { /* actionPause self-counts via its AITimer now */ }
                                 //helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                                 if (needsToSlowDown)
@@ -222,7 +221,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         errorCode = 102;
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                         direct.Reverse(helper);
-                        helper.actionPause -= KickStart.AIClockPeriod / 5;
+                        { /* actionPause self-counts via its AITimer now */ }
                         return;
                     }
                     errorCode = 103;

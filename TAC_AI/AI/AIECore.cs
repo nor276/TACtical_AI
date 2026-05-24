@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -42,7 +42,6 @@ namespace TAC_AI.AI
     public class AIECore
     {
         //-------------------------------------
-        //           LIVE VARIABLES
         //-------------------------------------
         // Note: All neutrals are under -1 (-256) for this mod
 
@@ -50,7 +49,6 @@ namespace TAC_AI.AI
         {
             SceneryTypes.Pillar, SceneryTypes.ScrapPile, 
         };
-
 
         public static Event<Tank, string> AIMessageEvent = new Event<Tank, string>();
 
@@ -92,7 +90,6 @@ namespace TAC_AI.AI
         internal static bool PlayerCombatLastState = false;
         //private static int lastTechCount = 0;
 
-        // legdev
         internal static bool Feedback = false;// set this to true to get AI feedback testing
         /*
 #if DEBUG
@@ -106,8 +103,6 @@ namespace TAC_AI.AI
         public static Func<int, IEnumerable<Tank>> GetNonEnemyTanks => TankAIManager.GetNonEnemyTanks;
         public static Func<int, IEnumerable<Tank>> GetTargetTanks => TankAIManager.GetTargetTanks;
 
-
-        // Mining
         public static bool FetchClosestChunkReceiver(Vector3 tankPos, float MaxScanRange, out IAIFollowable finalPos, out Tank theBase, int team, bool includeTradingStations = false)
         {
             bool fired = false;
@@ -161,7 +156,7 @@ namespace TAC_AI.AI
                         }
                     }
                 }
-                Minables.Remove(trans);//it's invalid and must be removed
+                Minables.RemoveAt(step);
                 step--;
                 run--;
             }
@@ -220,14 +215,11 @@ namespace TAC_AI.AI
             return fired;
         }
 
-
         internal static FieldInfo blocksGet = typeof(TankControl).GetField("m_ControlState", BindingFlags.NonPublic | BindingFlags.Instance);
-
 
         // Multi-Techs
         public static bool FetchCopyableAlly(Vector3 tankPos, TankAIHelper helper, out float distanceSqr, out Visible ToFetch)
         {
-            // Finds the closest ally and outputs their respective distance as well as their being
             distanceSqr = 62500;
             Tank bestStep = null;
             ToFetch = null;
@@ -258,9 +250,6 @@ namespace TAC_AI.AI
             }
         }
 
-
-        // Charging
-        // Charging
         public static bool ChargedChargerExists(Tank tank, float MaxScanRange, int team)
         {
             if (team == -2)
@@ -307,7 +296,6 @@ namespace TAC_AI.AI
         }
         public static bool FetchLowestChargeAlly(Vector3 tankPos, TankAIHelper helper, out Visible toCharge)
         {
-            // Finds the closest ally and outputs their respective distance as well as their being
             float Range = 62500;
             Tank bestStep = null;
             toCharge = null;
@@ -341,7 +329,6 @@ namespace TAC_AI.AI
             return false;
         }
 
-        // Assassin
         public static bool FindTarget(Tank tank, TankAIHelper helper, Visible targetIn, out Visible target)
         {   // Grants a much larger target search range
 
@@ -373,7 +360,6 @@ namespace TAC_AI.AI
             return target;
         }
 
-        // Universal
         /*
         public static float Extremes(Vector3 input)
         {
@@ -448,7 +434,6 @@ namespace TAC_AI.AI
             }
         }
 
-        // MISC
         public static bool IsTankValid(Transform trans)
         {
             var AICommand = trans.root.GetComponent<TankAIHelper>();
@@ -562,7 +547,6 @@ namespace TAC_AI.AI
                         var aero = bloc.GetComponent<ModuleWing>();
                         if (aero)
                         {
-                            //Get teh slowest spooling one
                             foreach (ModuleWing.Aerofoil Afoil in aero.m_Aerofoils)
                             {
                                 if (Afoil.flapAngleRangeActual > 0 && Afoil.flapTurnSpeed > 0)
@@ -574,7 +558,6 @@ namespace TAC_AI.AI
                     bool boosters = false;
                     if (BD.HasFans)
                     {
-                        //Get the slowest spooling one
                         foreach (FanJet jet in bloc.transform.GetComponentsInChildren<FanJet>())
                         {
                             if ((float)RawTechBase.spinDat.GetValue(jet) <= 10)
@@ -586,11 +569,10 @@ namespace TAC_AI.AI
                     }
                     if (BD.HasBoosters)
                     {
-                        //Get the slowest spooling one
                         foreach (BoosterJet boost in bloc.transform.GetComponentsInChildren<BoosterJet>())
                         {
-                            //We have to get the total thrust in here accounted for as well because the only way we CAN boost is ALL boosters firing!
-                            boostBiasDirection -= tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection));
+                            float boostForce = (float)AIControllerDefault.boostGet.GetValue(boost);
+                            boostBiasDirection -= tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)) * boostForce;
                         }
                         boosters = true;
                     }
@@ -623,7 +605,6 @@ namespace TAC_AI.AI
                     isFlyingDirectionForwards = false;
             }
             //Debug.Info(KickStart.ModID + ": Tech " + tank.name + "  Has block count " + blocs.Count() + "  | " + modBoostCount + " | " + modAGCount);
-
 
             if (tank.IsAnchored)
             {
@@ -661,13 +642,6 @@ namespace TAC_AI.AI
                 return AIDriverType.Tank;
         }
 
-        /// <summary>
-        /// This one is more expensive.  If you know if the Helper is player-controlled or not, use 
-        ///  RequestFocusFirePlayer for players or RLoadedBases.RequestFocusFireNPT for Non-Player Techs
-        /// </summary>
-        /// <param name="tank"></param>
-        /// <param name="target"></param>
-        /// <param name="priority"></param>
         public static void RequestFocusFire(Tank tank, Visible target, RequestSeverity priority)
         {
             if (target.IsNull() || tank.IsNull())

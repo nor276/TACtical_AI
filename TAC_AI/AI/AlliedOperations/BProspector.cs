@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Movement.AICores;
 
@@ -23,8 +23,10 @@ namespace TAC_AI.AI.AlliedOperations
 
             if (helper.AdvancedAI && helper.lastEnemyGet != null)
             {   // BRANCH - RUN!!!!!!!!
-                BGeneral.GetBase(helper, tank, false, ref dist, ref hasMessaged, ref direct);
-                if (!BGeneral.GetBase(helper, tank, false, ref dist, ref hasMessaged, ref direct))
+                // Deferred-6 fix: was calling GetBase twice with identical args (discarded the first
+                // result, then re-scanned). Extract to a local so the spatial scan only runs once.
+                bool foundBase = BGeneral.GetBase(helper, tank, false, ref dist, ref hasMessaged, ref direct);
+                if (!foundBase)
                 {
                     if (!BGeneral.GetBase(helper, tank, true, ref dist, ref hasMessaged, ref direct))
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  There's no base nearby!  I AM LOST!!!");
@@ -41,7 +43,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived in safety of the base.");
                     helper.AvoidStuff = false;
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                 }
                 else if (helper.recentSpeed < 3)
                 {
@@ -53,8 +55,6 @@ namespace TAC_AI.AI.AlliedOperations
                 return;
             }
 
-
-            // VALIDATION CHECKS OF TRACTOR BED FILL STATUS
             if (helper.CollectedTarget)
             {
                 helper.CollectedTarget = false;
@@ -86,7 +86,6 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.actionPause = AIGlobals.ReverseDelay;
             }
 
-            // To Base
             // Our Chunk-Carrying tractor pads are filled to the brim with Chunks
             if (helper.CollectedTarget)
             {   // BRANCH - Head back to base
@@ -94,7 +93,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 if (!BGeneral.GetBase(helper, tank, helper.AdvancedAI, ref dist, ref hasMessaged, ref direct))
@@ -127,7 +126,7 @@ namespace TAC_AI.AI.AlliedOperations
                             else
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                helper.actionPause -= KickStart.AIClockPeriod / 5;
+                                { /* actionPause self-counts via its AITimer now */ }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                                 helper.DropAllItemsInCollectors();
@@ -154,7 +153,7 @@ namespace TAC_AI.AI.AlliedOperations
                             else
                             {
                                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and dropping off payload...");
-                                helper.actionPause -= KickStart.AIClockPeriod / 5;
+                                { /* actionPause self-counts via its AITimer now */ }
                                 helper.ThrottleState = AIThrottleState.Yield;
                                 helper.SettleDown();
                                 helper.DropAllItemsInCollectors();
@@ -183,7 +182,7 @@ namespace TAC_AI.AI.AlliedOperations
                         else
                         {
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base and unloading!");
-                            helper.actionPause -= KickStart.AIClockPeriod / 5;
+                            { /* actionPause self-counts via its AITimer now */ }
                             direct.DriveToFacingTowards();
                             helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
@@ -207,7 +206,7 @@ namespace TAC_AI.AI.AlliedOperations
                         else
                         {
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Yielding base approach...");
-                            helper.actionPause -= KickStart.AIClockPeriod / 5;
+                            { /* actionPause self-counts via its AITimer now */ }
                             direct.DriveToFacingTowards();
                             helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
@@ -224,7 +223,7 @@ namespace TAC_AI.AI.AlliedOperations
                         else
                         {
                             hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                            helper.actionPause -= KickStart.AIClockPeriod / 5;
+                            { /* actionPause self-counts via its AITimer now */ }
                             direct.DriveToFacingTowards();
                             //helper.ThrottleState = AIThrottleState.Yield;
                             helper.SettleDown();
@@ -251,7 +250,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 if (!helper.foundGoal)

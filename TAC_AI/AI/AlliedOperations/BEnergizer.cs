@@ -45,7 +45,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 helper.foundBase = AIECore.FetchChargedChargers(tank, helper.JobSearchRange + AIGlobals.FindBaseScanRangeExtension, out helper.lastBasePos, out helper.theBase, tank.Team);
@@ -75,7 +75,7 @@ namespace TAC_AI.AI.AlliedOperations
                     {
                         hasMessaged = AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ":  Arrived at nearest charger and recharging!");
                         helper.AvoidStuff = false;
-                        helper.actionPause -= KickStart.AIClockPeriod / 5;
+                        { /* actionPause self-counts via its AITimer now */ }
                         helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                     }
@@ -99,7 +99,7 @@ namespace TAC_AI.AI.AlliedOperations
                     {
                         hasMessaged = AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ":  Yielding base approach...");
                         helper.AvoidStuff = false;
-                        helper.actionPause -= KickStart.AIClockPeriod / 5;
+                        { /* actionPause self-counts via its AITimer now */ }
                         helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                     }
@@ -115,7 +115,7 @@ namespace TAC_AI.AI.AlliedOperations
                     else
                     {
                         hasMessaged = AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ":  Arrived at base!");
-                        helper.actionPause -= KickStart.AIClockPeriod / 5;
+                        { /* actionPause self-counts via its AITimer now */ }
                         //helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                     }
@@ -135,13 +135,14 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Base
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
-                    helper.actionPause -= KickStart.AIClockPeriod / 5;
+                    { /* actionPause self-counts via its AITimer now */ }
                     return;
                 }
                 if (!helper.foundGoal)
                 {
                     helper.EstTopSped = 1;//slow down the clock to reduce lagg
-                    helper.foundGoal = AIECore.FetchLowestChargeAlly(tank.boundsCentreWorldNoCheck, helper, out helper.theResource);
+                    helper.foundGoal = AIECore.FetchLowestChargeAlly(tank.boundsCentreWorldNoCheck, helper, out var tmpRes);
+                    helper.theResource = tmpRes;
                     hasMessaged = AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ":  Scanning for low batteries...");
                     if (!helper.foundGoal)
                     {

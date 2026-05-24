@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -14,7 +14,6 @@ namespace TAC_AI
     {
         public AIDriverType PreferedDriver = AIDriverType.AutoSet;
 
-        // Set by saves ingame
         [SSaveField]
         public AIDriverType SavedAIDriver;
         [SSaveField]
@@ -37,16 +36,20 @@ namespace TAC_AI
         public float lastSetRangeMin = 5000;
         [SSaveField]
         public float lastSetRangeMax = 5000;
+        [SSaveField]
+        public float lastObjectiveRange = AIGlobals.DefaultMaxObjectiveRange;
+        [SSaveField]
+        public float lastScanRange = 0;
+        [SSaveField]
+        public string SavedTechBlueprint = null;
 
         /*
         // What can this new AI do? 
         //   PRETTY MUCH ALL OF THE BELOW - except the ones with '>' by them for now.
-        // COMBAT
         Escort,     // Good ol' player defender                     (Classic player defense numbnut)
         Assault,    // Run off and attack the enemies on your radar (Runs off (beyond radar range!) to attack enemies)
         Aegis,      // Protects the nearest non-player allied Tech  (Follows nearest ally, will chase enemy some distance)
 
-        // RESOURCES
         Prospector, // Harvest Chunks and return them to base       (Returns chunks when full to nearest receiver)
         Scrapper,   // Grab loose blocks but avoid combat           (Return to nearest base when threatened)
         Energizer,  // Charges up and/or heals other techs          (Return to nearest base when out of power)
@@ -61,9 +64,7 @@ namespace TAC_AI
         Buccaneer,  // Sails ships amongst ye seas~                 (Avoids terrain above water level)
         Astrotech,  // Flies hoverships and kicks Tech              (Follows player a certain distance above ground level and can follow into the sky)
 
-        //The actual module to add
         "TAC_AI.ModuleAIExtension":{ // Add a special AI type to your AI Module
-            // Set the ones you want your AI to support to true
             // -----COMBAT-----
             // - Escort is enabled by default since you have to corral your minions somehow
             "Assault": false,
@@ -97,7 +98,6 @@ namespace TAC_AI
         }
         */
 
-        // Set the ones you want your AI to support to true
         //   note to self - make these flags because it's taking more RAM than it should
         // -----COMBAT-----
         // - Escort is enabled by default since you have to corral your minions somehow
@@ -127,18 +127,10 @@ namespace TAC_AI
         public bool Builder = false;        // Can the AI build new Techs?
         //public bool AnimeAI = false;      // Do we attempt a hookup to the AnimeAI mod and display a character for this AI?
 
-        /// <summary>
-        /// Range to chase enemy
-        /// </summary>
         public float MaxCombatRange = 100;
-        /// <summary>
-        /// Minimum range to enemy
-        /// </summary>
         public float MinCombatRange = 50;
+        public float MaxObjectiveRange = AIGlobals.DefaultMaxObjectiveRange;
 
-        /// <summary>
-        /// Changed from OnFirstAttach
-        /// </summary>
         protected override void Pool()
         {
             if (block.IsAttached)
@@ -272,7 +264,6 @@ namespace TAC_AI
             {
                 valid = AIBot.gameObject.AddComponent<ModuleAIExtension>();
                 valid.OnPool();
-                // Now retrofit AIs
                 valid.AlterExisting();
             }
         }
@@ -422,7 +413,6 @@ namespace TAC_AI
         }
 
         [Serializable]
-        // Now obsolete
         public class SerialData : Module.SerialData<SerialData>
         {
             public AIType savedMode;
@@ -482,6 +472,8 @@ namespace TAC_AI
             AISettingsSet additionalEdits = helper.AISetSettings;
             additionalEdits.CombatSpacing = lastSetRangeMin;
             additionalEdits.CombatChase = lastSetRangeMax;
+            additionalEdits.ObjectiveRange = lastObjectiveRange;
+            additionalEdits.ScanRange = lastScanRange;
             helper.AISetSettings = additionalEdits;
             //DebugTAC_AI.Log("AI State was saved as " + SavedAIDriver + " | " + SavedAI + " | loaded " + deserial);
             //DebugTAC_AI.Log("GetRTSScenePos - " + RTSPosTile + " | " + RTSInTilePos);
@@ -521,6 +513,8 @@ namespace TAC_AI
                         WasMobileAnchor = Helper.PlayerAllowAutoAnchoring;
                         lastSetRangeMin = Helper.MinCombatRange;
                         lastSetRangeMax = Helper.MaxCombatRange;
+                        lastObjectiveRange = Helper.MaxObjectiveRange;
+                        lastScanRange = Helper.JobSearchRange;
                         switch (Helper.DediAI)
                         {
                             case AIType.Assault:
@@ -557,6 +551,11 @@ namespace TAC_AI
                                 LastTargetVisibleID = -1;
                                 break;
                         }
+                        var techMem = Helper.TechMemor;
+                        if (techMem != null && techMem.HasSavedTech())
+                            SavedTechBlueprint = techMem.SerializeBlueprintToString();
+                        else
+                            SavedTechBlueprint = null;
                         SerializeWorldSave(true);
                         // OBSOLETE - CAN CAUSE CRASHES
                         //serialData.Store(blockSpec.saveState);
@@ -661,7 +660,6 @@ namespace TAC_AI
             }
             catch { } // MP caused error - cannot resolve
         }
-
 
         internal void OnSerializeSnapshot(bool saving, TankPreset.BlockSpec blockSpec, bool tankPresent)
         {

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -23,9 +23,6 @@ namespace TAC_AI.Templates
         public EnemyBolts bolts = EnemyBolts.Default;
     }
 
-    /// <summary>
-    /// Don't try bothering with anything sneaky with this - it's built against illegal blocks and block rotations.
-    /// </summary>
     public class RawTechTemplateFast
     {   // External builder interface - use to save Techs externally
         public string Name = "unset";
@@ -76,21 +73,17 @@ namespace TAC_AI.Templates
         public static string BaseDirectory;
         public static string RawTechsDirectory;
 
-
         public static JsonSerializerSettings JSONDEV = new JsonSerializerSettings
         {
             Converters = new List<JsonConverter> { new DEVTypeEnumConverter() },
         };
 
-
-        // AI Icons
         public static Dictionary<AIDriverType, Sprite> aiBackplates;
         public static Dictionary<AIType, Sprite> aiIcons;
         public static Dictionary<EnemySmarts, Sprite> aiIconsEnemy;
 
         private static bool firstInit = false;
 
-        // GUI
         private const int RawTechExporterID = 846321;
         internal static Sprite GuardAIIcon;
 
@@ -208,7 +201,6 @@ namespace TAC_AI.Templates
             inst = null;
         }
        
-
         private static bool isSubbed = false;
         public void LateInitiate()
         {
@@ -219,7 +211,6 @@ namespace TAC_AI.Templates
             if (KickStart.isBlockInjectorPresent)
                 BlockIndexer.ConstructModdedIDList();
             isSubbed = true;
-            // Was causing way too many issues with enemies
             //Globals.inst.m_BlockSurvivalChance = KickStart.EnemyBlockDropChance / 100.0f;
         }
 
@@ -283,7 +274,6 @@ namespace TAC_AI.Templates
             ModTechsDatabase.ValidateAndAddAllExternalTechs();
         }
         
-
         internal class GUIRawDisplay : MonoBehaviour
         {
             internal void OnGUI()
@@ -351,7 +341,6 @@ namespace TAC_AI.Templates
         }
 
         private static FileSystemWatcher watchDog;
-        // Setup
         public static void SetupWorkingDirectories()
         {
             DirectoryInfo di = new DirectoryInfo(Assembly.GetExecutingAssembly().Location);
@@ -404,8 +393,6 @@ namespace TAC_AI.Templates
             watchDog.Changed += RefreshAll;
         }
 
-
-        // Operations
         internal static int GetRawTechsCountExternalMods()
         {
 #if STEAM
@@ -522,7 +509,7 @@ namespace TAC_AI.Templates
                 DebugTAC_AI.Log(KickStart.ModID + ": LoadAllEnemyTechsExternalMods - No bundled techs found");
             return toAdd;
 #else
-            return new List<BaseTemplate>();
+            return new List<RawTechTemplate>();
 #endif
         }
         public static List<RawTechTemplate> LoadAllEnemyTechs()
@@ -663,8 +650,6 @@ namespace TAC_AI.Templates
             finally { SB.Clear(); }
             return true;
         }
-        private static readonly FieldInfo forceVal = typeof(BoosterJet).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance); 
-        
         public static int ValidateCost(string blueprint, int ExistingCost)
         {
             if (ExistingCost <= 0)
@@ -716,7 +701,6 @@ namespace TAC_AI.Templates
             }
         }
 
-        // Snapshot to RawTech
         public static bool SnapsAvailable()
         {
             try
@@ -727,7 +711,6 @@ namespace TAC_AI.Templates
             }
             catch
             {
-                // error
                 return false;
             }
             // No snaps loaded.
@@ -760,8 +743,6 @@ namespace TAC_AI.Templates
             ReloadTechsNow();
         }
 
-
-        // JSON Handlers
         public static void SaveTechToRawJSON(Tank tank)
         {
             RawTechTemplateFast builder = new RawTechTemplateFast
@@ -854,8 +835,6 @@ namespace TAC_AI.Templates
             pendingInGameReload = true;
         }
 
-
-        // Loaders
         private static void SaveTechToFile(string TechName, string RawTechJSON)
         {
             if (!Directory.Exists(RawTechsDirectory))

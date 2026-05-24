@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Movement.AICores;
 
@@ -6,7 +6,6 @@ namespace TAC_AI.AI.AlliedOperations
 {
     internal static class BMultiTech
     {
-        // Check MultiTechUtils for the Director
         public static void MTStatic(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {   // stay still
             helper.lastPlayer = helper.GetPlayerTech();
@@ -14,7 +13,16 @@ namespace TAC_AI.AI.AlliedOperations
 
             BGeneral.ResetValues(helper, ref direct);
 
-            helper.AttackEnemy = false;
+            if (helper.lastEnemyGet != null)
+            {
+                direct.SetLastDest(helper.lastEnemyGet.transform.position);
+                DebugTAC_AI.FirstFire("BMultiTech.MTStatic.aim-acquired",
+                    "MTStatic writes lastEnemyGet back as the chassis face target");
+            }
+            else
+            {
+                direct.STOP(helper);
+            }
             helper.ThrottleState = AIThrottleState.PivotOnly;
         }
 
@@ -63,6 +71,7 @@ namespace TAC_AI.AI.AlliedOperations
                         return;
                     }
                     helper.theResource = hostTech.visible;
+                    helper.theHostTech = hostTech.visible;
                     copyTargVis = hostTech;
                     dist = Mathf.Sqrt(distSqr);
                 }
@@ -89,6 +98,7 @@ namespace TAC_AI.AI.AlliedOperations
                         return;
                     }
                     helper.theResource = hostTech.visible;
+                    helper.theHostTech = hostTech.visible;
                     copyTargVis = hostTech;
                 }
 
@@ -100,7 +110,6 @@ namespace TAC_AI.AI.AlliedOperations
                 else if (helper.MTMimicHostAvail && dist > range)
                 {
                     helper.MTMimicHostAvail = false;
-                    // Make sure the player did not force the tech under the ground on release
                     if (AIEPathMapper.GetAltitudeLoadedOnly(tank.boundsCentreWorldNoCheck, out float height))
                         if (tank.boundsCentreWorldNoCheck.y < height)
                             tank.visible.MoveAboveGround();
@@ -150,6 +159,7 @@ namespace TAC_AI.AI.AlliedOperations
                         return;
                     }
                     helper.theResource = hostTech.visible;
+                    helper.theHostTech = hostTech.visible;
                     vis = hostTech;
                     dist = Mathf.Sqrt(distSqr);
                 }
@@ -167,6 +177,7 @@ namespace TAC_AI.AI.AlliedOperations
                         return;
                     }
                     helper.theResource = hostTech.visible;
+                    helper.theHostTech = hostTech.visible;
                     vis = hostTech;
                     dist = (tank.boundsCentreWorldNoCheck - hostTech.boundsCentreWorldNoCheck).magnitude;
                 }
@@ -194,12 +205,21 @@ namespace TAC_AI.AI.AlliedOperations
         public static void MimicDefend(TankAIHelper helper, Tank tank)
         {
             // Determines the weapons actions and aiming of the AI, this one is for MTs that have a host
-            helper.AttackEnemy = false;
+            helper.WantsToFight = false;
             if (helper.theResource?.tank)
             {   //Get the tech the player is aiming at
                 Visible playerTarget = helper.theResource.tank.Weapons.GetManualTarget();
-                if (playerTarget != null)
-                    helper.lastEnemy = playerTarget;
+                if (playerTarget != null && playerTarget.tank != null && playerTarget.isActive)
+                {
+                    // B13: was `helper.lastEnemy = playerTarget;` — bypassed SetPursuit, so
+                    // KeepEnemyFocus stayed false and the next idle tick's TryRefreshEnemyAllied
+                    // overwrote the host's pick. Mirror TryRefreshEnemyAllied's host-aim semantics
+                    // (Provoked=0, full release, force-acquire) so the host's reticle is treated
+                    // as an explicit fire order regardless of any prior held lock.
+                    helper.Provoked = 0;
+                    helper.ReleaseTarget();
+                    helper.SetPursuit(playerTarget, force: true);
+                }
                 else
                     helper.TryRefreshEnemyAllied();
             }
@@ -211,14 +231,14 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.Urgency++;
                 if (Mathf.Abs((tank.rootBlockTrans.forward - aimTo).magnitude) < 0.15f || helper.Urgency >= 30)
                 {
-                    helper.AttackEnemy = true;
+                    helper.WantsToFight = true;
                     helper.Urgency = 30;
                 }
             }
             else
             {
                 helper.Urgency = 0;
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
             }
         }
     }

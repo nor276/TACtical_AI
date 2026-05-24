@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -21,8 +21,7 @@ namespace TAC_AI.Templates
 
         private static FieldInfo BigVal = typeof(TechSpawnFilter).GetField("m_MaxValue", BindingFlags.NonPublic | BindingFlags.Instance);
         private static FieldInfo BigBloc = typeof(TechSpawnFilter).GetField("m_MaxBlockCount", BindingFlags.NonPublic | BindingFlags.Instance);
-        private static FieldInfo BigRad = typeof(TechSpawnFilter).GetField(" m_MaxRadiusSize", BindingFlags.NonPublic | BindingFlags.Instance);
-
+        private static FieldInfo BigRad = typeof(TechSpawnFilter).GetField("m_MaxRadiusSize", BindingFlags.NonPublic | BindingFlags.Instance);
 
         internal static TempFilterStore DayTechsSav;
         internal static TempFilterStore NightTechsSav;
@@ -96,7 +95,6 @@ namespace TAC_AI.Templates
             }
         }
 
-
         private static void OverridePop()
         {
             DebugTAC_AI.Log(KickStart.ModID + ": RAGNAROK ENABLED");
@@ -161,7 +159,6 @@ namespace TAC_AI.Templates
             IsOverridden = false;
         }
 
-
         private static TempFilterStore GetFilter(FieldInfo toApplyTo, ManPop inst)
         {
             TempFilterStore TFS = new TempFilterStore();
@@ -170,7 +167,7 @@ namespace TAC_AI.Templates
                 TechSpawnFilter TSF = (TechSpawnFilter)toApplyTo.GetValue(inst);
                 try
                 {
-                    TFS.Bloc = (int)BigBloc.GetValue(TFS);
+                    TFS.Bloc = (int)BigBloc.GetValue(TSF);
                 }
                 catch
                 {
@@ -178,7 +175,7 @@ namespace TAC_AI.Templates
                 }
                 try
                 {
-                    TFS.Rad = (float)BigRad.GetValue(TFS);
+                    TFS.Rad = (float)BigRad.GetValue(TSF);
                 }
                 catch
                 {
@@ -186,7 +183,7 @@ namespace TAC_AI.Templates
                 }
                 try
                 {
-                    TFS.Val = (float)BigVal.GetValue(TFS);
+                    TFS.Val = (float)BigVal.GetValue(TSF);
                 }
                 catch
                 {

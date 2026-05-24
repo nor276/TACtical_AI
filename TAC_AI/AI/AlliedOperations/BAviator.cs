@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using TAC_AI.AI.Movement;
 using TAC_AI.AI.Movement.AICores;
 
@@ -39,7 +39,7 @@ namespace TAC_AI.AI.AlliedOperations
 
             if (tank.wheelGrounded)
             {
-                if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
+                if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.PlayerAISpeedPanicDividend))
                     helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                 else
                     helper.SettleDown();
@@ -60,7 +60,6 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 else
                 {   // Far behind, must catch up
-                    // The range is nearly quadrupled here due to dogfighting conditions
                     direct.DriveDest = EDriveDest.ToLastDestination;
                     helper.FullBoost = true; // boost in forwards direction towards objective
                 }
@@ -78,7 +77,6 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 else if (dist < range * 3)
                 {   // Far behind, must catch up
-                    // The range is nearly quadrupled here due to dogfighting conditions
                     direct.DriveDest = EDriveDest.ToLastDestination;
                     helper.FullBoost = true; // boost in forwards direction towards objective
                 }
@@ -91,11 +89,10 @@ namespace TAC_AI.AI.AlliedOperations
             }
         }
 
-
         public static void Dogfighting(TankAIHelper helper, Tank tank)
         {   // Will have to account for the different types of flight methods available
 
-            helper.AttackEnemy = false;
+            helper.WantsToFight = false;
             helper.TryRefreshEnemyAllied();
             if (helper.lastEnemyGet != null)
             {
@@ -119,7 +116,7 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.Urgency += KickStart.AIClockPeriod / 5f;
                     if ((foreDirect.z > 0.15f && foreDirect.x > -0.5f && foreDirect.x < 0.5f) || helper.Urgency >= 30)
                     {
-                        helper.AttackEnemy = true;
+                        helper.WantsToFight = true;
                         helper.SettleDown();
                     }
                 }
@@ -128,7 +125,7 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.Urgency += KickStart.AIClockPeriod / 5f;
                     if ((foreDirect.z > 0.15f && foreDirect.x > -0.35f && foreDirect.x < 0.35f) || helper.Urgency >= 30)
                     {
-                        helper.AttackEnemy = true;
+                        helper.WantsToFight = true;
                         helper.SettleDown();
                     }
                 }
@@ -137,7 +134,7 @@ namespace TAC_AI.AI.AlliedOperations
             else
             {
                 helper.Urgency = 0;
-                helper.AttackEnemy = false;
+                helper.WantsToFight = false;
             }
         }
     }

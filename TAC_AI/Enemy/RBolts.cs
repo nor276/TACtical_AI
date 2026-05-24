@@ -1,4 +1,4 @@
-﻿namespace TAC_AI.AI.Enemy
+namespace TAC_AI.AI.Enemy
 {
     public static class RBolts
     {
@@ -41,7 +41,6 @@
             mind.BoltsQueued = 2;
             mind.AIControl.tank.control.ServerDetonateExplosiveBolt();
         }
-
 
         /*
         // Tech Accounting (OBSOLETE)
