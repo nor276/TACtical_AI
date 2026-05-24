@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+//using Harmony;
 using HarmonyLib;
 using UnityEngine;
 using TAC_AI.AI;
@@ -122,6 +123,7 @@ namespace TAC_AI
             thisModConfig.BindConfig<KickStart>(null, "ForceRemoveOverEnemyMaxCap");
             thisModConfig.BindConfig<KickStart>(null, "EnemyBaseUpdateMode");
 
+            // RTS
             thisModConfig.BindConfig<KickStart>(null, "AllowPlayerRTSHUD");
             thisModConfig.BindConfig<KickStart>(null, "AllowStrategicAI");
             thisModConfig.BindConfig<ManWorldRTS>(null, "RTSUIScale");
@@ -168,6 +170,7 @@ namespace TAC_AI
     }
     public class KickStartNativeOptions
     {
+        // NativeOptions Parameters
         public static Nuterra.NativeOptions.OptionKey retreatHotkey;
         public static Nuterra.NativeOptions.OptionKey commandHotKey;
         public static Nuterra.NativeOptions.OptionKey commandBoltsHotKey;
@@ -179,7 +182,7 @@ namespace TAC_AI
         public static Nuterra.NativeOptions.OptionToggle aiSelfRepair;
         public static Nuterra.NativeOptions.OptionToggle aiSelfRepair2;
         public static Nuterra.NativeOptions.OptionRange dodgePeriod;
-        public static Nuterra.NativeOptions.OptionRange aiUpkeepRefresh;
+        public static Nuterra.NativeOptions.OptionRange aiUpkeepRefresh; //AIClockPeriod
         public static Nuterra.NativeOptions.OptionRange aiPathing;
         public static Nuterra.NativeOptions.OptionToggle muteNonPlayerBuildRacket;
         public static Nuterra.NativeOptions.OptionToggle allowOverLevelBlocksDrop;
@@ -249,7 +252,7 @@ namespace TAC_AI
         internal static void PushExtModOptionsHandling()
         {
             var TACAI = KickStart.ModID + " - A.I. General";
-#if !STEAM
+#if !STEAM  // Because this toggle is reserved for the loading and unloading of the mod in STEAM release
             betterAI = new OptionToggle("<b>Enable Mod</b>", TACAI, KickStart.EnableBetterAI);
             betterAI.onValueSaved.AddListener(() => { KickStart.EnableBetterAI = betterAI.SavedValue; });
 #endif
@@ -302,7 +305,7 @@ namespace TAC_AI
             aiSelfRepair2.onValueSaved.AddListener(() => { KickStart.AllowAISelfRepairInMP = aiSelfRepair2.SavedValue; });
 
             var TACAIRTS = KickStart.ModID + " - Real-Time Strategy [RTS] Mode";
-            playerStrategic = new Nuterra.NativeOptions.OptionToggle("Enable A.I. Click-based Control", TACAIRTS, KickStart.AllowPlayerRTSHUD);
+            playerStrategic = new Nuterra.NativeOptions.OptionToggle("Enable A.I. Click-based Control", TACAIRTS, KickStart.AllowPlayerRTSHUD);//\nRandomAdditions and TweakTech highly advised for best experience
             playerStrategic.onValueSaved.AddListener(() => {
                 KickStart.AllowPlayerRTSHUD = playerStrategic.SavedValue;
                 if (KickStart.AllowPlayerRTSHUD)
@@ -315,7 +318,7 @@ namespace TAC_AI
                     PlayerRTSUI.DeInit();
                 }
             });
-            enemyStrategic = new Nuterra.NativeOptions.OptionToggle("Allow A.I. to Act When Out of View", TACAIRTS, KickStart.AllowStrategicAI);
+            enemyStrategic = new Nuterra.NativeOptions.OptionToggle("Allow A.I. to Act When Out of View", TACAIRTS, KickStart.AllowStrategicAI);//\nRandomAdditions and TweakTech highly advised for best experience
             enemyStrategic.onValueSaved.AddListener(() => {
                 KickStart.AllowStrategicAI = enemyStrategic.SavedValue;
                 if (KickStart.AllowStrategicAI)
@@ -626,7 +629,7 @@ namespace TAC_AI
             }
             if (KickStart.EnemyBlockDropChance == 0)
             {
-                Globals.inst.moduleDamageParams.detachMeterFillFactor = 0;
+                Globals.inst.moduleDamageParams.detachMeterFillFactor = 0;// Make enemies drop no blocks!
             }
 
             if (KickStart.AirEnemiesSpawnRate == 0)

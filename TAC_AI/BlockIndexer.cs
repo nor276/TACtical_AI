@@ -11,6 +11,9 @@ using Nuterra.BlockInjector;
 
 namespace TerraTechETCUtil
 {
+    /// <summary>
+    /// A temporary way of doing reverse block lookups for the time being
+    /// </summary>
     public class BlockIndexer : MonoBehaviour
     {
         private static BlockIndexer inst;
@@ -18,6 +21,12 @@ namespace TerraTechETCUtil
         private static string FolderDivider => TAC_AI.Templates.RawTechExporter.up;
         private static bool Compiled = false;
 
+
+        /// <summary>
+        /// Searches Block Injector for the block based on root GameObject name.
+        /// </summary>
+        /// <param name="mem">The name of the block's root GameObject.  This is also set in the Official Mod Tool by the Name ID (filename of the .json), not the name you give it.</param>
+        /// <returns>The Block Type to use if it found it, otherwise returns BlockTypes.GSOCockpit_111</returns>
         public static BlockTypes StringToBlockType(string mem)
         {
             if (!Enum.TryParse(mem, out BlockTypes type))
@@ -33,6 +42,12 @@ namespace TerraTechETCUtil
             }
             return type;
         }
+        /// <summary>
+        /// Searches the ENTIRE GAME for the block based on root GameObject name.
+        /// </summary>
+        /// <param name="mem">The name of the block's root GameObject.  This is also set in the Official Mod Tool by the Name ID (filename of the .json), not the name you give it.</param>
+        /// <param name="BT">The Block Type to use if it found it</param>
+        /// <returns>True if it found it in Block Injector</returns>
         public static bool StringToBlockType(string mem, out BlockTypes BT)
         {
             if (!Enum.TryParse(mem, out BT))
@@ -48,7 +63,13 @@ namespace TerraTechETCUtil
             }
             return true;
         }
-        public static bool StringToBIBlockType(string mem, out BlockTypes BT)
+        /// <summary>
+        /// Searches Block Injector for the block based on root GameObject name.
+        /// </summary>
+        /// <param name="mem">The name of the block's root GameObject.  This is also set in the Official Mod Tool by the Name ID (filename of the .json), not the name you give it.</param>
+        /// <param name="BT">The Block Type to use if it found it</param>
+        /// <returns>True if it found it in Block Injector</returns>
+        public static bool StringToBIBlockType(string mem, out BlockTypes BT) // BLOCK INJECTOR
         {
             BT = BlockTypes.GSOAIController_111;
 
@@ -93,6 +114,7 @@ namespace TerraTechETCUtil
             return false;
         }
 
+        // Logless block loader
         private static Dictionary<string, int> ModdedBlocksGrabbed;
         private static readonly FieldInfo allModdedBlocks = typeof(ManMods).GetField("m_BlockIDReverseLookup", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly Dictionary<int, BlockTypes> errorNames = new Dictionary<int, BlockTypes>();
@@ -103,6 +125,9 @@ namespace TerraTechETCUtil
             errorNames.Clear();
             Compiled = false;
         }
+        /// <summary>
+        /// Builds the lookup to use when using block names to find BlockTypes
+        /// </summary>
         public static void ConstructBlockLookupListDelayed()
         {
             if (Compiled)
@@ -118,6 +143,9 @@ namespace TerraTechETCUtil
             ConstructBlockLookupList();
         }
 
+        /// <summary>
+        /// Builds the lookup to use when using block names to find BlockTypes
+        /// </summary>
         public static void ConstructBlockLookupList()
         {
             if (Compiled)
@@ -129,13 +157,17 @@ namespace TerraTechETCUtil
                 {
                     TankBlock prefab = Singleton.Manager<ManSpawn>.inst.GetBlockPrefab(type);
                     string name = prefab.name;
-                    if (prefab.GetComponent<Damageable>() && type.ToString() != name)
+                    if (prefab.GetComponent<Damageable>() && type.ToString() != name) //&& !Singleton.Manager<ManMods>.inst.IsModdedBlock(type))
                     {
                         int hash = name.GetHashCode();
                         if (!errorNames.Keys.Contains(hash))
                         {
                             errorNames.Add(hash, type);
 #if DEBUG
+                            /*
+                        if ((int)type > 5000)
+                            Debug.Log("TACtical_AI: ConstructErrorBlocksList - Added Modded Block " + name + " | " + type.ToString());
+                            */
 #endif
                         }
                     }
@@ -151,6 +183,12 @@ namespace TerraTechETCUtil
             Compiled = true;
         }
 
+        /// <summary>
+        /// Delay this until AFTER Block Injector to setup the lookups
+        /// </summary>
+        /// <summary>
+        /// Call at least once to hook up to modding
+        /// </summary>
         public static void PrepareModdedBlocksSearch()
         {
             ModdedBlocksGrabbed = (Dictionary<string, int>)allModdedBlocks.GetValue(Singleton.Manager<ManMods>.inst);
@@ -174,9 +212,10 @@ namespace TerraTechETCUtil
                     {
                         int num = 0;
                         string name = "";
-                        if (FindInt(SCAN, "\"ID\":", ref num))
+                        if (FindInt(SCAN, "\"ID\":", ref num)) //&& FindText(SCAN, "\"Name\" :", ref name))
                         {
                             UnOf_Offi.Add(("_C_BLOCK:" + num.ToString()).GetHashCode(), (BlockTypes)ManMods.inst.GetBlockID(MBD.name));
+                            //Debug.Log("TACtical_AI: ConstructModdedIDList - " + "_C_BLOCK:" + num.ToString() + " | " + MBD.name + " | " + (BlockTypes)ManMods.inst.GetBlockID(MBD.name));
                         }
                     }
                 }
@@ -231,10 +270,10 @@ namespace TerraTechETCUtil
                     return false;
                 }
                 else
-                    final.Remove(final.Length - 5, 5);
+                    final.Remove(final.Length - 5, 5);// remove ".JSON"
             }
             else
-                final.Remove(final.Length - 8, 8);
+                final.Remove(final.Length - 8, 8);// remove ".RAWTECH"
 
             output = final.ToString();
             return true;
@@ -274,6 +313,7 @@ namespace TerraTechETCUtil
                         intCase = (int)float.Parse(output);
                         return true;
                     }
+                    //Debug.Log(searchEnd + " | " + searchLength + " | " + output + " | ");
                 }
                 catch (Exception e) { Debug.LogError(searchEnd + " | " + searchLength + " | " + output + " | " + e); }
             }

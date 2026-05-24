@@ -8,6 +8,10 @@ using TAC_AI.Templates;
 
 namespace TAC_AI
 {
+    /// <summary>
+    /// This is a VERY big mod.
+    ///   We must make it look big like it is.
+    /// </summary>
     public static class CustomAttract
     {
         private static readonly FieldInfo state = typeof(ModeAttract).GetField("m_State", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -114,6 +118,8 @@ namespace TAC_AI
                 Vector3 offset = Vector3.zero;
                 offset.x = -50.0f;
                 offset.z = 100.0f;
+                //offset.x = -240.0f;
+                //offset.z = 442.0f;
                 BiomeMap edited = __instance.spawns[0].biomeMap;
                 Singleton.Manager<ManWorld>.inst.SeedString = "68unRTyXMrX93DH";
                 Singleton.Manager<ManGameMode>.inst.RegenerateWorld(edited, __instance.spawns[1].cameraSpawn.forward, AIGlobals.LookRot(__instance.spawns[1].cameraSpawn.forward, Vector3.up));
@@ -157,12 +163,13 @@ namespace TAC_AI
                     Vector3 posSea = KickStart.SpecialAttractPos + offset;
 
                     Vector3 forward = (KickStart.SpecialAttractPos - posSea).normalized;
-                    Vector3 position = posSea;
+                    Vector3 position = posSea;// - (forward * 10);
                     position = AI.Movement.AIEPathing.SnapOffsetToSea(position);
 
                     if (!RawTechLoader.SpawnAttractTech(position, forward, AIGlobals.GetRandomEnemyBaseTeam(), BaseTerrain.Sea))
                         RawTechLoader.SpawnAttractTech(position, forward, AIGlobals.GetRandomEnemyBaseTeam(), BaseTerrain.Space);
                 }
+                //DebugTAC_AI.Log(KickStart.ModID + ": cam is at " + Singleton.Manager<CameraManager>.inst.ca);
                 Singleton.Manager<CameraManager>.inst.ResetCamera(KickStart.SpecialAttractPos, AIGlobals.LookRot(Vector3.forward));
                 Singleton.cameraTrans.position = KickStart.SpecialAttractPos;
                 Singleton.cameraTrans.rotation = AIGlobals.LookRot(Vector3.forward);

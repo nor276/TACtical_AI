@@ -14,6 +14,9 @@ namespace TAC_AI.World
         public readonly Event<TileMoveCommand, Tank> OnTechLoaded;
         public int CurrentTurn;
         public readonly NP_TechUnit ETU;
+        /// <summary>
+        /// this, Worked, Loaded
+        /// </summary>
         public readonly Action<TileMoveCommand, bool, bool> call;
 
         public TileMoveCommand(NP_TechUnit unit, IntVector2 endTileWorld, int expectedTime, Action<TileMoveCommand, bool, bool> callback)
@@ -41,6 +44,7 @@ namespace TAC_AI.World
         {
             if (!ETU.Exists())
             {
+                //DebugTAC_AI.Log(KickStart.ModID + ": IsValid(ETU) " + ETU.tech.m_TechData.Name + " is INVALID!");
                 return false;
             }
             return true;
@@ -55,7 +59,7 @@ namespace TAC_AI.World
         public Vector3 PosSceneCurTime()
         {
             if (ManWorld.inst.CheckIsTileAtPositionLoaded(new WorldPosition(TargetTileCoord, posInTile).ScenePosition))
-                return ManWorld.inst.TileManager.CalcTileOriginScene(PrevTileCoord) + posInTile;
+                return ManWorld.inst.TileManager.CalcTileOriginScene(PrevTileCoord) + posInTile;// don't move
 
             float percent = (float)CurrentTurn / ExpectedMoveTurns;
             Vector3 TargetPosWorld = ManWorld.inst.TileManager.CalcTileOriginScene(TargetTileCoord) + posInTile;

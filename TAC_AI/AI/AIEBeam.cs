@@ -63,9 +63,9 @@ namespace TAC_AI.AI
                     return;
 
                 if (helper.MovementController is AIControllerAir pilot)
-                {
+                {   // Handoff all operations to AIEAirborne
                     if (!pilot.Grounded || AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents))
-                    {
+                    {   //Become a ground vehicle for now
                         if (tank.grounded && IsTechTippedOver(tank, helper))
                         {
                             helper.BeamTimeoutClock = 10;
@@ -95,7 +95,7 @@ namespace TAC_AI.AI
                     if (helper.Attempt3DNavi)
                         helper.beamFlipTimer.Set(AIGlobals.BeamFlipTippedHoldSecs);
                     if (helper.MTLockedToTechBeam && helper.IsMultiTech)
-                    {
+                    {   //Override and disable most driving abilities - We are going to follow the host tech!
                         if ((bool)helper.theResource?.tank)
                         {
                             if (helper.theResource.tank.beam.IsActive)
@@ -115,15 +115,16 @@ namespace TAC_AI.AI
         }
 
         private static bool IsTechTippedOver(Tank tank, TankAIHelper helper)
-        {
+        {   // It's more crude than the built-in but should take less to process.
             if (tank.rootBlockTrans.up.y < 0)
-            {
+            {   // the Tech is literally sideways
                 return true;
             }
             else if (tank.rootBlockTrans.up.y < 0.25f)
-            {
+            {   // If we are still moving, we DON'T Build Beam - we are climbing a slope
                 return helper.recentSpeed < helper.EstTopSped / 8;
             }
+            //tank.AI.IsTankOverturned()
             return false;
         }
 

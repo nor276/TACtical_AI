@@ -10,6 +10,7 @@ namespace TAC_AI.AI.AlliedOperations
         internal const int reverseFromBaseTime = AIGlobals.ReverseDelay;
         public static void MotivateFind(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Prospector) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = (helper.DriverType == AIDriverType.Pilot || helper.DriverType == AIDriverType.Astronaut);
             float dist = helper.GetDistanceFromTask(helper.lastDestinationCore);
@@ -20,16 +21,16 @@ namespace TAC_AI.AI.AlliedOperations
             BGeneral.ResetValues(helper, ref direct);
 
             if (helper.AdvancedAI && helper.lastEnemyGet != null)
-            {
+            {   //RUN!!!!!!!!
                 if (!helper.foundBase)
                 {
                     helper.foundBase = AIECore.FetchClosestBlockReceiver(tank.boundsCentreWorldNoCheck,
                         helper.JobSearchRange + AIGlobals.FindBaseScanRangeExtension, out helper.lastBasePos,
                         out Tank theBase, tank.Team);
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  There's no base nearby!  I AM LOST!!!");
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     if (theBase == null)
-                        return;
+                        return; // There's no base!
                     helper.lastBaseExtremes = theBase.GetCheapBounds();
                 }
                 else if (helper.theBase == null)
@@ -38,7 +39,7 @@ namespace TAC_AI.AI.AlliedOperations
                         helper.JobSearchRange + AIGlobals.FindBaseScanRangeExtension, out helper.lastBasePos,
                         out helper.theBase, tank.Team);
                     helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     return;
                 }
 
@@ -61,8 +62,9 @@ namespace TAC_AI.AI.AlliedOperations
                 return;
             }
 
+            // VALIDATION CHECKS OF BLOCK HOLD FILL STATUS
             if (helper.CollectedTarget)
-            {
+            {   // Unload all contents
                 helper.CollectedTarget = false;
                 if (helper.HeldBlock)
                 {
@@ -75,7 +77,7 @@ namespace TAC_AI.AI.AlliedOperations
                         if (hold.BlockLoaded())
                         {
                             helper.CollectedTarget = true;
-                            break;
+                            break;//Checking if tech is empty when unloading at base
                         }
                     }
                 }
@@ -83,7 +85,7 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.actionPause = reverseFromResourceTime;
             }
             else
-            {
+            {   // Gather materials
                 helper.CollectedTarget = true;
                 if (!helper.HeldBlock)
                     helper.CollectedTarget = false;
@@ -91,10 +93,11 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.actionPause = reverseFromBaseTime;
             }
 
+            //DebugTAC_AI.Log(KickStart.ModID + ": Block is Present: " + helper.foundGoal);
             if (helper.CollectedTarget)
-            {
+            {   // BRANCH - Return to base
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from blocks...");
                     direct.Reverse(helper);
                     {  }
@@ -104,9 +107,9 @@ namespace TAC_AI.AI.AlliedOperations
                 if (!helper.foundBase)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Searching for nearest base!");
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     if (helper.theBase == null)
-                        return;
+                        return; // There's no base!
                     direct.SetLastDest(helper.theBase.boundsCentreWorld);
                     dist = (tank.boundsCentreWorldNoCheck - helper.lastDestinationCore).magnitude;
                 }
@@ -117,7 +120,7 @@ namespace TAC_AI.AI.AlliedOperations
                 if (helper.DriverType == AIDriverType.Pilot)
                 {
                     if (dist < helper.lastBaseExtremes + helper.lastTechExtents + AIGlobals.AircraftHailMaryRange)
-                    {
+                    {   // Final approach - turn off avoidence
                         helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                         helper.AvoidStuff = false;
                         if (helper.recentSpeed == 1)
@@ -230,9 +233,9 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.foundGoal = false;
             }
             else
-            {
+            {   // BRANCH - Go look for blocks
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Base
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
                     {  }
@@ -240,7 +243,7 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 if (!helper.foundGoal)
                 {
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     helper.foundGoal = AIECore.FetchLooseBlocks(tank.rootBlockTrans.position, helper.JobSearchRange + AIGlobals.FindItemScanRangeExtension, out var tmpRes);
                     helper.theResource = tmpRes;
                     if (helper.foundGoal) helper.theResourceNode = tmpRes;
@@ -249,7 +252,7 @@ namespace TAC_AI.AI.AlliedOperations
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Scanning for loose blocks...");
                         helper.foundBase = AIECore.FetchClosestBlockReceiver(tank.rootBlockTrans.position, helper.JobSearchRange + 150, out helper.lastBasePos, out helper.theBase, tank.Team);
                         if (helper.theBase == null)
-                            return;
+                            return; // There's no base!
                         helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
                     }
                     else
@@ -262,7 +265,7 @@ namespace TAC_AI.AI.AlliedOperations
                     }
                     direct.DriveDest = EDriveDest.ToBase;
                     StopByBase(helper, tank, dist, ref hasMessaged, ref direct);
-                    return;
+                    return; // There's no resources left!
                 }
                 else if (helper.theResource != null)
                 {
@@ -312,10 +315,10 @@ namespace TAC_AI.AI.AlliedOperations
         public static void StopByBase(TankAIHelper helper, Tank tank, float dist, ref bool hasMessaged, ref EControlOperatorSet direct)
         {
             if (helper.theBase == null)
-                return;
+                return; // There's no base!
             float girth = helper.lastBaseExtremes + helper.lastTechExtents;
             if (dist < girth + 3)
-            {
+            {   // We are at the base, stop moving and hold pos
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Giving room to base... |Tech is at " + tank.boundsCentreWorldNoCheck);
                 helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                 helper.AvoidStuff = false;
@@ -325,7 +328,7 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.SettleDown();
             }
             else if (dist < girth + 7)
-            {
+            {   // We are at the base, stop moving and hold pos
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at a base and applying brakes. |Tech is at " + tank.boundsCentreWorldNoCheck);
                 helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                 helper.AvoidStuff = false;

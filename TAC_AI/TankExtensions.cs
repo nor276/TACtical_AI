@@ -23,11 +23,12 @@ namespace TAC_AI
         public static bool CommandTarget(this Tank tank, Tank grabbedTech)
         {
             var helper = tank.GetHelperInsured();
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectTargetTank.");
             bool success = false;
             if ((bool)grabbedTech)
             {
                 if (grabbedTech.IsEnemy(tank.Team))
-                {
+                {   // Attack Move
                     helper.RTSDestination = TankAIHelper.RTSDisabled;
                     helper.SetRTSState(true);
                     if (ManNetwork.IsNetworked)
@@ -37,7 +38,7 @@ namespace TAC_AI
                     success = true;
                 }
                 else if (grabbedTech.IsFriendly(tank.Team))
-                {
+                {// Protect/Defend
                     try
                     {
                         if (grabbedTech.IsAnchored)
@@ -54,6 +55,7 @@ namespace TAC_AI
                         }
                         else
                         {
+                            //bool LandAIAssigned = help.DediAI < AIType.MTTurret;
                             helper.RTSDestination = TankAIHelper.RTSDisabled;
                             helper.SetRTSState(false);
                             if (!ManNetwork.IsNetworked)
@@ -77,13 +79,14 @@ namespace TAC_AI
         }
         public static bool CommandMine(this Tank tank, ResourceDispenser node)
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectScenery.");
 
             var helper = tank.GetHelperInsured();
             bool success = false;
             if ((bool)node)
             {
                 if (!node.GetComponent<Damageable>().Invulnerable)
-                {
+                {   // Mine Move
                     ManWorldRTS.inst.SetOptionAuto(helper, AIType.Prospector);
                     helper.RTSDestination = TankAIHelper.RTSDisabled;
                     helper.SetRTSState(false);
@@ -101,6 +104,7 @@ namespace TAC_AI
         }
         public static bool CommandCollect(this Tank tank, TankBlock block)
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectBlock.");
             var helper = tank.GetHelperInsured();
 
             bool success = false;
@@ -237,7 +241,8 @@ namespace TAC_AI
                 }
                 toSortCache = SortCorps(toSortCache);
                 FactionSubTypes final = toSortCache.FirstOrDefault();
-                return final;
+                //DebugTAC_AI.Log(KickStart.ModID + ": GetMainCorpExt - Selected " + final + " for main corp")
+                return final;//(FactionSubTypes)tank.GetMainCorporations().FirstOrDefault();
             }
             finally
             {
@@ -254,7 +259,7 @@ namespace TAC_AI
                 }
                 toSortCache = SortCorps(toSortCache);
                 var first = toSortCache.FirstOrDefault();
-                return first;
+                return first;//(FactionSubTypes)tank.GetMainCorporations().FirstOrDefault();
             }
             finally
             {

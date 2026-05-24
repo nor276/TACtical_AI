@@ -46,6 +46,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     RNaval.AttackWhish(helper, tank, Mind, ref direct);
                     break;
                 case EnemyHandling.SuicideMissile:
+                    // IDK, May make this obsolete and just use plane AI for this instead.
                     RCrashMissile.AttackCrash(helper, tank, Mind, ref direct);
                     break;
                 case EnemyHandling.Stationary:

@@ -13,10 +13,11 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     {
         public static void AttackWham(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Escort) what to do movement-wise
             BGeneral.ResetValues(helper, ref direct);
 
             helper.Attempt3DNavi = true;
-            helper.Retreat = true;
+            helper.Retreat = true;    //Prevent the auto-driveaaaa
 
             float dist = helper.GetDistanceFromTask2D(mind.sceneStationaryPos);
 
@@ -26,12 +27,12 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 direct.DriveDir = EDriveFacing.Forwards;
                 direct.SetLastDest(mind.sceneStationaryPos);
                 if (Mathf.Abs(Vector3.Dot(mind.sceneStationaryPos - tank.boundsCentreWorldNoCheck, tank.rootBlockTrans.forward)) > 0.75f)
-                {
+                {   //Move back because we have GONE TOO FAR BACKWARDS
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
                     helper.DriveVar = 1;
                 }
                 else
-                {
+                {   //Aim back
                     helper.ThrottleState = AIThrottleState.PivotOnly;
                 }
             }

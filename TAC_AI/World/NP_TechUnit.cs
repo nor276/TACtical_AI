@@ -56,8 +56,14 @@ namespace TAC_AI.World
             }
         }
 
+        /// <summary>
+        /// LOSSY AT FAR FROM ORIGIN
+        /// </summary>
         public Vector3 PosWorld => WorldPos.GameWorldPosition;
 
+        /// <summary>
+        /// LOSSY AT FAR FROM CAMERA
+        /// </summary>
         public virtual Vector3 PosScene => WorldPos.ScenePosition;
 
         public long Health;
@@ -149,6 +155,11 @@ namespace TAC_AI.World
             }
         }
 
+        /// <summary>
+        /// Deal damage to this Tech
+        /// </summary>
+        /// <param name="dealt"></param>
+        /// <returns>True if tech destroyed</returns>
         public abstract bool RecieveDamage(int Dealt);
         internal void ApplyDamage()
         {

@@ -12,6 +12,8 @@ namespace TAC_AI.AI.AlliedOperations
             helper.Attempt3DNavi = (helper.DriverType == AIDriverType.Pilot || helper.DriverType == AIDriverType.Astronaut);
 
             Vector3 veloFlat = helper.SafeVelocity;
+            //The Handler that tells the Tank (Prospector) what to do movement-wise
+            //float prevDist = helper.lastOperatorRange;
             float dist = helper.GetDistanceFromTask(helper.lastDestinationCore);
             bool needsToSlowDown = helper.IsOrbiting();
             bool hasMessaged = false;
@@ -20,7 +22,7 @@ namespace TAC_AI.AI.AlliedOperations
             BGeneral.ResetValues(helper, ref direct);
 
             if (helper.AdvancedAI && helper.lastEnemyGet != null)
-            {
+            {   // BRANCH - RUN!!!!!!!!
                 bool foundBase = BGeneral.GetBase(helper, tank, false, ref dist, ref hasMessaged, ref direct);
                 if (!foundBase)
                 {
@@ -60,7 +62,7 @@ namespace TAC_AI.AI.AlliedOperations
                     if (!hold.IsEmpty && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                     {
                         helper.CollectedTarget = true;
-                        break;
+                        break;//Checking if tech is empty when unloading at base
                     }
                 }
                 if (!helper.CollectedTarget)
@@ -75,15 +77,17 @@ namespace TAC_AI.AI.AlliedOperations
                     if (!hold.IsFull && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                     {
                         helper.CollectedTarget = false;
-                        break;
+                        break;//Checking if tech is full after destroying a node
                     }
                 }
                 if (helper.CollectedTarget)
                     helper.actionPause = AIGlobals.ReverseDelay;
             }
 
+            // To Base
+            // Our Chunk-Carrying tractor pads are filled to the brim with Chunks
             if (helper.CollectedTarget)
-            {
+            {   // BRANCH - Head back to base
                 if (helper.ActionPause > 0)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
@@ -92,7 +96,7 @@ namespace TAC_AI.AI.AlliedOperations
                     return;
                 }
                 if (!BGeneral.GetBase(helper, tank, helper.AdvancedAI, ref dist, ref hasMessaged, ref direct))
-                {
+                {   // No base!!!
                     return;
                 }
 
@@ -106,10 +110,10 @@ namespace TAC_AI.AI.AlliedOperations
                 if (helper.DriverType == AIDriverType.Pilot)
                 {
                     if (helper.MovementController.AICore is HelicopterAICore)
-                    {
+                    {   // Float over target and unload
                         float distFlat = (tank.boundsCentreWorldNoCheck - helper.theBase.boundsCentreWorldNoCheck).ToVector2XZ().magnitude;
                         if (distFlat < helper.lastBaseExtremes)
-                        {
+                        {   // Final approach - turn off avoidence
                             helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                             helper.AvoidStuff = false;
                             if (helper.recentSpeed == 1)
@@ -133,9 +137,9 @@ namespace TAC_AI.AI.AlliedOperations
                         }
                     }
                     else
-                    {
+                    {   // Fly aircraft
                         if (dist < helper.lastBaseExtremes + helper.lastTechExtents + AIGlobals.AircraftHailMaryRange)
-                        {
+                        {   // Final approach - turn off avoidence
                             helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                             helper.AvoidStuff = false;
                             if (helper.recentSpeed == 1)
@@ -162,7 +166,7 @@ namespace TAC_AI.AI.AlliedOperations
                 else
                 {
                     if (dist < helper.lastBaseExtremes + helper.lastTechExtents)
-                    {
+                    {   // Final approach - turn off avoidence
                         helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                         helper.AvoidStuff = false;
                         if (helper.recentSpeed == 1)
@@ -181,7 +185,7 @@ namespace TAC_AI.AI.AlliedOperations
                         }
                     }
                     else if (dist < helper.lastBaseExtremes + helper.lastTechExtents + 4)
-                    {
+                    {   // almost at the the base receiver - fine-tune and yield if nesseary for approach
                         helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                         helper.AvoidStuff = false;
                         if (helper.recentSpeed < 3)
@@ -205,7 +209,7 @@ namespace TAC_AI.AI.AlliedOperations
                         }
                     }
                     else if (dist < helper.lastBaseExtremes + helper.lastTechExtents + 8)
-                    {
+                    {   // Near the base, but not quite at the receiver
                         helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                         if (helper.recentSpeed < 3)
                         {
@@ -236,7 +240,7 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.foundGoal = false;
             }
             else
-            {
+            {   // BRANCH - Go look for resources
                 if (helper.ActionPause > 0)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
@@ -246,9 +250,9 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 if (!helper.foundGoal)
                 {
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     BGeneral.GetMineableScenery(helper, tank, helper.AdvancedAI, ref dist, ref hasMessaged, ref direct);
-                    return;
+                    return; // There's no resources left!
                 }
                 else if (helper.theResource != null)
                 {

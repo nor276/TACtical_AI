@@ -18,7 +18,7 @@ namespace TAC_AI
         internal virtual void GUIHandler(int ID)
         {
         }
-        public Rect HotWindow = new Rect(0, 0, 200, 230);
+        public Rect HotWindow = new Rect(0, 0, 200, 230);   // the "window"
     }
     public class GUIListHandler<T> : GUIListHandler
     {
@@ -121,7 +121,7 @@ namespace TAC_AI
                         }
                         HoriPosOff += ButtonWidth;
                     }
-                    catch { }
+                    catch { }// error on handling something
                 }
             }
 

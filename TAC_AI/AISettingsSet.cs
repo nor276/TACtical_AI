@@ -9,41 +9,62 @@ namespace TAC_AI
 {
     public interface AISettings
     {
+        /// <summary>Range to stop before enemy</summary>
         float CombatSpacing { get; }
+        /// <summary>Range to pursue enemies</summary>
         float CombatChase { get; }
+        /// <summary>Maximum Range to stray from objective</summary>
         float ObjectiveRange { get; }
         bool shouldChase { get; }
 
+
+        /// <summary>Should the AI take combat calculations and retreat if nesseary?</summary>
         bool AdvancedAI { get; }
+        /// <summary>Should the AI only follow player movement while in MT mode?</summary>
         bool AllMT { get; }
+        /// <summary>Should the AI ram the enemy?</summary>
         bool FullMelee { get; }
+        /// <summary>Should the AI circle the enemy?</summary>
         bool SideToThreat { get; }
 
+        // Repair Auxilliaries
+        /// <summary>Allied auto-repair</summary>
         bool AutoRepair { get; }
+        /// <summary>Draw from player inventory reserves</summary>
         bool UseInventory { get; }
     }
     public struct AISettingsLimit : AISettings
     {
         private TankAIHelper helper;
 
+        /// <summary>Range to stop before enemy</summary>
         public float CombatSpacing { get => combatRange; }
         private float combatRange;
+        /// <summary>Range to pursue enemies</summary>
         public float CombatChase { get => chaseRange; }
         private float chaseRange;
+        /// <summary>Maximum Range to stray from objective</summary>
         public float ObjectiveRange { get => objectiveRange; }
         private float objectiveRange;
         public bool shouldChase => CombatChase > 0;
 
+        /// <summary>Should the AI take combat calculations and retreat if nesseary?</summary>
         public bool AdvancedAI { get => advancedAI; }
         private bool advancedAI;
+        /// <summary>Should the AI only follow player movement while in MT mode?</summary>
         public bool AllMT { get => allMT; }
         private bool allMT;
+        /// <summary>Should the AI ram the enemy?</summary>
         public bool FullMelee { get => fullMelee; }
         private bool fullMelee;
+        /// <summary>Should the AI circle the enemy?</summary>
         public bool SideToThreat { get => sideToThreat; }
         private bool sideToThreat;
 
+        // Repair Auxilliaries
+        /// <summary>Allied auto-repair</summary>
         public bool AutoRepair => helper.TechMemor;
+        /// <summary>Draw from player inventory reserves</summary>
         public bool UseInventory { get => useInventory; }
         private bool useInventory;
 
@@ -92,6 +113,7 @@ namespace TAC_AI
                 if (AIEx.InventoryUser)
                     useInventory = true;
 
+                // Engadgement Ranges
                 if (AIEx.MinCombatRange > combatRange)
                     combatRange = AIEx.MinCombatRange;
                 if (AIEx.MaxCombatRange > chaseRange)
@@ -104,27 +126,39 @@ namespace TAC_AI
 
     public struct AISettingsSet : AISettings
     {
+        /// <summary>Spacing: Range to stop before enemy</summary>
         public float CombatSpacing { get => combatSpacing; set => combatSpacing = value; }
         private float combatSpacing;
+        /// <summary>Chase: Range to pursue enemies</summary>
         public float CombatChase { get => combatChase; set => combatChase = value; }
         private float combatChase;
+        /// <summary>Maximum Range to stray from objective</summary>
         public float ObjectiveRange { get => objectiveRange; set => objectiveRange = value; }
         private float objectiveRange;
+        /// <summary>Maximum Range to search for job articles</summary>
         public float ScanRange { get => scanRange; set => scanRange = value; }
         private float scanRange;
         public bool shouldChase => CombatChase > 0;
 
+
+        /// <summary>Should the AI take combat calculations and retreat if nesseary?</summary>
         public bool AdvancedAI { get => advancedAI; set => advancedAI = value; }
         private bool advancedAI;
+        /// <summary>Should the AI only follow player movement while in MT mode?</summary>
         public bool AllMT { get => allMT; set => allMT = value; }
         private bool allMT;
+        /// <summary>Should the AI ram the enemy?</summary>
         public bool FullMelee { get => fullMelee; set => fullMelee = value; }
         private bool fullMelee;
+        /// <summary>Should the AI circle the enemy?</summary>
         public bool SideToThreat { get => sideToThreat; set => sideToThreat = value; }
         private bool sideToThreat;
 
+        // Repair Auxilliaries
+        /// <summary>Allied auto-repair</summary>
         public bool AutoRepair { get => autoRepair; set => autoRepair = value; }
         private bool autoRepair;
+        /// <summary>Draw from player inventory reserves</summary>
         public bool UseInventory { get => useInventory; set => useInventory = value; }
         private bool useInventory;
 
@@ -150,6 +184,10 @@ namespace TAC_AI
             useInventory = toggleDefault;
         }
 
+        /// <summary>
+        /// Get it from Tech save data
+        /// </summary>
+        /// <param name="blockSpec"></param>
         public AISettingsSet(TankPreset.BlockSpec blockSpec)
         {
             SetIfPossible(blockSpec, "CombatR", out combatSpacing);
@@ -187,6 +225,7 @@ namespace TAC_AI
             useInventory = setTrue;
         }
 
+        // Utilities
         public void ClampMaxFloats(AISettingsSet settings)
         {
             CombatSpacing = Mathf.Min(CombatSpacing, settings.CombatSpacing);
@@ -221,7 +260,7 @@ namespace TAC_AI
         private static LocExtStringMod LOC_FullMelee_desc = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English,
-              "Ram into the target at all costs" },
+              "Ram into the target at all costs" },//Smart Melee with target
             { LocalisationEnums.Languages.Japanese,
                 "いかなる犠牲を払ってでも標的に突撃する"},
         });
@@ -263,19 +302,20 @@ namespace TAC_AI
         internal void GUIDisplay(AISettings lim, ref bool delta)
         {
             GUIAIManager.StatusLabelButtonToggle(new Rect(20, 145, 80, 30), "RAM+", lim.FullMelee, ref fullMelee,
-                LOC_FullMelee_desc, GUIAIManager.LOC_FindTheAI, ref delta);
+                LOC_FullMelee_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need GeoCorp A.I."
             GUIAIManager.StatusLabelButtonToggle(new Rect(100, 145, 80, 30), "Side", lim.SideToThreat, ref sideToThreat,
-                LOC_SideToThreat_desc, GUIAIManager.LOC_FindTheAI, ref delta);
+                LOC_SideToThreat_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need Venture A.I."
             GUIAIManager.StatusLabelButtonToggle(new Rect(20, 175, 80, 30), "CPU+", lim.AdvancedAI, ref advancedAI,
-                LOC_AdvancedAI_desc, GUIAIManager.LOC_FindTheAI, ref delta);
+                LOC_AdvancedAI_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need Hawkeye or Venture A.I."
             GUIAIManager.StatusLabelButtonToggle(new Rect(100, 175, 80, 30), "Multi+", lim.AllMT, ref allMT,
-                LOC_AllMT_desc, GUIAIManager.LOC_FindTheAI, ref delta);
+                LOC_AllMT_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need GeoCorp A.I."
             GUIAIManager.StatusLabelButtonToggle(new Rect(20, 205, 80, 30), "Repair", lim.AutoRepair, ref autoRepair,
-                LOC_AutoRepair_desc, GUIAIManager.LOC_FindTheAI, ref delta);
+                LOC_AutoRepair_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need GeoCorp or Better Future A.I."
             GUIAIManager.StatusLabelButtonToggle(new Rect(100, 205, 80, 30), "SCU", lim.UseInventory, ref useInventory,
-                LOC_UseInventory_desc, GUIAIManager.LOC_FindTheAI, ref delta);
+                LOC_UseInventory_desc, GUIAIManager.LOC_FindTheAI, ref delta);//"Need Better Future A.I."
         }
 
+        // Serialization
         [Flags]
         public enum AIToggleFlags : byte
         {

@@ -11,6 +11,15 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 {
     internal static class RAircraft
     {
+        // ENEMY CONTROLLERS
+        /*
+            Circle,     // Attack like the AC-130 Gunship, broadside while salvoing [BROKEN]
+            Grudge,     // Chase and dogfight whatever hit this aircraft last
+            Coward,     // Avoid danger
+            Bully,      // Attack other aircraft over ground structures.  If inverted, prioritize ground structures over aircraft
+            Pesterer,   // Switch to the next closest possible target after attacking one aircraft.  Do not try to dodge and prioritize attack
+            Spyper,     // Take aim and fire at the best possible moment in our aiming
+        */
         public static void AttackWoosh(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             BGeneral.ResetValues(helper, ref direct);
@@ -103,7 +112,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         }
                     }
                     break;
-                default:
+                default:    // Others
                     helper.AISetSettings.ObjectiveRange = spacing + range;
                     helper.AISetSettings.SideToThreat = false;
                     helper.Retreat = false;
@@ -155,7 +164,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                                 helper.TryInsureAutoAnchor();
                             }
                             else
-                            {
+                            {   //Try to find new spot
                                 FlutterAround(helper, tank, mind, ref direct);
                             }
                         }
@@ -166,6 +175,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     else
                     {
+                        //Cannot repair block damage or recharge shields!
                         mind.Hurt = false;
                     }
                     if (tank.IsAnchored && !mind.StartedAnchored)
@@ -175,7 +185,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 if (mind.CommanderSmarts == EnemySmarts.Smrt)
                 {
-                    if (helper.PendingDamageCheck)
+                    if (helper.PendingDamageCheck) //&& helper.AttemptedRepairs < 3)
                     {
                         bool venPower = false;
                         if (mind.MainFaction == FactionSubTypes.VEN) venPower = true;
@@ -188,10 +198,11 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 if (mind.CommanderSmarts >= EnemySmarts.IntAIligent)
                 {
-                    if (helper.PendingDamageCheck)
+                    if (helper.PendingDamageCheck) //&& helper.AttemptedRepairs < 4)
                     {
                         if ((energy.storageTotal - energy.spareCapacity) / energy.storageTotal > 0.5)
                         {
+                            //flex yee building speeds on them players
                             helper.PendingDamageCheck = !RRepair.EnemyInstaRepair(tank, mind);
                         }
                         else
@@ -208,8 +219,10 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             }
             else
             {
+               // helper.anchorAttempts = 0;
             }
 
+            //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " is lollygagging   " + mind.CommanderMind.ToString());
 
             if (holdGround)
                 direct.SetLastDest(mind.sceneStationaryPos);
@@ -217,16 +230,17 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             {
                 switch (mind.CommanderMind)
                 {
-                    case EnemyAttitude.Default:
+                    case EnemyAttitude.Default: // do dumb stuff
                         FlutterAround(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.Homing:
+                    case EnemyAttitude.Homing:  // Get nearest tech regardless of max combat range and attack them
                         RGeneral.HomingIdle(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.Miner:
+                    case EnemyAttitude.Miner:   // mine resources
                         RMiner.MineYerOwnBusiness(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.Junker:
+                    //The case below I still have to think of a reason for them to do the things
+                    case EnemyAttitude.Junker:  // Huddle up by blocks on the ground
                         FlutterAround(helper, tank, mind, ref direct);
                         break;
                     default:
@@ -237,7 +251,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 direct.SetLastDest(AIEPathing.OffsetToSea(helper.lastDestinationCore, tank, helper));
             else if (mind.EvilCommander == EnemyHandling.Starship)
                 direct.SetLastDest(AIEPathing.OffsetFromGroundH(helper.lastDestinationCore, helper));
-            else
+            else //Snap to ground
                 direct.SetLastDest(AIEPathing.OffsetFromGround(helper.lastDestinationCore, helper, tank.blockBounds.size.y));
             return isRegenerating;
         }
@@ -258,7 +272,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
         }
 
         public static void EnemyDogfighting(TankAIHelper helper, Tank tank, EnemyMind mind)
-        {
+        {   // Only accounts for forward weapons
 
             helper.WantsToFight = false;
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);

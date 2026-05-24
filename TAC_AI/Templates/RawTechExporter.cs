@@ -15,7 +15,7 @@ using TerraTechETCUtil;
 namespace TAC_AI.Templates
 {
     public class AIBookmarker : MonoBehaviour
-    {
+    {   // External AI-setting interface - used to set Tech AI state externally
         public EnemyHandling commander = EnemyHandling.Wheeled;
         public EAttackMode attack = EAttackMode.Circle;
         public EnemyAttitude attitude = EnemyAttitude.Default;
@@ -23,8 +23,11 @@ namespace TAC_AI.Templates
         public EnemyBolts bolts = EnemyBolts.Default;
     }
 
+    /// <summary>
+    /// Don't try bothering with anything sneaky with this - it's built against illegal blocks and block rotations.
+    /// </summary>
     public class RawTechTemplateFast
-    {
+    {   // External builder interface - use to save Techs externally
         public string Name = "unset";
         public string Blueprint;
         public bool InfBlocks;
@@ -63,7 +66,7 @@ namespace TAC_AI.Templates
     {
         public static RawTechExporter inst;
         public static GameObject GUIWindow;
-        private static Rect HotWindow = new Rect(0, 0, 230, 230);
+        private static Rect HotWindow = new Rect(0, 0, 230, 230);   // the "window"
         public static bool isOpen;
         public static bool pendingInGameReload;
 
@@ -78,12 +81,14 @@ namespace TAC_AI.Templates
             Converters = new List<JsonConverter> { new DEVTypeEnumConverter() },
         };
 
+        // AI Icons
         public static Dictionary<AIDriverType, Sprite> aiBackplates;
         public static Dictionary<AIType, Sprite> aiIcons;
         public static Dictionary<EnemySmarts, Sprite> aiIconsEnemy;
 
         private static bool firstInit = false;
 
+        // GUI
         private const int RawTechExporterID = 846321;
         internal static Sprite GuardAIIcon;
 
@@ -107,6 +112,7 @@ namespace TAC_AI.Templates
                 (Sprite cand)
             { return cand.name == "Icon_AI_Guard"; });
 #if STEAM
+            // Steam does not support RawTech loading the same way as Unofficial.
             if (!firstInit)
             {
                 SetupWorkingDirectoriesSteam();
@@ -327,13 +333,14 @@ namespace TAC_AI.Templates
         }
 
         private static FileSystemWatcher watchDog;
+        // Setup
         public static void SetupWorkingDirectories()
         {
             DirectoryInfo di = new DirectoryInfo(Assembly.GetExecutingAssembly().Location);
-            di = di.Parent;
+            di = di.Parent; // off of this DLL
             DLLDirectory = di.ToString();
-            di = di.Parent;
-            di = di.Parent;
+            di = di.Parent; // out of the DLL folder
+            di = di.Parent; // out of QMods
             BaseDirectory = di.ToString();
 #if DEBUG
             DebugTAC_AI.Info(KickStart.ModID + ": DLL folder is at: " + DLLDirectory);
@@ -357,11 +364,11 @@ namespace TAC_AI.Templates
         public static void SetupWorkingDirectoriesSteam()
         {
             DirectoryInfo di = new DirectoryInfo(Assembly.GetExecutingAssembly().Location);
-            di = di.Parent;
+            di = di.Parent; // off of this DLL
             DLLDirectory = di.ToString();
 
             DirectoryInfo Navi = new DirectoryInfo(Application.dataPath);
-            Navi = Navi.Parent;
+            Navi = Navi.Parent; // out of the GAME folder
             BaseDirectory = Navi.ToString();
 #if DEBUG
             DebugTAC_AI.Info(KickStart.ModID + ": DLL folder is at: " + DLLDirectory);
@@ -379,11 +386,12 @@ namespace TAC_AI.Templates
             watchDog.Changed += RefreshAll;
         }
 
+        // Operations
         internal static int GetRawTechsCountExternalMods()
         {
 #if STEAM
             int count = 0;
-            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();
+            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();// Go to the cluster directory
 
             DebugTAC_AI.LogDevOnlyAssert(KickStart.ModID + ": RegisterExternalCorpTechs - searching in " + location);
             string fileName = "RawTechs.RTList";
@@ -459,7 +467,7 @@ namespace TAC_AI.Templates
         {
 #if STEAM
             List<RawTechTemplate> toAdd = new List<RawTechTemplate>();
-            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();
+            string location = new DirectoryInfo(Assembly.GetExecutingAssembly().Location).Parent.Parent.ToString();// Go to the cluster directory
 
 
             string fileName = "RawTechs.RTList";
@@ -511,14 +519,14 @@ namespace TAC_AI.Templates
                     try
                     {
                         RawTechTemplateFast ext = LoadEnemyTech(name, Dir);
-                        errorLevel++;
+                        errorLevel++; // 1
                         RawTechTemplate temp = new RawTechTemplate
                         {
                             techName = ext.Name,
                             savedTech = ext.Blueprint,
                             startingFunds = ValidateCost(ext.Blueprint, ext.Cost),
                         };
-                        errorLevel++;
+                        errorLevel++; // 2
                         FactionSubTypes MainCorp;
                         if (ext.Faction == FactionSubTypes.NULL)
                         {
@@ -526,7 +534,7 @@ namespace TAC_AI.Templates
                         }
                         else
                             MainCorp = ext.Faction;
-                        errorLevel++;
+                        errorLevel++; // 3
                         temp.purposes = RawTechBase.GetHandler(ext.Blueprint, (FactionTypesExt)MainCorp, ext.IsAnchored, out BaseTerrain terra, out int minCorpGrade);
                         temp.IntendedGrade = minCorpGrade;
                         temp.factionName = ManMods.inst.FindCorpShortName(MainCorp);
@@ -622,10 +630,10 @@ namespace TAC_AI.Templates
                         return false;
                     }
                     else
-                        SB.Remove(SB.Length - 5, 5);
+                        SB.Remove(SB.Length - 5, 5);// remove ".JSON"
                 }
                 else
-                    SB.Remove(SB.Length - 8, 8);
+                    SB.Remove(SB.Length - 8, 8);// remove ".RAWTECH"
 
                 output = SB.ToString();
             }
@@ -683,6 +691,7 @@ namespace TAC_AI.Templates
             }
         }
 
+        // Snapshot to RawTech
         public static bool SnapsAvailable()
         {
             try
@@ -693,13 +702,15 @@ namespace TAC_AI.Templates
             }
             catch
             {
+                // error
                 return false;
             }
+            // No snaps loaded.
             return false;
         }
         public static void SaveEnemyTechsToRawBLK()
         {
-            List<SnapshotDisk> Snaps = ManSnapshots.inst.ServiceDisk.GetSnapshotCollectionDisk().Snapshots.ToList();
+            List<SnapshotDisk> Snaps = ManSnapshots.inst.ServiceDisk.GetSnapshotCollectionDisk().Snapshots.ToList();// ManSnapshots.inst.m_Snapshots.ToList();
             if (Snaps.Count == 0)
                 return;
             foreach (SnapshotDisk snap in Snaps)
@@ -724,12 +735,13 @@ namespace TAC_AI.Templates
             ReloadTechsNow();
         }
 
+        // JSON Handlers
         public static void SaveTechToRawJSON(Tank tank)
         {
             RawTechTemplateFast builder = new RawTechTemplateFast
             {
                 Name = tank.name,
-                Faction = TankExtentions.GetMainCorp(tank),
+                Faction = TankExtentions.GetMainCorp(tank),//GetTopCorp(tank);
                 Blueprint = RawTechTemplate.TechToJSONExternal(tank),
                 InfBlocks = false,
                 IsAnchored = tank.IsAnchored,
@@ -816,6 +828,7 @@ namespace TAC_AI.Templates
             pendingInGameReload = true;
         }
 
+        // Loaders
         private static void SaveTechToFile(string TechName, string RawTechJSON)
         {
             if (!Directory.Exists(RawTechsDirectory))
@@ -1244,7 +1257,7 @@ namespace TAC_AI.Templates
             finally { SB.Clear(); }
         }
         private static List<string> GetALLDirectoriesInFolder(string directory)
-        {
+        {   //
             List<string> final = new List<string>();
             final.Add(directory);
             foreach (string Dir in Directory.GetDirectories(directory))
@@ -1256,7 +1269,7 @@ namespace TAC_AI.Templates
             return final;
         }
         private static bool IsLethal(Tank tank)
-        {
+        {   //
             return tank.blockman.IterateBlockComponents<ModuleWeapon>().Count() > tank.blockman.IterateBlockComponents<ModuleTechController>().Count();
         }
     }

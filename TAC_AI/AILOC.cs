@@ -13,6 +13,9 @@ namespace TAC_AI
         });
 
 
+        // -----------------------------------------------------------------------
+
+        // -----------------------------------------------------------------------
 
         internal static LocExtStringMod AutoDisabled = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
@@ -47,6 +50,9 @@ namespace TAC_AI
         });
 
 
+        // -----------------------------------------------------------------------
+
+        // -----------------------------------------------------------------------
 
         internal static LocExtStringMod AIProcessing = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
@@ -79,7 +85,9 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese, "固定ベース"},
         });
 
+        // -----------------------------------------------------------------------
 
+        // -----------------------------------------------------------------------
         internal static LocExtStringMod Destination = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {
             { LocalisationEnums.Languages.US_English, "destination " },
@@ -236,6 +244,9 @@ namespace TAC_AI
         });
 
 
+        // -----------------------------------------------------------------------
+
+        // -----------------------------------------------------------------------
 
         internal static LocExtStringMod Fly_Grounded = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()
         {

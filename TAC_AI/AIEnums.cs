@@ -110,6 +110,7 @@ namespace TAC_AI.AI
             get => _DriveDir;
             set => _DriveDir = value;
         }
+        /// <summary>The final destination, not the point we are driving to!</summary>
         public Vector3 lastDestination
         {
             get => lastDest;
@@ -200,42 +201,85 @@ namespace TAC_AI.AI
         }
     }
 
+    /// <summary>
+    /// What the AI does when attacking
+    /// </summary>
     public enum EAttackMode
     {
         AutoSet,
+        /// <summary> Circle the enemy while shooting at them
+        /// <para>Use for: Skirmishers, Mid-long-ranged units with fast turrets [GSO Gigaton, VEN Rapid Cannon, HE HG Cannon, BF Arc Missiles, RR Sonic Blaster TAC Terminator] </para>
+        /// <para>!! Only active with TweakTech or WeaponAimMod (because no target leading) !! </para></summary>
         Circle,
+        /// <summary> Chase last assailant head-on until death regardless of range [default for SuicideMissile]
+        /// <para>Use for: Homing missiles, Dualling units, Eradicators hellbent on removing the player from existance</para> </summary>
         Chase,
+        /// <summary> Attack the weakest tech in range.
+        /// <para>Use for: Riots, Area Denial</para> </summary>
         Strong,
+        /// <summary> Attack random techs.
+        /// <para>Use for: Interceptors, Raiders</para> </summary>
         Random,
+        /// <summary> Attack player from afar because we are a F^bro-fracker.
+        /// <para>Use for: Artillery, Motherships</para> </summary>
         Ranged,
+        /// <summary> Avoid danger.
+        /// <para>Use for: Any Non-Combat Tech </para></summary>
         Safety
     }
 
+    /// <summary>
+    /// We can only be going to one location at once!
+    /// </summary>
     public enum EDriveDest
-    {
-        None,
+    {   //Control the AI drive direction
+        None, // No target
 
+        // Coordinate-Based Targets
+        /// <summary>
+        /// Drive away from target
+        /// </summary>
         FromLastDestination,
 
+        /// <summary>
+        /// Drive to target
+        /// </summary>
         ToLastDestination,
 
+        /// <summary>
+        /// The avoidence system is trying to unstuck tech
+        /// </summary>
         AvoidenceActive,
 
+
+        // Dynamically Changing Targets
+        /// <summary>
+        /// Counts also as [recharge home, block rally]
+        /// </summary>
         ToBase,
 
+        /// <summary>
+        /// Counts also as [loose block, target enemy, target to charge]
+        /// </summary>
         ToMine,
 
+        /// <summary>
+        /// Allows ForceSetDrive to pass through unhindered
+        /// </summary>
         Override
     }
 
     public enum ESteeringStrength
-    {
+    {   //Control the AI drive steering
         Lazy,
         Strict,
         MaxSteering
     }
+    /// <summary>
+    /// Facing towards destination, regardless of drive direction
+    /// </summary>
     public enum EDriveFacing
-    {
+    {   //Control the AI drive direction
         Stop,
         Neutral,
         Forwards,

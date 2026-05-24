@@ -8,6 +8,7 @@ namespace TAC_AI.AI.Movement
 {
     internal static class AIEPathing
     {
+        /// <summary>  DO NOT EDIT OUTPUT </summary>
         internal static HashSet<Tank> AllyList(Tank tank)
         {
             HashSet<Tank> transfer = TankAIManager.GetNonEnemyTanks(tank.Team);
@@ -20,6 +21,12 @@ namespace TAC_AI.AI.Movement
         public const float DefaultExtraSpacing = 2;
 
 
+        //The default steering handles the ground steering
+
+        //3-axis steering is handled in AIEDrive
+
+        // OBSTICLE AVOIDENCE
+        /// <summary> Keep as list, helps efficiency </summary>
         private static List<Visible> ObstList = new List<Visible>();
         internal static List<Visible> ObstructionAwareness(Vector3 posWorld, TankAIHelper helper, float radAdd = DefaultExtraSpacing, bool ignoreDestructable = false)
         {
@@ -77,6 +84,7 @@ namespace TAC_AI.AI.Movement
 
         private static Vector3 ObstOtherDir(Tank tank, TankAIHelper helper, Visible vis)
         {
+            //What actually does the avoidence
             Vector3 inputOffset = tank.transform.position - vis.centrePosition;
             float inputSpacing = vis.Radius + helper.lastTechExtents + helper.DodgeStrength;
             Vector3 Final = (inputOffset.normalized * inputSpacing) + tank.transform.position;
@@ -87,12 +95,12 @@ namespace TAC_AI.AI.Movement
             if (helper.IsDirectedMovingFromDest)
                 return ObstDodgeOffsetInv(tank, helper, DoDodge, out worked, useTwo, ignoreDestructable);
             worked = false;
-            if (!DoDodge || KickStart.AIDodgeCheapness >= 75 || helper.DriveDestDirected == EDriveDest.ToMine || helper.DriveDestDirected == EDriveDest.ToBase)
-                return Vector3.zero;
+            if (!DoDodge || KickStart.AIDodgeCheapness >= 75 || helper.DriveDestDirected == EDriveDest.ToMine || helper.DriveDestDirected == EDriveDest.ToBase)   // are we desperate for performance or going to mine
+                return Vector3.zero;    // don't bother with this
             Vector3 Offset = Vector3.zero;
 
             if (tank.rbody == null)
-                return Vector3.zero;
+                return Vector3.zero; // no need, we are stationary
 
             List<Visible> ObstList = ObstructionAwareness(tank.boundsCentreWorldNoCheck + helper.SafeVelocity, helper, 2, ignoreDestructable);
             try
@@ -149,8 +157,16 @@ namespace TAC_AI.AI.Movement
             return Offset;
         }
 
+        /// <summary>
+        /// For inverted output
+        /// </summary>
+        /// <param name="tank"></param>
+        /// <param name="helper"></param>
+        /// <param name="vis"></param>
+        /// <returns></returns>
         private static Vector3 ObstDir(Tank tank, TankAIHelper helper, Visible vis)
         {
+            //What actually does the avoidence
             Vector3 inputOffset = tank.transform.position - vis.centrePosition;
             float inputSpacing = vis.Radius + helper.lastTechExtents + helper.DodgeStrength;
             Vector3 Final = -(inputOffset.normalized * inputSpacing) + tank.transform.position;
@@ -159,12 +175,12 @@ namespace TAC_AI.AI.Movement
         private static Vector3 ObstDodgeOffsetInv(Tank tank, TankAIHelper helper, bool DoDodge, out bool worked, bool useTwo = false, bool ignoreDestructable = false)
         {
             worked = false;
-            if (!DoDodge || KickStart.AIDodgeCheapness >= 60 || helper.DriveDestDirected == EDriveDest.ToMine || helper.DriveDestDirected == EDriveDest.ToBase)
-                return Vector3.zero;
+            if (!DoDodge || KickStart.AIDodgeCheapness >= 60 || helper.DriveDestDirected == EDriveDest.ToMine || helper.DriveDestDirected == EDriveDest.ToBase)   // are we desperate for performance or going to mine
+                return Vector3.zero;    // don't bother with this
             Vector3 Offset = Vector3.zero;
 
             if (tank.rbody == null)
-                return Vector3.zero;
+                return Vector3.zero; // no need, we are stationary
 
             List<Visible> ObstList = ObstructionAwareness(tank.boundsCentreWorldNoCheck + helper.SafeVelocity, helper, 2, ignoreDestructable);
             try
@@ -221,6 +237,15 @@ namespace TAC_AI.AI.Movement
             return Offset;
         }
 
+        /// <summary>
+        /// also handles sceneryblockers
+        /// </summary>
+        /// <param name="posScene"></param>
+        /// <param name="tank"></param>
+        /// <param name="helper"></param>
+        /// <param name="pos"></param>
+        /// <param name="invert"></param>
+        /// <returns></returns>
         public static bool ObstructionAwarenessSetPiece(Vector3 posScene, Tank tank, TankAIHelper helper, out Vector3 pos, bool invert = false)
         {
             pos = Vector3.zero;
@@ -302,20 +327,21 @@ namespace TAC_AI.AI.Movement
             return false;
         }
         public static Vector3 ObstOtherDirSetPiece(Tank tank, TankAIHelper helper, Vector3 pos, TerrainSetPiece vis)
-        {
+        {   //What actually does the avoidence
             Vector3 inputOffset = tank.transform.position - pos;
             float inputSpacing = vis.GetApproxCellRadius() + helper.lastTechExtents + helper.DodgeStrength;
             Vector3 Final = (inputOffset.normalized * inputSpacing) + tank.transform.position;
             return Final;
         }
         public static Vector3 ObstDirSetPiece(Tank tank, TankAIHelper helper, Vector3 pos, TerrainSetPiece vis)
-        {
+        {   //What actually does the avoidence
             Vector3 inputOffset = tank.transform.position - pos;
             float inputSpacing = vis.GetApproxCellRadius() + helper.lastTechExtents + helper.DodgeStrength;
             Vector3 Final = -(inputOffset.normalized * inputSpacing) + tank.transform.position;
             return Final;
         }
 
+        // ALLY COLLISION AVOIDENCE
         private static bool AvoidInvalidOrIgnoreable(Tank tank)
         {
             if (tank != null && tank.visible.isActive)
@@ -336,6 +362,7 @@ namespace TAC_AI.AI.Movement
         }
         public static Tank ClosestAlly(IEnumerable<Tank> AlliesAlt, Vector3 tankPos, out float bestValue, TankAIHelper thisTank)
         {
+            // Finds the closest ally and outputs their respective distance as well as their being
             bestValue = 500;
             Tank closestTank = null;
             try
@@ -362,6 +389,9 @@ namespace TAC_AI.AI.Movement
         }
         public static Tank ClosestAllyPrecision(IEnumerable<Tank> AlliesAlt, Vector3 tankPos, out float bestValue, TankAIHelper thisTank)
         {
+            // Finds the closest ally and outputs their respective distance as well as their being
+            //  For when the size matters of the object to dodge
+            //  DEMANDS MORE PROCESSING THAN THE ABOVE
             bestValue = 500;
             Tank closestTank = null;
             try
@@ -389,6 +419,7 @@ namespace TAC_AI.AI.Movement
 
         public static Tank SecondClosestAlly(IEnumerable<Tank> AlliesAlt, Vector3 tankPos, out Tank secondTank, out float bestValue, out float auxBestValue, TankAIHelper thisTank)
         {
+            // Finds the two closest allies and outputs their respective distances as well as their beings
             bestValue = 500;
             auxBestValue = 500;
             secondTank = null;
@@ -430,6 +461,9 @@ namespace TAC_AI.AI.Movement
         }
         public static Tank SecondClosestAllyPrecision(IEnumerable<Tank> AlliesAlt, Vector3 tankPos, out Tank secondTank, out float bestValue, out float auxBestValue, TankAIHelper thisTank)
         {
+            // Finds the two closest allies and outputs their respective distances as well as their beings
+            //  For when the size matters of the object to dodge
+            //  DEMANDS MORE PROCESSING THAN THE ABOVE
             bestValue = 500;
             auxBestValue = 500;
             secondTank = null;
@@ -471,6 +505,7 @@ namespace TAC_AI.AI.Movement
 
         public static Tank ClosestUnanchoredAllyAegis(IEnumerable<Tank> AlliesAlt, Vector3 tankPos, float rangeSqr, out float bestValue, TankAIHelper thisTank)
         {
+            // Finds the closest ally and outputs their respective distance as well as their being
             bestValue = rangeSqr;
             Tank closestTank = null;
             try
@@ -496,35 +531,43 @@ namespace TAC_AI.AI.Movement
             return closestTank;
         }
 
+        // Other navigation utilities
         public static Vector3 GetDriveApproxAirDirector(Tank tankToCopy, TankAIHelper AIHelp, out bool IsMoving)
         {
+            //Get the position in which to drive inherited from player controls
+            //  NOTE THAT THIS ONLY SUPPORTS THE DISTANCE OF PLAYER TECH'S SIZE PLUS THE MT TECH!!!
             Tank tank = AIHelp.tank;
             Vector3 end;
+            //first we get the offset
             Vector3 offsetTo = tankToCopy.trans.InverseTransformPoint(tank.boundsCentreWorldNoCheck) - tankToCopy.blockBounds.center;
 
             TankControl.State controlCopyTarget = tankToCopy.control.CurState;
 
             Vector3 InputLineVal = controlCopyTarget.m_InputMovement;
+            // Copy LME Here
             if (tankToCopy.control.GetThrottle(0, out float throttleX))
-            {
+            {   // X
                 InputLineVal.x += throttleX;
             }
             if (tankToCopy.control.GetThrottle(1, out float throttleY))
-            {
+            {   // Y
                 InputLineVal.y += throttleY;
             }
             if (tankToCopy.control.GetThrottle(2, out float throttleZ))
-            {
+            {   // X
                 InputLineVal.z += throttleZ;
             }
             InputLineVal = InputLineVal.Clamp01Box();
 
+            // Grab a vector to-go to set how the other tech should react in accordance to the host
             Vector3 DAdjuster = InputLineVal * 2000;
             Vector3 RAdjuster = controlCopyTarget.m_InputRotation * -1;
+            // Generate a rough tangent
             Vector3 MoveDirectionUnthrottled = ((Quaternion.Euler(RAdjuster.x, RAdjuster.y, RAdjuster.z) * offsetTo) - offsetTo).normalized * (1000 * AIHelp.lastTechExtents);
 
             Vector3 posToGo = MoveDirectionUnthrottled + DAdjuster;
 
+            //Anchor handling
             if (AIHelp.AutoAnchor)
             {
                 if (tankToCopy.IsAnchored)
@@ -539,42 +582,58 @@ namespace TAC_AI.AI.Movement
                 }
             }
 
+            // Then we pack it all up nicely in the end
             end = tankToCopy.trans.TransformPoint(posToGo + tankToCopy.blockBounds.center);
             IsMoving = !(InputLineVal + controlCopyTarget.m_InputRotation).Approximately(Vector3.zero, 0.05f);
             return end;
         }
+        /// <summary>
+        /// Needs to be setup like a Maintainer
+        /// </summary>
+        /// <param name="tankToCopy"></param>
+        /// <param name="AIHelp"></param>
+        /// <param name="IsMoving"></param>
+        /// <returns></returns>
         public static Vector3 GetDriveApproxAirMaintainer(Tank tankToCopy, TankAIHelper AIHelp, out bool IsMoving)
         {
+            //Get the position in which to drive inherited from player controls
+            //  NOTE THAT THIS ONLY SUPPORTS THE DISTANCE OF PLAYER TECH'S SIZE PLUS THE MT TECH!!!
             Tank tank = AIHelp.tank;
             Vector3 end;
+            //first we get the offset
             Vector3 offsetTo = tankToCopy.trans.InverseTransformPoint(tank.boundsCentreWorldNoCheck) - tankToCopy.blockBounds.center;
 
             TankControl.State controlCopyTarget = tankToCopy.control.CurState;
 
             Vector3 InputLineVal = controlCopyTarget.m_InputMovement;
+            // Copy LME Here
             if (tankToCopy.control.GetThrottle(0, out float throttleX))
-            {
+            {   // X
                 InputLineVal.x += throttleX;
             }
             if (tankToCopy.control.GetThrottle(1, out float throttleY))
-            {
+            {   // Y
                 InputLineVal.y += throttleY;
             }
             if (tankToCopy.control.GetThrottle(2, out float throttleZ))
-            {
+            {   // X
                 InputLineVal.z += throttleZ;
             }
             InputLineVal = InputLineVal.Clamp01Box();
 
+            // Grab a vector to-go to set how the other tech should react in accordance to the host
             Vector3 DAdjuster = InputLineVal * 2000;
             Vector3 RAdjuster = controlCopyTarget.m_InputRotation * -1;
+            // Generate a rough tangent
             Vector3 MoveDirectionUnthrottled = ((Quaternion.Euler(RAdjuster.x, RAdjuster.y, RAdjuster.z) * offsetTo) - offsetTo).normalized * (1000 * AIHelp.lastTechExtents);
 
             Vector3 posToGo = MoveDirectionUnthrottled + DAdjuster;
 
+            //Run ETC copies
             AIHelp.ProcessControl(Vector3.zero, Vector3.zero, Vector3.zero,
                 controlCopyTarget.m_BoostProps, controlCopyTarget.m_BoostJets);
 
+            //Anchor handling
             if (AIHelp.AutoAnchor)
             {
                 if (tankToCopy.IsAnchored)
@@ -589,6 +648,7 @@ namespace TAC_AI.AI.Movement
                 }
             }
 
+            // Then we pack it all up nicely in the end
             end = tankToCopy.trans.TransformPoint(posToGo + tankToCopy.blockBounds.center);
             IsMoving = !(InputLineVal + controlCopyTarget.m_InputRotation).Approximately(Vector3.zero, 0.05f);
             return end;
@@ -663,6 +723,13 @@ namespace TAC_AI.AI.Movement
             return helper.GetFrameHeight() > KickStart.WaterHeight;
         }
 
+        /// <summary>
+        /// For use with land AI
+        /// </summary>
+        /// <param name="input"></param>
+        /// <param name="helper"></param>
+        /// <param name="groundOffset"></param>
+        /// <returns></returns>
         public static Vector3 OffsetFromGround(Vector3 input, TankAIHelper helper, float groundOffset = 0)
         {
             float final_y;
@@ -685,6 +752,13 @@ namespace TAC_AI.AI.Movement
             return final;
         }
 
+        /// <summary>
+        /// For use with hover AI
+        /// </summary>
+        /// <param name="input"></param>
+        /// <param name="helper"></param>
+        /// <param name="groundOffset"></param>
+        /// <returns></returns>
         public static Vector3 OffsetFromGroundH(Vector3 input, TankAIHelper helper, float groundOffset = 0)
         {
             float final_y;
@@ -695,10 +769,11 @@ namespace TAC_AI.AI.Movement
                 final_y = height + groundOffset;
             else
                 final_y = 50 + groundOffset;
-            if (helper.AdviseAwayCore)
+            if (helper.AdviseAwayCore)// && helper.lastEnemy.IsNull()
             {
                 try
                 {
+                    //Still keep dist from ground
                     if (KickStart.isWaterModPresent)
                     {
                         if (KickStart.WaterHeight > height)
@@ -731,6 +806,13 @@ namespace TAC_AI.AI.Movement
             }
             return final;
         }
+        /// <summary>
+        /// For use with Aircraft AI
+        /// </summary>
+        /// <param name="input"></param>
+        /// <param name="helper"></param>
+        /// <param name="groundOffset"></param>
+        /// <returns></returns>
         public static Vector3 OffsetFromGroundA(Vector3 input, TankAIHelper helper, float groundOffset = 0)
         {
             float final_y;
@@ -806,6 +888,7 @@ namespace TAC_AI.AI.Movement
             return final;
         }
 
+        // Sea
         public static Vector3 OffsetToSea(Vector3 input, Tank tank, TankAIHelper helper)
         {
             Vector3 final = input;
@@ -818,8 +901,9 @@ namespace TAC_AI.AI.Movement
             if (terrain)
             {
                 float operatingDepth = tank.boundsCentreWorldNoCheck.y + helper.LowestPointOnTech;
-                if (height > operatingDepth || heightTank > operatingDepth)
+                if (height > operatingDepth || heightTank > operatingDepth)// avoid terrain pathing!
                 {
+                    // Iterate highest terrain spots to build up a bias to avoid
                     int stepxM = 5;
                     int stepzM = 5;
                     int vecCount = 0;
@@ -844,7 +928,7 @@ namespace TAC_AI.AI.Movement
                     if (vecCount == 25)
                     {
                         if (helper.AdviseAwayCore)
-                        {
+                        { // Reverse
                             final = helper.tank.boundsCentreWorldNoCheck + ((input - helper.tank.boundsCentreWorldNoCheck).normalized * helper.DodgeStrength);
                         }
                         else
@@ -853,7 +937,7 @@ namespace TAC_AI.AI.Movement
                     else if (vecCount > 0)
                     {
                         if (helper.AdviseAwayCore)
-                        {
+                        { // Reverse
                             final = helper.tank.boundsCentreWorldNoCheck - ((tank.boundsCentreWorldNoCheck - (posAll / vecCount)).normalized * helper.DodgeStrength);
                         }
                         else
@@ -865,7 +949,7 @@ namespace TAC_AI.AI.Movement
             return final;
         }
         public static Vector3 SnapOffsetToSea(Vector3 input)
-        {
+        {   // Lowest ground or sea
             Vector3 final = input;
             final.y = KickStart.WaterHeight;
             if (AIEPathMapper.GetAltitudeLoadedOnly(input, out float height))
@@ -881,13 +965,16 @@ namespace TAC_AI.AI.Movement
             if (!KickStart.isWaterModPresent)
                 return input;
             float heightTank;
+            // The below is far too inaccurate for this duty - I will have to do it the old way
+            //AIEPathMapper.GetAltitudeLoadedOnly(helper.SafeVelocity, out heightTank);
             if (tank.rbody != null)
                 heightTank = helper.SafeVelocity.Clamp(-75 * Vector3.one, 75 * Vector3.one).y + tank.boundsCentreWorldNoCheck.y - (helper.lastTechExtents / 2);
             else
                 heightTank = tank.boundsCentreWorldNoCheck.y - (helper.lastTechExtents / 2);
             Vector3 final = input;
-            if (heightTank < KickStart.WaterHeight)
+            if (heightTank < KickStart.WaterHeight)// avoid sea pathing!
             {
+                // Iterate closest terrain spots
                 int stepxM = 3;
                 int stepzM = 3;
                 float highestHeight = KickStart.WaterHeight - helper.lastTechExtents * AIGlobals.WaterDepthTechHeightPercent;
@@ -914,7 +1001,7 @@ namespace TAC_AI.AI.Movement
                 if (highestHeight > KickStart.WaterHeight)
                 {
                     if (helper.AdviseAwayCore)
-                    {
+                    { // Reverse
                         final = helper.tank.boundsCentreWorldNoCheck + (helper.tank.boundsCentreWorldNoCheck - posBest);
                     }
                     else
@@ -923,7 +1010,7 @@ namespace TAC_AI.AI.Movement
                 else
                 {
                     if (helper.AdviseAwayCore)
-                    {
+                    { // Reverse
                         final = helper.tank.boundsCentreWorldNoCheck + ((input - helper.tank.boundsCentreWorldNoCheck).normalized * helper.DodgeStrength);
                     }
                     else
@@ -934,6 +1021,7 @@ namespace TAC_AI.AI.Movement
             return final;
         }
 
+        // Aux
         internal static Vector3 ModerateMaxAlt(Vector3 moderate, TankAIHelper helper)
         {
             if ((bool)Singleton.playerTank && !ManWorldRTS.PlayerIsInRTS)

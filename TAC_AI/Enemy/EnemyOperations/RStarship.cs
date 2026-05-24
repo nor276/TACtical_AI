@@ -11,8 +11,16 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 {
     internal static class RStarship
     {
+        //Same as RWheeled but has multi-plane support
+        /// <summary>
+        /// Positions are handled by the AI Core
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
+        /// <param name="mind"></param>
         public static void AttackZoom(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Escort) what to do movement-wise
             BGeneral.ResetValues(helper, ref direct);
             helper.Attempt3DNavi = true;
             helper.AvoidStuff = true;
@@ -63,6 +71,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 case EAttackMode.Circle:
                     range = AIGlobals.SpacingRangeHoverer;
                     helper.AISetSettings.ObjectiveRange = spacing + range;
+                    //helper.SideToThreat = true;
                     helper.AISetSettings.SideToThreat = false;
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     helper.AutoSpacing = range;
@@ -70,6 +79,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                     else
                         helper.SettleDown();
+                    // Melee makes the AI ignore the avoid, making the AI ram into the enemy
                     if (!mind.LikelyMelee && dist < spacing + 2)
                     {
                         direct.DriveAwayFacingPerp();
@@ -84,10 +94,10 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         direct.DriveToFacingPerp();
                     }
                     break;
-                case EAttackMode.Ranged:
+                case EAttackMode.Ranged:// Spyper does not support melee
                     range = AIGlobals.SpacingRangeSpyperAir;
                     helper.AISetSettings.ObjectiveRange = spacing + range;
-                    helper.AISetSettings.SideToThreat = false;
+                    helper.AISetSettings.SideToThreat = false; // cannot strafe while firing shells it seems, will miss
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     if (needsToSlowDown)
                         helper.ThrottleState = AIThrottleState.Yield;

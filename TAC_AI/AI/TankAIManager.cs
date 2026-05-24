@@ -41,7 +41,7 @@ namespace TAC_AI.AI
 
         private const float DefaultTime = 1.0f;
         private const float SlowedTime = 0.25f;
-        private const float FastTime = 3f;
+        private const float FastTime = 3f; // fooling around
         private const float ChangeRate = 1.5f;
         public static ManToolbar.ToolbarToggle toggleAuto;
         internal static void ButtonTogglePlayerAutopilot(bool state)
@@ -70,6 +70,7 @@ namespace TAC_AI.AI
             InvokeHelper.Invoke(GatherAllMissionTechs, 0.1f);
             DebugTAC_AI.Log(KickStart.ModID + ": Created AIECore Manager.");
 
+            // Only change if no other mod changed
             if (rangeOverride == null)
             {
                 DebugTAC_AI.FatalError(KickStart.ModID + ": TankAIManager - ManTechs.m_SleepRangeFromCamera field not found (vanilla API change?). Enemy interaction range will stay at vanilla 200m; far-range AI engagements will not work.");
@@ -78,7 +79,7 @@ namespace TAC_AI.AI
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": Current AI interaction range is " + (float)rangeOverride.GetValue(ManTechs.inst) + ".");
                 if ((float)rangeOverride.GetValue(ManTechs.inst) == 200f)
-                {
+                {   // more than twice the range
                     rangeOverride.SetValue(ManTechs.inst, AIGlobals.EnemyExtendActionRange);
                     DebugTAC_AI.Log(KickStart.ModID + ": Extended enemy Tech interaction range to " + AIGlobals.EnemyExtendActionRange + ".");
                 }
@@ -126,8 +127,9 @@ namespace TAC_AI.AI
             inst = null;
             DebugTAC_AI.Log(KickStart.ModID + ": De-Init AIECore Manager.");
 
+            // Only change if no other mod changed
             if (rangeOverride != null && (float)rangeOverride.GetValue(ManTechs.inst) == AIGlobals.EnemyExtendActionRange)
-            {
+            {   // more than twice the range
                 rangeOverride.SetValue(ManTechs.inst, 200);
                 DebugTAC_AI.Log(KickStart.ModID + ": Un-Extended enemy Tech interaction range to default 200.");
             }
@@ -266,7 +268,9 @@ namespace TAC_AI.AI
             }
         }
 
+        /// <summary> DO NOT ALTER </summary>
         private static readonly HashSet<Tank> emptyHash = new HashSet<Tank>();
+        /// <summary>  DO NOT EDIT OUTPUT </summary>
         public static IEnumerable<Tank> GetTeamTanks(int Team)
         {
             if (teamsIndexed.TryGetValue(Team, out TeamIndex TIndex))
@@ -275,6 +279,7 @@ namespace TAC_AI.AI
             }
             return emptyHash;
         }
+        /// <summary>  DO NOT EDIT OUTPUT </summary>
         public static HashSet<Tank> GetNonEnemyTanks(int Team)
         {
             if (teamsIndexed.TryGetValue(Team, out TeamIndex TIndex))
@@ -283,6 +288,7 @@ namespace TAC_AI.AI
             }
             return emptyHash;
         }
+        /// <summary>  DO NOT EDIT OUTPUT </summary>
         public static IEnumerable<Tank> GetTargetTanks(int Team)
         {
             if (teamsIndexed.TryGetValue(Team, out TeamIndex TIndex))
@@ -419,6 +425,7 @@ namespace TAC_AI.AI
             BlockIndexer.ConstructBlockLookupListDelayed();
         }
 
+        // AI comms
         internal static ManTechs.TechIterator TeamActiveTechs(int Team)
         {
             return ManTechs.inst.IterateTechsWhere(x => x.Team == Team);
@@ -583,7 +590,7 @@ namespace TAC_AI.AI
                             {
                                 helper.Obst = couldBeObst.transform;
                                 helper.ActiveAimState = AIWeaponState.Obsticle;
-                                goto conclusion;
+                                goto conclusion; // I hate doing gotos but this is the only "fast" way
                             }
                         }
                     }

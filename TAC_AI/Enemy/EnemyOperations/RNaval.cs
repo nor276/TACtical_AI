@@ -11,8 +11,10 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 {
     internal static class RNaval
     {
+        //Same as RWheeled but has terrain avoidence
         public static void AttackWhish(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Escort) what to do movement-wise
             BGeneral.ResetValues(helper, ref direct);
             helper.Attempt3DNavi = true;
             helper.AvoidStuff = true;

@@ -27,7 +27,7 @@ namespace TAC_AI.AI.Movement.AICores
             pilot.FlyingChillFactor.x = AIGlobals.ChopperXZChillFactorMulti * pilot.PropLerpValue;
             pilot.FlyingChillFactor.z = AIGlobals.ChopperXZChillFactorMulti * pilot.PropLerpValue;
             if (pilot.LargeAircraft)
-                pilot.FlyingChillFactor.y = 2.5f;
+                pilot.FlyingChillFactor.y = 2.5f;    // need accuraccy for large chopper bombing runs
             else
                 pilot.FlyingChillFactor.y = AIGlobals.ChopperYChillFactorMulti * pilot.PropLerpValue;
 
@@ -58,7 +58,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
 
             if (tank.beam.IsActive)
-            {
+            {   // BEAMING
                 pilot.MainThrottle = 0;
                 pilot.AdvisedThrottle = 0;
                 pilot.CurrentThrottle = 0;
@@ -66,7 +66,7 @@ namespace TAC_AI.AI.Movement.AICores
                 HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core, true);
             }
             else if (tank.grounded || pilot.ForcePitchUp)
-            {
+            {   // Try and takeoff
                 Vector3 pos = tank.boundsCentreWorldNoCheck;
                 AIEPathMapper.GetAltitudeLoadedOnly(pos, out float height);
                 float targetHeight;
@@ -78,12 +78,12 @@ namespace TAC_AI.AI.Movement.AICores
                 HelicopterUtils.UpdateThrottleCopter(pilot);
                 HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core, true);
                 if (AIGlobals.ShowDebugFeedBack)
-                {
+                {   // DEBUG FOR DRIVE ERRORS
                     DebugExtUtilities.DrawDirIndicator(pos.SetY(height), pos.SetY(targetHeight), new Color(1, 0, 1));
                 }
             }
             else
-            {
+            {   // Normal flight
                 Vector3 pos = tank.boundsCentreWorldNoCheck;
                 AIEPathMapper.GetAltitudeLoadedOnly(pos, out float height);
                 float targetHeight;
@@ -95,7 +95,7 @@ namespace TAC_AI.AI.Movement.AICores
                 HelicopterUtils.UpdateThrottleCopter(pilot);
                 HelicopterUtils.AngleTowardsUp(pilot, pilot.PathPointSet, helper.lastDestinationCore, ref core);
                 if (AIGlobals.ShowDebugFeedBack)
-                {
+                {   // DEBUG FOR DRIVE ERRORS
                     DebugExtUtilities.DrawDirIndicator(pos.SetY(height), pos.SetY(targetHeight), new Color(1, 0, 1));
                 }
             }
@@ -116,6 +116,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
             if (pilot.ForcePitchUp && Helper.SafeVelocity.y < 0.1f)
             {
+                // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + pilot.Tank.name + "  Avoiding Ground!");
                 pilot.ErrorsInTakeoff += KickStart.AIDodgeCheapness;
                 if (pilot.ErrorsInTakeoff > AIGlobals.MaxTakeoffFailiures)
                 {
@@ -130,6 +131,13 @@ namespace TAC_AI.AI.Movement.AICores
             }
         }
 
+        /// <summary>
+        /// A very limited version of the VehicleAICore DriveMaintainer for downed aircraft
+        /// </summary>
+        /// <param name="thisControl"></param>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
+        /// <returns></returns>
         public bool DriveMaintainerEmergLand(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
             TankControl.ControlState control3D = (TankControl.ControlState)VehicleUtils.controlGet.GetValue(tank.control);
@@ -138,6 +146,7 @@ namespace TAC_AI.AI.Movement.AICores
             control3D.m_State.m_InputMovement = Vector3.zero;
             VehicleUtils.controlGet.SetValue(tank.control, control3D);
             Vector3 destDirect = helper.lastDestinationCore - tank.boundsCentreWorldNoCheck;
+            // DEBUG FOR DRIVE ERRORS
             if (AIGlobals.ShowDebugFeedBack)
                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, destDirect, new Color(0, 1, 1));
 
@@ -145,25 +154,25 @@ namespace TAC_AI.AI.Movement.AICores
             if (helper.DoSteerCore)
             {
                 if (helper.AdviseAwayCore)
-                {
-                    if (core.DriveDir == EDriveFacing.Backwards)
-                    {
+                {   //Move from target
+                    if (core.DriveDir == EDriveFacing.Backwards)//EDriveType.Backwards
+                    {   // Face back TOWARDS target
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
                         helper.DriveControl = 1f;
                     }
                     else if (core.DriveDir == EDriveFacing.Perpendicular)
-                    {
+                    {   //Drive to target driving sideways, but obey distance
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
                         helper.DriveControl = 1f;
                     }
                     else
-                    {
+                    {   // Face front TOWARDS target
                         VehicleUtils.Turner(helper, destDirect, 0, ref core);
                         helper.DriveControl = -1f;
                     }
                 }
                 else if (core.DriveDir == EDriveFacing.Perpendicular)
-                {
+                {   //Drive to target driving sideways, but obey distance
                     float range = helper.lastOperatorRange;
                     if (range < helper.AutoSpacing + 2)
                     {
@@ -173,7 +182,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         VehicleUtils.Turner(helper, destDirect, 0, ref core);
                     }
-                    else
+                    else  //ORBIT!
                     {
                         Vector3 aimDirect;
                         if (Vector3.Dot(destDirect.normalized, tank.rootBlockTrans.right) < 0)
@@ -186,7 +195,7 @@ namespace TAC_AI.AI.Movement.AICores
                 }
                 else
                 {
-                    VehicleUtils.Turner(helper, destDirect, 0, ref core);
+                    VehicleUtils.Turner(helper, destDirect, 0, ref core);//Face the music
                     if (helper.AutoSpacing > 0)
                     {
                         float range = helper.lastOperatorRange;
@@ -217,17 +226,19 @@ namespace TAC_AI.AI.Movement.AICores
             else
                 helper.DriveControl = 0;
 
+            // Overrides to translational drive
             if (core.DriveDir == EDriveFacing.Stop)
             {
                 helper.DriveControl = 0f;
                 return true;
             }
             if (core.DriveDir == EDriveFacing.Neutral)
-            {
+            {   // become brakeless
                 helper.DriveControl = 0.001f;
                 return true;
             }
 
+            // Operate normally
             switch (helper.ThrottleState)
             {
                 case AIThrottleState.PivotOnly:
@@ -242,7 +253,7 @@ namespace TAC_AI.AI.Movement.AICores
                             helper.DriveControl = -1f;
                     }
                     else
-                    {
+                    {   // works with forwards
                         if (helper.recentSpeed > 10)
                             helper.DriveControl = -0.2f;
                         else
@@ -255,6 +266,7 @@ namespace TAC_AI.AI.Movement.AICores
                     break;
                 case AIThrottleState.ForceSpeed:
                     helper.DriveControl = helper.DriveVar;
+                    // Downed Aircraft can't boost as their engines are damaged
                     if (helper.FullBoost || helper.LightBoost)
                         helper.DriveControl = 1;
                     break;
@@ -267,7 +279,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             bool Precise = false;
             if (Helper.IsMultiTech)
-            {
+            {   //Override and disable most driving abilities
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(pilot.Helper, tank, ref core);
                 return true;
             }
@@ -366,11 +378,11 @@ namespace TAC_AI.AI.Movement.AICores
                 if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core))
                 {
                     if (Helper.DriveDestDirected == EDriveDest.ToLastDestination)
-                    {
+                    {   // Fly to target
                         pilot.PathPointSet = Helper.lastDestinationOp;
                     }
                     else if (Helper.DriveDestDirected == EDriveDest.FromLastDestination)
-                    {
+                    {   // Fly away from target
                         pilot.PathPointSet = Helper.lastDestinationOp;
                     }
                     else
@@ -381,7 +393,7 @@ namespace TAC_AI.AI.Movement.AICores
                             pilot.PathPointSet.y = Helper.lastPlayer.tank.boundsCentreWorldNoCheck.y;
                         }
                         else
-                        {
+                        {   //stay
                             pilot.PathPointSet = Helper.lastDestinationOp;
                         }
                     }
@@ -404,13 +416,13 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorRTS(ref EControlCoreSet core)
         {
             if (Helper.IsMultiTech)
-            {
+            {   //Override and disable most driving abilities
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(pilot.Helper, tank, ref core);
                 return true;
             }
             if (!Helper.IsGoingToPositionalRTSDest)
             {
-                if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core))
+                if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core)) // When set to chase then chase
                 {
                     core.DriveDest = EDriveDest.ToLastDestination;
                     core.DriveDir = EDriveFacing.Forwards;
@@ -439,13 +451,13 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
         {
             if (Helper.IsMultiTech)
-            {
+            {   //Override and disable most driving abilities
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(pilot.Helper, tank, ref core);
                 return true;
             }
             if (!Helper.IsGoingToPositionalRTSDest)
             {
-                if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core))
+                if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core)) // When set to chase then chase
                 {
                     core.DriveDest = EDriveDest.ToLastDestination;
                     core.DriveDir = EDriveFacing.Forwards;
@@ -473,22 +485,23 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorEnemy(EnemyMind mind, ref EControlCoreSet core)
         {
             if (pilot.Grounded)
-            {
+            {   //Become a ground vehicle for now
                 if (!AIEPathing.AboveHeightFromGroundTech(pilot.Helper, Helper.lastTechExtents * 2))
                 {
                     return false;
                 }
+                //Try fighting the controls to land safely
 
                 return true;
             }
             if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core))
             {
                 if (Helper.DriveDestDirected == EDriveDest.ToLastDestination)
-                {
+                {   // Fly to target
                     pilot.PathPointSet = Helper.lastDestinationOp;
                 }
                 else if (Helper.DriveDestDirected == EDriveDest.FromLastDestination)
-                {
+                {   // Fly away from target
                     pilot.PathPointSet = Helper.lastDestinationOp;
                 }
                 else
@@ -499,7 +512,7 @@ namespace TAC_AI.AI.Movement.AICores
                         pilot.PathPointSet.y = Helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + (Helper.GroundOffsetHeight / 5);
                     }
                     else
-                    {
+                    {   //Fly off the screen
                         Vector3 fFlat = pilot.Tank.rootBlockTrans.forward;
                         fFlat.y = 0;
                         pilot.PathPointSet = (fFlat.normalized * 1000) + pilot.Tank.boundsCentreWorldNoCheck;
@@ -519,6 +532,7 @@ namespace TAC_AI.AI.Movement.AICores
 
         public Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset)
         {
+            //The method to determine if we should avoid an ally nearby while navigating to the target
             TankAIHelper helper = pilot.Helper;
             Tank tank = pilot.Tank;
 
@@ -527,7 +541,7 @@ namespace TAC_AI.AI.Movement.AICores
                 Tank lastCloseAlly;
                 float lastAllyDist;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
-                if (helper.SecondAvoidence && AlliesAlt.Count > 1)
+                if (helper.SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
                 {
                     lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, predictionOffset, out Tank lastCloseAlly2,
                         out lastAllyDist, out float lastAuxVal, helper);
@@ -586,10 +600,10 @@ namespace TAC_AI.AI.Movement.AICores
                 if (helper.SideToThreat)
                 {
                     if (helper.FullMelee)
-                    {
+                    {   //orbit WHILE at enemy!
                         core.DriveDir = EDriveFacing.Perpendicular;
                         pos = helper.lastEnemyGet.transform.position;
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
                     }
                     else if (driveDyna == 1)
                     {
@@ -617,7 +631,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveDir = EDriveFacing.Forwards;
                         pos = helper.lastEnemyGet.transform.position;
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
                     }
                     else if (driveDyna == 1)
                     {
@@ -656,10 +670,10 @@ namespace TAC_AI.AI.Movement.AICores
                 if (mind.CommanderAttack == EAttackMode.Circle)
                 {
                     if (mind.CommanderMind == EnemyAttitude.Miner)
-                    {
+                    {   //orbit WHILE at enemy!
                         core.DriveDir = EDriveFacing.Perpendicular;
                         pos = RCore.GetTargetCoordinates(helper, helper.lastEnemyGet, mind);
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
                     }
                     else if (driveDyna == 1)
                     {
@@ -687,7 +701,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveDir = EDriveFacing.Forwards;
                         pos = RCore.GetTargetCoordinates(helper, helper.lastEnemyGet, mind);
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
                     }
                     else if (driveDyna == 1)
                     {

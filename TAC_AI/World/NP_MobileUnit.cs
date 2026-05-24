@@ -55,10 +55,17 @@ namespace TAC_AI.World
             Vector3 Max = Vector3.one * 64;
             Vector3 finalPos = posDelta.Clamp(-Max, Max) + actualPosScene;
             trackedVis.SetPos(finalPos);
+            //DebugTAC_AI.Log("MovementSceneDelta for " + Name + " with val " + finalPos);
         }
 
+        /// <summary>
+        /// Deal damage to this Tech
+        /// </summary>
+        /// <param name="dealt"></param>
+        /// <returns>True if tech destroyed</returns>
         public override bool RecieveDamage(int Dealt)
         {
+            //ManEnemyWorld.GetTeam(tech.m_TeamID).SetAttackMode(tilePos);
             if (MaxShield > 0)
             {
                 Shield -= Dealt;

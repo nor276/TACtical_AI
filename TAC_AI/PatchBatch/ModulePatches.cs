@@ -18,6 +18,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleAIBot);
 
+            //ImproveAI
             private static void OnAttached_Postfix(ModuleAIBot __instance)
             {
                 if (ModuleAIExtension.CanAdd(__instance))
@@ -28,6 +29,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleWeapon);
             static readonly FieldInfo targDeli = typeof(TargetAimer).GetField("AimDelegate", BindingFlags.NonPublic | BindingFlags.Instance);
+            //AllowAIToAimAtScenery - On targeting
 
             private static bool UpdateAim_Prefix(ModuleWeapon __instance, IModuleWeapon ___m_WeaponComponent, ref TargetAimer ___m_TargetAimer)
             {
@@ -111,6 +113,7 @@ namespace TAC_AI
             static readonly FieldInfo aimers = typeof(ModuleWeapon).GetField("m_TargetAimer", BindingFlags.NonPublic | BindingFlags.Instance),
                 aimerTargPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance),
                 WeaponTargPos = typeof(ModuleWeapon).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
+            //PatchAimingSystemsToHelpAI
             private static void UpdateAutoAimBehaviour_Postfix(ModuleWeapon __instance, ref TargetAimer ___m_TargetAimer, ref Vector3 ___m_TargetPosition)
             {
                 if (!KickStart.EnableBetterAI)
@@ -128,6 +131,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleItemPickup);
 
+            //MarkReceiver
             private static void OnAttached_Postfix(ModuleItemPickup __instance)
             {
                 var valid = __instance.GetComponent<ModuleItemHolder>();
@@ -150,6 +154,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleRemoteCharger);
 
+            //MarkChargers
             internal static void OnAttached_Postfix(ModuleRemoteCharger __instance)
             {
                 var ModuleAdd = __instance.gameObject.GetComponent<ModuleChargerTracker>();
@@ -167,6 +172,7 @@ namespace TAC_AI
             static readonly FieldInfo progress = typeof(ModuleItemConsume).GetField("m_ConsumeProgress", BindingFlags.NonPublic | BindingFlags.Instance);
             static readonly FieldInfo sellStolen = typeof(ModuleItemConsume).GetField("m_OperateItemInterceptedBy", BindingFlags.NonPublic | BindingFlags.Instance);
             private static Dictionary<ModuleItemConsume, int> ReservedSell = new Dictionary<ModuleItemConsume, int>();
+            //LetNPCsSellStuff
             internal static bool InitRecipeOutput_Prefix(ModuleItemConsume __instance)
             {
                 int team = 0;
@@ -212,6 +218,7 @@ namespace TAC_AI
             internal static Type target = typeof(ModuleHeart);
 
             static readonly FieldInfo PNR = typeof(ModuleHeart).GetField("m_EventHorizonRadius", BindingFlags.NonPublic | BindingFlags.Instance);
+            //LetNPCsSCUStuff
             internal static void UpdatePickupTargets_Prefix(ModuleHeart __instance)
             {
                 var valid = __instance.GetComponent<ModuleItemHolder>();
@@ -243,10 +250,12 @@ namespace TAC_AI
                 }
             }
 
+            //SpawnTraderTroll
             internal static void OnAttached_Postfix(ModuleHeart __instance)
             {
                 if (__instance.block.tank.IsNull())
                     return;
+                // Setup trolls if Population Injector is N/A
                 if (KickStart.enablePainMode && KickStart.AllowEnemiesToStartBases && SpecialAISpawner.thisActive &&
                     ManPop.inst.IsSpawningEnabled &&
                     ManWorld.inst.Vendors.IsVendorSCU(__instance.block.BlockType))
@@ -263,12 +272,15 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ModuleTechController);
 
+            // Where it all happens
+            //PatchControlSystem
             internal static bool ExecuteControl_Prefix(ModuleTechController __instance, ref bool __result)
             {
                 DebugTAC_AI.FirstFire("ModuleTechController.ExecuteControl_Prefix",
                     "per-tick movement maintainer hook — drives DriveMaintainer on every vanilla tick");
                 if (KickStart.EnableBetterAI)
                 {
+                    //DebugTAC_AI.Log(KickStart.ModID + ": AIEnhanced enabled");
                     try
                     {
                         var tank = __instance.block.tank;
@@ -284,6 +296,7 @@ namespace TAC_AI
                                 }
                             }
                         }
+                        // else it's still initiating
                     }
                     catch (Exception e)
                     {
@@ -295,6 +308,7 @@ namespace TAC_AI
             }
         }
 
+        // Resources/Collection
         internal static class ResourceDispenserPatches
         {
             internal static Type target = typeof(ResourceDispenser);

@@ -16,7 +16,7 @@ namespace TAC_AI.AI.Enemy
         {
             if (!mind.CanDoRetreat)
                 return false;
-            if (!tank.IsAnchored && mind.Hurt)
+            if (!tank.IsAnchored && mind.Hurt)// && helper.lastDestination.Approximately(tank.boundsCentreWorldNoCheck, 10)
             {
                 if (mind.CommanderSmarts >= EnemySmarts.Meh && helper.CanStoreEnergy() &&
                     helper.GetEnergyPercent() < AIGlobals.BatteryRetreatPercent)
@@ -38,7 +38,7 @@ namespace TAC_AI.AI.Enemy
         internal static bool LollyGag(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct, bool holdGround = false)
         {
             bool isRegenerating = false;
-            if (mind.Hurt)
+            if (mind.Hurt)// && helper.lastDestination.Approximately(tank.boundsCentreWorldNoCheck, 10)
             {
                 if (mind.CommanderSmarts >= EnemySmarts.Meh)
                 {
@@ -51,7 +51,7 @@ namespace TAC_AI.AI.Enemy
                                 helper.TryInsureAutoAnchor();
                             }
                             else
-                            {
+                            {   //Try to find new spot
                                 DefaultIdle(helper, tank, mind, ref direct);
                             }
                         }
@@ -68,6 +68,7 @@ namespace TAC_AI.AI.Enemy
                     }
                     else
                     {
+                        //Cannot repair block damage or recharge shields!
                         mind.Hurt = false;
                     }
                     if (tank.IsAnchored && !mind.StartedAnchored)
@@ -77,7 +78,7 @@ namespace TAC_AI.AI.Enemy
                 }
                 if (mind.CommanderSmarts == EnemySmarts.Smrt)
                 {
-                    if (helper.PendingDamageCheck)
+                    if (helper.PendingDamageCheck) //&& helper.AttemptedRepairs < 3)
                     {
                         DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " is repairing");
                         return true;
@@ -87,10 +88,11 @@ namespace TAC_AI.AI.Enemy
                 }
                 if (mind.CommanderSmarts >= EnemySmarts.IntAIligent)
                 {
-                    if (helper.PendingDamageCheck)
+                    if (helper.PendingDamageCheck) //&& helper.AttemptedRepairs < 4)
                     {
                         if (helper.GetEnergyPercent() > 0.5f)
                         {
+                            //flex yee building speeds on them players
                             helper.PendingDamageCheck = !RRepair.EnemyInstaRepair(tank, mind);
                         }
                         else
@@ -122,36 +124,39 @@ namespace TAC_AI.AI.Enemy
                 }
                 switch (mind.CommanderMind)
                 {
-                    case EnemyAttitude.Default:
+                    case EnemyAttitude.Default: // do dumb stuff
                         DefaultIdle(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.Homing:
+                    case EnemyAttitude.Homing:  // Get nearest tech regardless of max combat range and attack them
                         HomingIdle(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.Miner:
+                    case EnemyAttitude.Miner:   // mine resources
                         RMiner.MineYerOwnBusiness(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.NPCBaseHost:
+                    case EnemyAttitude.NPCBaseHost: // mine resources - will run off to do missions later
                         RMiner.MineYerOwnBusiness(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.Boss:
+                    case EnemyAttitude.Boss:        // Tidy base - will run off to do missions later
                         RScavenger.Scavenge(helper, tank, mind, ref direct);
                         break;
-                    case EnemyAttitude.Junker:
+                    //The case below I still have to think of a reason for them to do the things
+                    case EnemyAttitude.Junker:  // Huddle up by blocks on the ground
                         RScavenger.Scavenge(helper, tank, mind, ref direct);
                         break;
                     case EnemyAttitude.Guardian:
                         RGuardian.MotivateDefend(helper, tank, mind, ref direct);
                         break;
                     case EnemyAttitude.PartTurret:
+                        // Load, Aim,    FIIIIIRRRRRRRRRRRRRRRRRRRRRRRRRRRE!!!
                         BMultiTech.MimicDefend(helper, tank);
                         BMultiTech.MTStatic(helper, tank, ref direct);
-                        BMultiTech.BeamLockWithinBounds(helper, tank);
+                        BMultiTech.BeamLockWithinBounds(helper, tank); //lock rigidbody with closest non-MT Tech on build beam
                         break;
                     case EnemyAttitude.PartStatic:
+                        // Defend and sit like good guard dog
                         BMultiTech.MimicDefend(helper, tank);
                         BMultiTech.MTStatic(helper, tank, ref direct);
-                        BMultiTech.BeamLockWithinBounds(helper, tank);
+                        BMultiTech.BeamLockWithinBounds(helper, tank); //lock rigidbody with closest non-MT Tech on build beam
                         break;
                     case EnemyAttitude.PartMimic:
                         BMultiTech.MimicAllClosestAlly(helper, tank, ref direct);
@@ -174,6 +179,7 @@ namespace TAC_AI.AI.Enemy
         internal static void MarkRetreating(TankAIHelper helper) { helper.WasRetreatingInCombat = true; }
         internal static void MarkAdvancing(TankAIHelper helper) { helper.WasRetreatingInCombat = false; }
 
+        // Handle being bored AIs
         internal static void DefaultIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             if (helper.ActionPause <= 0)
@@ -245,12 +251,24 @@ namespace TAC_AI.AI.Enemy
             return final;
         }
 
+        /// <summary>
+        /// Only is used to keep track of enemies
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
+        /// <param name="mind"></param>
         internal static void Scurry(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             helper.WantsToFight = helper.Provoked > 0;
         }
 
+        /// <summary>
+        /// Only is used to keep track of enemies
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
+        /// <param name="mind"></param>
         internal static void Monitor(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             TeamBasePointer funds = RLoadedBases.GetTeamHQ(tank.Team);
@@ -261,7 +279,7 @@ namespace TAC_AI.AI.Enemy
                 else
                     helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             }
-            else
+            else  // Don't stalk cause that's rude
                 helper.ReleaseTarget();
             helper.WantsToFight = false;
             if (helper.lastEnemyGet)
@@ -272,8 +290,15 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
+        // HOSTILITIES
+        /// <summary>
+        /// Base attack
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
         internal static void BaseAttack(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
+            // Determines the weapons actions and aiming of the AI
             var lastEnemyC = helper.lastEnemy;
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
 
@@ -286,19 +311,32 @@ namespace TAC_AI.AI.Enemy
 
         }
 
+        /// <summary>
+        /// Attack like default
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
         internal static void AidAttack(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
+            // Determines the weapons actions and aiming of the AI
             var lastEnemyC = helper.lastEnemy;
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             helper.WantsToFight = false;
             if (helper.lastEnemyGet != null)
             {
+                //Fire even when retreating - the AI's life depends on this!
                 helper.WantsToFight = true;
             }
         }
 
+        /// <summary>
+        /// Hold fire until aiming at target cab-forwards or after some time
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
         internal static void AimAttack(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
+            // Determines the weapons actions and aiming of the AI, this one is more fire-precise and used for turrets
             var lastEnemyC = helper.lastEnemy;
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             if (helper.lastEnemyGet != null)
@@ -353,8 +391,14 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
+        /// <summary>
+        /// Prioritize removal of obsticles over attacking enemy
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
         internal static void SelfDefense(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
+            // Alternative of the above - does not aim at enemies while mining
             if (helper.Obst == null)
             {
                 AidAttack(helper, tank, mind);
@@ -363,10 +407,16 @@ namespace TAC_AI.AI.Enemy
                 helper.WantsToFight = true;
         }
 
+        /// <summary>
+        /// Stay focused on first target if the unit is order to focus-fire
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
         internal static void RTSCombat(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
+            // Determines the weapons actions and aiming of the AI
             if (helper.lastEnemyGet != null)
-            {
+            {   // focus fire like Grudge
                 helper.WantsToFight = true;
                 if (!helper.lastEnemyGet.isActive)
                     helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);

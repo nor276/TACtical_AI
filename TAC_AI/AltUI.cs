@@ -9,6 +9,7 @@ namespace TerraTechETCUtil
 {
     public static class AltUI
     {
+        // INIT
         internal static GUISkin MenuGUI;
         internal static float UIAlpha = 0.65f;
         internal static string UIAlphaText = "<color=#454545ff>";
@@ -65,25 +66,25 @@ namespace TerraTechETCUtil
                         {
                             if (resCase.name == "ACTION_MENU_SHORT_BKG")
                                 MenuTexRect = resCase;
-                            else if (resCase.name == "Button_BLUE")
+                            else if (resCase.name == "Button_BLUE")       // HUD_Button_BG
                                 ButtonTexMain = resCase;
-                            else if (resCase.name == "Button_BLUE_Highlight")
+                            else if (resCase.name == "Button_BLUE_Highlight")// HUD_Button_Highlight
                                 ButtonTexHover = resCase;
-                            else if (resCase.name == "Button_BLUE_Pressed")
+                            else if (resCase.name == "Button_BLUE_Pressed") // HUD_Button_Selected
                                 ButtonTexSelect = resCase;
-                            else if (resCase.name == "Button_GREEN")
+                            else if (resCase.name == "Button_GREEN")        // ????
                                 ButtonTexAccept = resCase;
-                            else if (resCase.name == "Button_GREEN_Highlight")
+                            else if (resCase.name == "Button_GREEN_Highlight")// ????
                                 ButtonTexAcceptHover = resCase;
-                            else if (resCase.name == "Button_GREEN_Pressed")
+                            else if (resCase.name == "Button_GREEN_Pressed")// ????
                                 ButtonTexSelectGreen = resCase;
-                            else if (resCase.name == "Button_RED")
+                            else if (resCase.name == "Button_RED")          // HUD_Button_Disabled_BG
                                 ButtonTexDisabled = resCase;
-                            else if (resCase.name == "Button_RED_Highlight")
+                            else if (resCase.name == "Button_RED_Highlight")        // ????
                                 ButtonTexDisabledHover = resCase;
-                            else if (resCase.name == "Button_RED_Pressed")
+                            else if (resCase.name == "Button_RED_Pressed")        // ????
                                 ButtonTexSelectRed = resCase;
-                            else if (resCase.name == "HUD_Button_InActive")
+                            else if (resCase.name == "HUD_Button_InActive") // HUD_Button_InActive
                                 ButtonTexInactive = resCase;
                         }
                     }
@@ -94,6 +95,7 @@ namespace TerraTechETCUtil
                     return;
                 }
 
+                // Setup Menu
                 MenuLeft = new GUIStyle(GUI.skin.window);
                 try
                 {
@@ -124,6 +126,7 @@ namespace TerraTechETCUtil
                 }
                 catch { }
 
+                // Setup Button Default
                 ButtonBlue = new GUIStyle(ButtonBase);
                 ButtonStyle = new GUIStyleState() { background = ButtonTexMain, textColor = new Color(1, 1, 1, 1), };
                 ButtonStyleHover = new GUIStyleState() { background = ButtonTexHover, textColor = new Color(1, 1, 1, 1), };
@@ -136,6 +139,7 @@ namespace TerraTechETCUtil
                 ButtonBlue.onActive = ButtonStyle;
                 ButtonBlue.onFocused = ButtonStyle;
 
+                // Setup Button Accept
                 ButtonGreen = new GUIStyle(ButtonBase);
                 ButtonStyleAccept = new GUIStyleState() { background = ButtonTexAccept, textColor = new Color(1, 1, 1, 1), };
                 ButtonStyleAcceptHover = new GUIStyleState() { background = ButtonTexAcceptHover, textColor = new Color(1, 1, 1, 1), };
@@ -148,6 +152,7 @@ namespace TerraTechETCUtil
                 ButtonGreen.onActive = ButtonStyleAccept;
                 ButtonGreen.onFocused = ButtonStyleAccept;
 
+                // Setup Button Disabled
                 ButtonRed = new GUIStyle(ButtonBase);
                 ButtonStyleDisabled = new GUIStyleState() { background = ButtonTexDisabled, textColor = new Color(1, 1, 1, 1), };
                 ButtonStyleDisabledHover = new GUIStyleState() { background = ButtonTexDisabledHover, textColor = new Color(1, 1, 1, 1), };
@@ -160,6 +165,7 @@ namespace TerraTechETCUtil
                 ButtonRed.onActive = ButtonStyleDisabled;
                 ButtonRed.onFocused = ButtonStyleDisabled;
 
+                // Setup Button Not Active
                 ButtonGrey = new GUIStyle(ButtonBase);
                 ButtonStyleInactive = new GUIStyleState() { background = ButtonTexInactive, textColor = new Color(1, 1, 1, 1), };
                 ButtonGrey.normal = ButtonStyleInactive;
@@ -171,6 +177,7 @@ namespace TerraTechETCUtil
                 ButtonGrey.onActive = ButtonStyleInactive;
                 ButtonGrey.onFocused = ButtonStyleInactive;
 
+                // Setup Button Active
                 ButtonBlueActive = new GUIStyle(ButtonBase);
                 ButtonStyleActive = new GUIStyleState() { background = ButtonTexSelect, textColor = new Color(1, 1, 1, 1), };
                 ButtonBlueActive.normal = ButtonStyleActive;
@@ -182,6 +189,7 @@ namespace TerraTechETCUtil
                 ButtonBlueActive.onActive = ButtonStyleActive;
                 ButtonBlueActive.onFocused = ButtonStyleActive;
 
+                // Setup Button Green Active
                 ButtonGreenActive = new GUIStyle(ButtonBase);
                 ButtonStyleGActive = new GUIStyleState() { background = ButtonTexSelectGreen, textColor = new Color(1, 1, 1, 1), };
                 ButtonGreenActive.normal = ButtonStyleGActive;
@@ -193,6 +201,7 @@ namespace TerraTechETCUtil
                 ButtonGreenActive.onActive = ButtonStyleGActive;
                 ButtonGreenActive.onFocused = ButtonStyleGActive;
 
+                // Setup Button Red Active
                 ButtonRedActive = new GUIStyle(ButtonBase);
                 ButtonStyleRActive = new GUIStyleState() { background = ButtonTexSelectRed, textColor = new Color(1, 1, 1, 1), };
                 ButtonRedActive.normal = ButtonStyleRActive;
@@ -254,6 +263,9 @@ namespace TerraTechETCUtil
             GUI.skin = cache;
         }
 
+        /// <summary>
+        /// For the Popups that appear like the BB sold thing
+        /// </summary>
         static readonly FieldInfo
             textInput = typeof(FloatingTextPanel).GetField("m_AmountText", BindingFlags.NonPublic | BindingFlags.Instance),
             listOverlays = typeof(ManOverlay).GetField("m_ActiveOverlays", BindingFlags.NonPublic | BindingFlags.Instance),

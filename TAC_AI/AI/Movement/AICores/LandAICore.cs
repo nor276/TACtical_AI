@@ -7,6 +7,7 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
+    /// <summary> Handles Space AI Directors & Maintainers </summary>
     internal class LandAICore : IMovementAICore
     {
         private AIControllerDefault controller;
@@ -47,6 +48,7 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 case EDrivePathing.IgnoreAll:
                 case EDrivePathing.OnlyImmedeate:
+                    //DebugTAC_AI.Log(tank.name + ": PlanningPathing - NotThisFrame");
                     controller.SetAutoPathfinding(false);
                     return false;
                 case EDrivePathing.Path:
@@ -59,6 +61,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
             if (!AIEAutoPather.IsFarEnough(tank.boundsCentreWorldNoCheck, Target))
             {
+                //DebugTAC_AI.Log(tank.name + ": PlanningPathing - Not far enough");
                 return false;
             }
             var helper = controller.Helper;
@@ -68,13 +71,14 @@ namespace TAC_AI.AI.Movement.AICores
                 controller.WaterPathing = WaterPathing.AvoidWater;
                 controller.SetAutoPathfinding(true);
             }
+            //DebugTAC_AI.Log(tank.name + ": PlanningPathing - Trying to work");
             if (controller.PathPlanned.Count > 0)
             {
-                helper.AutoSpacing = 0;
+                helper.AutoSpacing = 0; // Drive DIRECTLY to target
                 controller.PathPointSet = AIEPathing.SnapOffsetFromGroundA(controller.PathPlanned.Peek().ScenePosition, 1);
                 if ((controller.PathPoint - tank.boundsCentreWorldNoCheck).WithinSquareXZ((tank.GetCheapBounds() * pathSuccessMulti) + 4))
                 {
-                    controller.PathPlanned.Dequeue();
+                    controller.PathPlanned.Dequeue(); // Next position!
                     DebugTAC_AI.LogPathing(tank.name + ": PlanningPathing - finished pathing to " + controller.PathPoint);
                     if (controller.PathPlanned.Count == 0)
                     {
@@ -117,9 +121,11 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
+            // Planned pathing
             if (PlanningPathing(Target, core.DrivePathing))
                 return true;
 
+            // Immedeate Pathing
             return ImmedeatePathing(Target, core.DrivePathing);
         }
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
@@ -185,9 +191,11 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
+            // Planned pathing
             if (PlanningPathing(Target, core.DrivePathing))
                 return true;
 
+            // Immedeate Pathing
             return ImmedeatePathing(Target, core.DrivePathing);
         }
 
@@ -236,17 +244,22 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
+            // Planned pathing
             if (!helper.Attempt3DNavi && PlanningPathing(Target, core.DrivePathing))
                 return true;
 
+            // Immedeate Pathing
             return ImmedeatePathingEnemy(mind, Target, core.DrivePathing);
         }
 
         public bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
             helper.UpdateVanillaAvoidence();
+            // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " normal drive was called");
             Vector3 destDirect = controller.PathPoint - tank.boundsCentreWorldNoCheck;
 
+            //DebugTAC_AI.Log("IS target player " + Singleton.playerTank == helper.lastEnemy + " | MinimumRad " + helper.MinimumRad + " | destination" + controller.PathPoint);
+            // DRIVE
             float DriveControl = 0f;
 
             float range = helper.lastOperatorRange;
@@ -340,7 +353,7 @@ namespace TAC_AI.AI.Movement.AICores
                             DriveControl = -1f;
                     }
                     else
-                    {
+                    {   // works with forwards
                         if (helper.recentSpeed > AIGlobals.YieldSpeed)
                             DriveControl = -0.2f;
                         else
@@ -415,6 +428,7 @@ namespace TAC_AI.AI.Movement.AICores
                 default:
                     break;
             }
+            // STEERING
             if (helper.DoSteerCore)
             {
                 switch (core.DriveDir)
@@ -453,8 +467,9 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         break;
                     case EDriveFacing.Backwards:
+                        // Face back TOWARDS target
                         if (core.DriveDest == EDriveDest.FromLastDestination)
-                        {
+                        {   //Move from target
                             VehicleUtils.Turner(helper, -destDirect, DriveControl, ref core);
                         }
                         else
@@ -463,6 +478,7 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         break;
                     default:
+                        // Face front TOWARDS target
                         if (core.DriveDest == EDriveDest.FromLastDestination)
                         {
                             VehicleUtils.Turner(helper, destDirect, DriveControl, ref core);
@@ -475,6 +491,8 @@ namespace TAC_AI.AI.Movement.AICores
                 }
             }
 
+
+            // DEBUG FOR DRIVE ERRORS
             if (AIGlobals.ShowDebugFeedBack)
             {
                 if (!tank.IsAnchored)
@@ -512,10 +530,10 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     core.DriveDir = EDriveFacing.Perpendicular;
                     if (helper.FullMelee)
-                    {
+                    {   //orbit WHILE at enemy!
                         core.DriveDest = EDriveDest.ToLastDestination;
                         pos = targPos;
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
                     }
                     else if (driveDyna == 1)
                     {
@@ -544,7 +562,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveToFacingTowards();
                         pos = targPos;
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
                     }
                     else if (driveDyna == 1)
                     {
@@ -588,15 +606,15 @@ namespace TAC_AI.AI.Movement.AICores
                 float driveDyna = Mathf.Clamp((helper.lastCombatRange - mind.MinCombatRange) / 3f, -1, 1);
 
                 if (mind.CommanderAttack == EAttackMode.Circle)
-                {
+                {   // works fine for now
                     if (helper.SideToThreat)
                         core.DriveDir = EDriveFacing.Perpendicular;
                     else
                         core.DriveDir = EDriveFacing.Forwards;
                     if (mind.CommanderMind == EnemyAttitude.Miner)
-                    {
+                    {   //orbit WHILE at enemy!;
                         pos = targPos;
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//WHAAAAAAAAAAAM
                     }
                     else if (driveDyna == 1)
                     {
@@ -613,12 +631,12 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                 }
                 else
-                {
+                {   // Since the enemy also uses it's Operator in combat, this will have to listen to that
                     if (helper.IsDirectedMovingFromDest)
                     {
                         core.DriveAwayFacingTowards();
                         pos = helper.AvoidAssist(targPos);
-                        helper.AutoSpacing = 0;
+                        helper.AutoSpacing = 0;//0.5f;
                     }
                     else if (helper.IsDirectedMovingToDest && mind.LikelyMelee)
                     {

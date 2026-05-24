@@ -13,11 +13,13 @@ namespace TAC_AI
 {
     internal class GlobalPatches
     {
+        // GAME
 #if DEBUG
         internal static class SnapshotServiceDesktopPatches
         {
             internal static Type target = typeof(SnapshotServiceDesktop);
 
+            //Redirect to our tech population
             private static void GetFilePath_Prefix(ref string relativePath)
             {
                 if (relativePath == "Snapshots")
@@ -25,11 +27,31 @@ namespace TAC_AI
             }
         }
 #endif
+        /*
+        internal static class ManSpawnPatches
+        {
+            internal static Type target = typeof(ManSpawn);
+
+            static readonly FieldInfo teamC = typeof(ManSpawn).GetField("m_TeamCounter", BindingFlags.NonPublic | BindingFlags.Instance);
+            //Startup - On very late update
+            private static void GenerateAutomaticTeamID_Prefix(ref ManSpawn __instance, ref int __result)
+            {
+                if (__result == -1)
+                {
+                    if (AIGlobals.IsBaseTeam((int)teamC.GetValue(__instance)))
+                    {
+                        __result = AIGlobals.BaseTeamsEnd + 1;
+                        teamC.SetValue(__instance, AIGlobals.BaseTeamsEnd + 2);
+                    }
+                }
+            }
+        }*/
 
         internal static class ManPlayerPatches
         {
             internal static Type target = typeof(ManPlayer);
 
+            /// <summary> CatchPlayerInitCheats </summary>
             internal static void SetPlayerHasEnabledCheatCommands_Prefix(ManPlayer __instance)
             {
                 DebugRawTechSpawner.CanOpenDebugSpawnMenu = true;
@@ -40,6 +62,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(SpawnTechData);
 
+            //Startup - On very late update
             private static void SpawnTechInEncounter_Postfix(SpawnTechData __instance,
                 ref Encounter encounterToSpawnInto, ref string nameOverride)
             {
@@ -48,10 +71,23 @@ namespace TAC_AI
                     TankAIManager.RegisterMissionTechVisID(vis.ID);
             }
         }
+        /*
+        internal static class ModePatches
+        {
+            internal static Type target = typeof(Mode);
+
+            //Startup - On very late update
+            private static void EnterPreMode_Prefix()
+            {
+                if (!KickStart.firedAfterBlockInjector)//KickStart.isBlockInjectorPresent &&
+                    KickStart.DelayedBaseLoader();
+            }
+        }*/
         internal static class ModeMainPatches
         {
             internal static Type target = typeof(ModeMain);
 
+            //OverridePlayerTechOnWaterLanding
             private static void PlayerRespawned_Postfix()
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": Player respawned");
@@ -70,6 +106,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(NetTech);
 
+            //DontSaveWhenNotNeeded
             private static bool SaveTechData_Prefix(NetTech __instance)
             {
                 if (AIERepair.BulkAdding)
@@ -83,6 +120,16 @@ namespace TAC_AI
         internal static class TankControlPatches
         {
             internal static Type target = typeof(TankControl);
+            /*
+            private static void ApplyCollectedMovementInputs_Prefix(TankControl __instance, ref TankControl other)
+            {
+                try
+                {
+                }
+                catch
+                { }
+            }*/
+            //SetMTAIAuto
             private static void CopySchemesFrom_Prefix(TankControl __instance, ref TankControl other)
             {
                 DebugTAC_AI.FirstFire("TankControl.CopySchemesFrom_Prefix",
@@ -102,6 +149,7 @@ namespace TAC_AI
             static readonly FieldInfo beamPush = typeof(TankBeam).GetField("m_NudgeStrafe", BindingFlags.NonPublic | BindingFlags.Instance);
             static readonly FieldInfo beamRot = typeof(TankBeam).GetField("m_NudgeRotate", BindingFlags.NonPublic | BindingFlags.Instance);
 
+            //PatchTankBeamToHelpAI - Give the AI some untangle help
             private static void OnUpdate_Postfix(TankBeam __instance)
             {
                 if (beamPush == null || beamRot == null)
@@ -184,6 +232,8 @@ namespace TAC_AI
         {
             internal static Type target = typeof(TankCamera);
 
+            //MakeCameraIgnoreAutopilotLockOn
+            //static readonly FieldInfo targPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
             private static void TryKeepManualTargetInView_Postfix(ref Tank tankToFollow, ref bool __result)
             {
                 if (!KickStart.EnableBetterAI || !tankToFollow)
@@ -197,6 +247,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(TechWeapon);
 
+            //static readonly FieldInfo targPos = typeof(TargetAimer).GetField("m_TargetPosition", BindingFlags.NonPublic | BindingFlags.Instance);
             private static void GetManualTarget_Postfix(TechWeapon __instance, ref Visible __result)
             {
                 if (!KickStart.EnableBetterAI)
@@ -232,6 +283,7 @@ namespace TAC_AI
                 return true;
             }
 
+            //ForceAIToComplyAnchorCorrectly - (Allied AI state changing remotes) On Auto Setting Tech AI
             private static void UpdateAICategory_Postfix(TechAI __instance)
             {
                 DebugTAC_AI.FirstFire("TechAI.UpdateAICategory_Postfix",
@@ -240,7 +292,7 @@ namespace TAC_AI
                 if (tAI.IsNotNull())
                 {
                     if (tAI.AnchorStateAIInsure && tAI.AIAlign == AIAlignment.Player)
-                    {
+                    {   //Set the AI back to escort to continue operations if autoanchor is true
                         tAI.AnchorStateAIInsure = false;
                         __instance.SetBehaviorType(AITreeType.AITypes.Escort);
                     }
@@ -252,6 +304,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ObjectSpawner);
 
+            //EmergencyOverrideOnTechLanding - BEFORE enemy spawn
             private static void TrySpawn_Prefix(ref ManSpawn.ObjectSpawnParams objectSpawnParams, ref ManFreeSpace.FreeSpaceParams freeSpaceParams)
             {
                 DebugTAC_AI.FirstFire("ObjectSpawner.TrySpawn_Prefix",

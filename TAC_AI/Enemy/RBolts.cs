@@ -4,22 +4,25 @@ namespace TAC_AI.AI.Enemy
     {
         internal static void ManageBolts(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
+            //if (tank.IsSleeping)
+            //    return;
             switch (mind.CommanderBolts)
             {
-                case EnemyBolts.MissionTrigger:
+                case EnemyBolts.MissionTrigger:  // do nothing - Mission tells us what to do!
                     break;
-                case EnemyBolts.AtFull:
+                //DO NOT CALL THE TWO BELOW WITHOUT EnemyMemory!!!  THEY WILL ACT LIKE DEFAULT BUT WORSE!!!
+                case EnemyBolts.AtFull:         // Blow up passively at full health (or we are an area town base)
                     if (RLoadedBases.TeamGlobalMobileTechCount(tank.Team) < KickStart.EnemyTeamTechLimit &&
                         !helper.PendingDamageCheck && AIGlobals.CanSplitTech())
                         mind.BlowBolts();
                     break;
-                case EnemyBolts.AtFullOnAggro:
+                case EnemyBolts.AtFullOnAggro:  // Blow up if enemy is in range and on full health
                     if (helper.lastEnemyGet.IsNotNull() && RLoadedBases.TeamGlobalMobileTechCount(tank.Team) < KickStart.EnemyTeamTechLimit &&
                         !helper.PendingDamageCheck && AIGlobals.CanSplitTech())
                         mind.BlowBolts();
                     break;
-                case EnemyBolts.Default:
-                default:
+                case EnemyBolts.Default:        // Blow up like default - first enemy sighting
+                default:                        // Unimplemented
                     if (helper.lastEnemyGet.IsNotNull() && AIGlobals.CanSplitTech())
                         mind.BlowBolts();
                     break;
@@ -30,7 +33,7 @@ namespace TAC_AI.AI.Enemy
         public static void BlowBolts(this EnemyMind mind)
         {
             if (AIGlobals.AtSceneTechMaxSpawnLimit())
-                return;
+                return; // world is too stressed to handle more
             if (mind.TechMemor)
             {
                 mind.TechMemor.ReserveSuperGrabs = -256;
@@ -39,5 +42,68 @@ namespace TAC_AI.AI.Enemy
             mind.AIControl.tank.control.ServerDetonateExplosiveBolt();
         }
 
+
+        /*
+        // Tech Accounting (OBSOLETE)
+        private static readonly Dictionary<int, int> teamTechs = new Dictionary<int, int>();
+        private static readonly List<int> teamUnfiltered = new List<int>();
+        private static int lastTechsCount = 0;
+        public static int AllyCostCountLegacy(int Team)
+        {
+            if (Singleton.Manager<ManTechs>.inst.CurrentTechs.Count() == lastTechsCount)
+            {
+                if (teamTechs.TryGetValue(Team, out int val))
+                {
+                    return val;
+                }
+            }
+            return GetAllyCostCountsLegacy(Team);
+        }
+        public static int GetAllyCostCountsLegacy(int Team)
+        {
+            teamTechs.Clear();
+            int AllyCount = 0;
+            var allTechs = Singleton.Manager<ManTechs>.inst.CurrentTechs;
+            int techCount = allTechs.Count();
+            List<Tank> techs = allTechs.ToList();
+            try
+            {
+                for (int stepper = 0; techCount > stepper; stepper++)
+                {
+                    Tank tech = techs.ElementAt(stepper);
+                    teamUnfiltered.Add(Team);
+                    if (!tech.IsAnchored)
+                    {
+                        teamUnfiltered.Add(Team);
+                    }
+                    if (tech.IsFriendly(Team))
+                    {
+                        AllyCount++;
+                        if (!tech.IsAnchored)
+                        {
+                            AllyCount++;
+                        }
+                    }
+                }
+                foreach (int teamCase in teamUnfiltered)
+                {
+                    if (teamTechs.TryGetValue(teamCase, out int val))
+                    {
+                        continue;
+                    }
+                    int numOf = teamUnfiltered.FindAll(delegate (int cand) { return cand == teamCase; }).Count();
+                    teamTechs.Add(teamCase, numOf);
+                }
+            }
+            catch (Exception e)
+            {
+                DebugTAC_AI.Log(KickStart.ModID + ": AllyCostCount - Error on ally counting");
+                DebugTAC_AI.Log(e);
+            }
+            lastTechsCount = techCount;
+            teamUnfiltered.Clear();
+            return AllyCount;
+        }
+        */
     }
 }

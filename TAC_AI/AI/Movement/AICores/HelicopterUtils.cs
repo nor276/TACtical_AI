@@ -14,8 +14,10 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = pilot.Helper;
             Tank tank = pilot.Tank;
+            //AI Steering Rotational
             Vector3 turnVal;
             float upVal = tank.rootBlockTrans.up.y;
+            //bool isMostlyInControl = upVal > 0.4f;
             bool isInControl;
             if (helper.FullMelee)
             {
@@ -42,12 +44,15 @@ namespace TAC_AI.AI.Movement.AICores
             }
             bool needsTurnControl = fwdDelta.z < 0.65f;
 
+            //Convert turnVal to runnable format
+
             turnVal.x = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.x) / pilot.FlyingChillFactor.x), -1, 1);
 
             turnVal.y = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.y) / pilot.FlyingChillFactor.y), -1, 1);
 
             turnVal.z = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.z) / pilot.FlyingChillFactor.z), -1, 1);
 
+            //Stop Wobble
             if (Mathf.Abs(turnVal.x) < 0.05f)
                 turnVal.x = 0;
             if (Mathf.Abs(turnVal.y) < 0.05f)
@@ -55,11 +60,21 @@ namespace TAC_AI.AI.Movement.AICores
             if (Mathf.Abs(turnVal.z) < 0.05f)
                 turnVal.z = 0;
 
+            // limit rotation speed
+
+
+            // stop pitching if the main prop is trying to force us into the ground
             if (helper.SafeVelocity.y < -6)
                 turnVal.y = 0;
 
+
+            //Turn our work in to process
             Vector3 TurnVal = turnVal.Clamp01Box();
 
+            // -----------------------------------------------------------------------------------------------
+            // -----------------------------------------------------------------------------------------------
+            // -----------------------------------------------------------------------------------------------
+            // DRIVE
             float xOffset = 0;
             if (core.DriveDir == EDriveFacing.Perpendicular && helper.lastEnemyGet != null)
             {
@@ -72,7 +87,7 @@ namespace TAC_AI.AI.Movement.AICores
             Vector3 DriveVar = -helper.LocalSafeVelocity / pilot.PropLerpValue;
             float xFactor = fwdDelta.z - 0.65f;
             if (needsTurnControl)
-                DriveVar.x = 0;
+                DriveVar.x = 0; // Stop strafing to focus on turning!
             else
                 DriveVar.x = Mathf.Clamp(DriveVar.x + xOffset, -1, 1) * xFactor;
             DriveVar.z = Mathf.Clamp(DriveVar.z , -1, 1);
@@ -82,6 +97,7 @@ namespace TAC_AI.AI.Movement.AICores
                 Vector3 nudge = tank.rootBlockTrans.InverseTransformPoint(positionToMoveTo) / helper.lastTechExtents;
                 if (helper.ThrottleState == AIThrottleState.PivotOnly)
                 {
+                    // Do nothing and let the inertia dampener kick in
                 }
                 else if (helper.IsDirectedMovingFromDest)
                 {
@@ -96,22 +112,30 @@ namespace TAC_AI.AI.Movement.AICores
                     DriveVar.z = nudge.z;
                 }
             }
+            //DriveVar = DriveVar.normalized;
             DriveVar.y = pilot.CurrentThrottle;
 
+            //Turn our work in to processing
             Vector3 DriveVal = DriveVar.Clamp01Box();
 
 
             if (AIGlobals.ShowDebugFeedBack)
             {
+                // DEBUG FOR DRIVE ERRORS
+                // Teal is target vector
                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, positionToMoveTo - tank.boundsCentreWorldNoCheck, new Color(0, 1, 1));
+                // The drive direction - blue means upright, Yellow means correcting
                 if (ForceAccend || !isInControl)
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 1, (tank.rootBlockTrans.TransformPoint(DriveVar) - tank.trans.position).normalized * helper.lastTechExtents, new Color(1, 1, 0));
                 else
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 1, (tank.rootBlockTrans.TransformPoint(DriveVar) - tank.trans.position).normalized * helper.lastTechExtents, new Color(0, 0, 1));
+                // The angle facing (upright!) Red
                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 2, helper.Navi3DUp * pilot.Helper.lastTechExtents, new Color(1, 0, 0));
+                // The angle facing (forwards!) White
                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 3, helper.Navi3DDirect * pilot.Helper.lastTechExtents, new Color(1, 1, 1));
             }
 
+            //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " | steering " + turnVal + " | drive " + DriveVar);
             if (helper.FixControlReversal(DriveVal.z))
                 TurnVal = TurnVal.SetY(-turnVal.y);
             helper.ProcessControl(DriveVal, TurnVal, Vector3.zero, false, false);
@@ -119,6 +143,7 @@ namespace TAC_AI.AI.Movement.AICores
         private static void DeterminePitchRoll(Tank tank, AIControllerAir pilot, Vector3 DestPosWorld, Vector3 LookPosWorld,
             TankAIHelper helper, bool avoidCrash, bool PointAtTarget, ref EControlCoreSet core)
         {
+            // The bigger this value is, the less the craft will slow pitching down when going fast
             float pitchDampening = Mathf.Lerp(16, 64, Mathf.InverseLerp(1, 64, helper.lastTechExtents));
             float rotateDividend = pitchDampening / pilot.SlowestPropLerpSpeed;
             Vector3 Heading;
@@ -157,18 +182,20 @@ namespace TAC_AI.AI.Movement.AICores
                 default:
                     throw new NotImplementedException("Unknown ThrottleState " + helper.ThrottleState);
             }
+            // Pitch axis turning
             if (!inertiaDampen && !PointAtTarget)
-            {
+            {   // Try balance
                 fFlat.y = 0;
                 fFlat.Normalize();
+                // Rotors on some chopper designs were acting funky and cutting out due to pitch so I disabled pitching
                 if (pilot.LowerEngines || avoidCrash)
                     fFlat.y = 0;
                 else if (Vector2.Dot(Heading.ToVector2XZ(), tankForward.ToVector2XZ()) < AIGlobals.ChopperAngleDoPitchPercent)
-                {
+                {   // Pitch to recover control
                     inertiaDampen = true;
                 }
                 else
-                {
+                {   // Pitch to speed up advance
                     if (helper.IsDirectedMovingFromDest)
                         fFlat.y = Mathf.Clamp((veloLocal.z / (rotateDividend * Mathf.Abs(HeadingLocal.z))) + AIGlobals.ChopperAngleNudgePercent,
                             -AIGlobals.ChopperMaxDeltaAnglePercent, AIGlobals.ChopperMaxDeltaAnglePercent);
@@ -193,7 +220,12 @@ namespace TAC_AI.AI.Movement.AICores
                     fFlat.y = Mathf.Clamp(veloLocal.z / rotateDividend,
                         -AIGlobals.ChopperMaxDeltaAnglePercent, AIGlobals.ChopperMaxDeltaAnglePercent);
             }
+            // Because tilting forwards too hard causes the chopper to stall on some builds
+            //fFlat.y = fFlat.y - (fFlat.y * pilot.CurrentThrottle);
 
+
+
+            // Roll axis turning
             if (tankUp > 0)
                 rFlat = tank.rootBlockTrans.right;
             else
@@ -201,7 +233,7 @@ namespace TAC_AI.AI.Movement.AICores
             if (!avoidCrash)
             {
                 if (core.DriveDir == EDriveFacing.Perpendicular)
-                {
+                {   // orbit while firing
                     if (veloLocal.x >= 0)
                         rFlat.y = Mathf.Clamp((veloLocal.x / rotateDividend) - AIGlobals.ChopperAngleNudgePercent,
                             -AIGlobals.ChopperMaxDeltaAnglePercent, AIGlobals.ChopperMaxDeltaAnglePercent);
@@ -214,6 +246,7 @@ namespace TAC_AI.AI.Movement.AICores
                         -AIGlobals.ChopperMaxDeltaAnglePercent, AIGlobals.ChopperMaxDeltaAnglePercent);
             }
 
+            // Prevent ourselves from FLIPPING OVER
             if (fFlat.y > AIGlobals.ChopperMaxDeltaAnglePercent)
             {
                 fFlat.y = AIGlobals.ChopperMaxDeltaAnglePercent;
@@ -269,27 +302,31 @@ namespace TAC_AI.AI.Movement.AICores
         public static int Iterations = 0;
         public static float ModerateUpwardsThrust(Tank tank, TankAIHelper helper, AIControllerAir pilot, float targetHeight, bool ForceUp = false)
         {
+            //HelperGUI.Init();
             pilot.LowerEngines = false;
             float final;
+            //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " thrust = " + final + " | velocity " + helper.LocalSafeVelocity;
             if (ForceUp)
                 final = 1;
             else if (tank.rbody)
-            {
+            {   // height compensator
+                // works bloody AMAZING!
                 final = pilot.MainThrottle;
                 float speedDownTime, deltaDists, beginStopDist;
                 float deltaHeight = targetHeight - tank.boundsCentreWorldNoCheck.y;
                 float throttleLerp = pilot.SlowestPropLerpSpeed * Time.deltaTime * 0.9f;
                 float throttleCurTo0 = final / pilot.SlowestPropLerpSpeed;
                 float accel = ((pilot.UpTtWRatio * final) - 1f) * TankAIManager.GravMagnitude;
+                //float MaxThrottleAccelDelta = (((pilot.UpTtWRatio * (final + pilot.SlowestPropLerpSpeed)) - 1f) * TankAIManager.GravMagnitude) - accel;
                 float velo = helper.SafeVelocity.y;
                 float stopDist = 0;
                 if (accel > 0 != velo > 0)
                     stopDist = velo * Mathf.Abs(velo) / Mathf.Abs(accel * 2);
 
                 if (deltaHeight < 0)
-                {
+                {   // Down
                     if (velo > 0.25f)
-                    {
+                    {   // Wrong way
                         final -= throttleLerp;
                     }
                     else
@@ -298,29 +335,33 @@ namespace TAC_AI.AI.Movement.AICores
                         beginStopDist = Mathf.Clamp01(1.1f - deltaDists);
                         speedDownTime = Mathf.Abs(velo / accel) * AIGlobals.ChopperDownAntiBounce;
                         if (deltaDists > 1f)
-                        {
+                        {   // We might need to try again
                             final += throttleLerp;
+                            //DebugTAC_AI.Log("Down OVERSHOOT " + final.ToString("0.00"));
                         }
                         else if (speedDownTime < throttleCurTo0 + 0.5f)
                         {
                             final += throttleLerp * Mathf.Clamp01((throttleCurTo0 + AIGlobals.ChopperThrottleDamper) *
                                 beginStopDist / speedDownTime);
+                            //DebugTAC_AI.Log("Down ReboundI " + final.ToString("0.00"));
                         }
                         else if (speedDownTime < throttleCurTo0 + AIGlobals.ChopperThrottleDamper)
                         {
                             final += throttleLerp * Mathf.Clamp01((throttleCurTo0 + AIGlobals.ChopperThrottleDamper) *
                                 beginStopDist / speedDownTime);
+                            //DebugTAC_AI.Log("Down Rebound " + final.ToString("0.00"));
                         }
                         else
                         {
                             final -= throttleLerp * beginStopDist;
+                            //DebugTAC_AI.Log("Down " + final.ToString("0.00"));
                         }
                     }
                 }
                 else
-                {
+                {   // Up
                     if (velo < -0.25f)
-                    {
+                    {   // Wrong way
                         final += throttleLerp;
                     }
                     else
@@ -329,22 +370,26 @@ namespace TAC_AI.AI.Movement.AICores
                         beginStopDist = Mathf.Clamp01(1.1f - deltaDists);
                         speedDownTime = Mathf.Abs(velo / accel);
                         if (speedDownTime < throttleCurTo0)
-                        {
+                        {   // We might need to try again
                             final -= throttleLerp;
+                            //DebugTAC_AI.Log("Up OVERSHOOT " + final.ToString("0.00"));
                         }
                         else if (speedDownTime < throttleCurTo0 + 0.5f)
                         {
                             final -= throttleLerp * Mathf.Clamp01((throttleCurTo0 + AIGlobals.ChopperThrottleDamper) *
                                 beginStopDist / speedDownTime);
+                            //DebugTAC_AI.Log("Up ReboundI " + final.ToString("0.00"));
                         }
                         else if (speedDownTime < throttleCurTo0 + AIGlobals.ChopperThrottleDamper)
                         {
                             final -= throttleLerp * Mathf.Clamp01((throttleCurTo0 + AIGlobals.ChopperThrottleDamper) *
                                 beginStopDist / speedDownTime);
+                            //DebugTAC_AI.Log("Up Rebound " + final.ToString("0.00"));
                         }
                         else
                         {
                             final += throttleLerp * beginStopDist;
+                            //DebugTAC_AI.Log("Up " + final.ToString("0.00"));
                         }
                     }
                 }
@@ -352,6 +397,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
             else
                 final = 0f;
+            //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " thrustFinal = " + final);
 
             if (final > 1.25f && pilot.BoostBias.y > 0.65f)
                 helper.FullBoost = true;
@@ -359,10 +405,12 @@ namespace TAC_AI.AI.Movement.AICores
         }
         public static float ModerateUpwardsThrust_LEGACY(Tank tank, TankAIHelper helper, AIControllerAir pilot, float targetHeight, bool ForceUp = false)
         {
+            //HelperGUI.Init();
             pilot.LowerEngines = false;
             float dampScale = 4f / pilot.PropLerpValue;
-            float mulVal = Mathf.Clamp01(8f / pilot.PropLerpValue);
+            float mulVal = Mathf.Clamp01(8f / pilot.PropLerpValue);// 4 /
             float final = ((targetHeight - tank.boundsCentreWorldNoCheck.y) * mulVal) + pilot.UpTtWRatio;
+            //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " thrust = " + final + " | velocity " + helper.LocalSafeVelocity;
             if (ForceUp)
                 final = 1;
             else
@@ -374,6 +422,7 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     if (helper.SafeVelocity.y > 4f)
                     {
+                        //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " dampening up speed");
                         final = Mathf.Max(final - Mathf.Pow(Mathf.Max(helper.SafeVelocity.y - 4f, 0), 2) * dampScale, 0);
                     }
                 }
@@ -381,6 +430,7 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     if (helper.SafeVelocity.y > 2f)
                     {
+                        //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " dampening up speed");
                         final = Mathf.Max(final - Mathf.Pow(Mathf.Max(helper.SafeVelocity.y - 2f, 0), 2) * dampScale, 0);
                     }
                 }
@@ -388,6 +438,7 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     if (helper.SafeVelocity.y > 1f)
                     {
+                        //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " dampening up speed");
                         final = Mathf.Max(final - Mathf.Pow(Mathf.Max(helper.SafeVelocity.y - 1f, 0), 2) * dampScale * 0.8f, 0);
                     }
                 }
@@ -395,6 +446,7 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     if (helper.SafeVelocity.y > 0f)
                     {
+                        //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " dampening up speed");
                         final = Mathf.Max(final - Mathf.Pow(helper.SafeVelocity.y, 2) * dampScale * 0.4f, 0);
                     }
                 }
@@ -406,11 +458,13 @@ namespace TAC_AI.AI.Movement.AICores
                     final = 0f;
                     if (helper.SafeVelocity.y < 0f)
                     {
+                        //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " dampening fall");
                         final = Mathf.Pow(helper.SafeVelocity.y, 2) * dampScale * 0.4f;
                     }
                 }
                 else if (final > -0.8f)
                 {
+                    //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " Too high!! Cutting engines!!");
                     pilot.LowerEngines = true;
                     final = -0.1f;
                     if (helper.SafeVelocity.y < 0f)
@@ -420,6 +474,7 @@ namespace TAC_AI.AI.Movement.AICores
                 }
                 else
                 {
+                    //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " Too high!! Cutting engines!!");
                     pilot.LowerEngines = true;
                     final = -0.1f;
                     if (helper.SafeVelocity.y < 0f)
@@ -428,6 +483,7 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                 }
             }
+            //DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " thrustFinal = " + final);
 
             if (final > 1.25f && pilot.BoostBias.y > 0.65f)
                 helper.FullBoost = true;

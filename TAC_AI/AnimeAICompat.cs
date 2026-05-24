@@ -7,19 +7,20 @@ using UnityEngine;
 using TAC_AI.AI;
 using TAC_AI.AI.Enemy;
 
+// Anime AI support is on hold until further notice
 #if !STEAM
 using AnimeAI;
 
 namespace TAC_AI
 {
     public enum AOffenseReact
-    {
-        Hurt,
-        Damaged,
-        Destroyed
+    {   //Attempt hook with the AnimeAI sub-mod
+        Hurt,       // Taken damage
+        Damaged,    // Block chipped off
+        Destroyed   // Tech destroyed
     }
     public enum ALossReact
-    {
+    {   //Attempt hook with the AnimeAI sub-mod
         Land,
         Sea,
         Air,
@@ -27,7 +28,8 @@ namespace TAC_AI
         Base,
     }
     public static class AnimeAICompat
-    {
+    {   //Attempt hook with the AnimeAI sub-mod
+        //  WIP
         const bool UseErrorChecking = false;
 
 

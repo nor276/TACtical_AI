@@ -16,9 +16,11 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
         internal const int reverseFromBaseTime = AIGlobals.ReverseDelay;
         public static void Scavenge(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Prospector) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = mind.EvilCommander == EnemyHandling.Starship || mind.EvilCommander == EnemyHandling.Airplane || mind.EvilCommander == EnemyHandling.Chopper;
 
+            //float prevDist = helper.lastOperatorRange;
             float dist = helper.GetDistanceFromTask(helper.lastDestinationCore);
             bool needsToSlowDown = helper.IsOrbiting();
             bool hasMessaged = false;
@@ -27,7 +29,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             BGeneral.ResetValues(helper, ref direct);
 
             if (mind.CommanderSmarts >= EnemySmarts.Mild && helper.lastEnemyGet != null)
-            {
+            {   //RUN!!!!!!!!
                 if (!helper.foundBase)
                 {
                     helper.foundBase = AIECore.FetchClosestBlockReceiver(tank.boundsCentreWorldNoCheck, mind.MaxCombatRange + AIGlobals.FindBaseScanRangeExtension, out helper.lastBasePos, out Tank theBase, tank.Team);
@@ -37,9 +39,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         return;
                     }
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  There's no base nearby!  I AM LOST!!!");
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     if (theBase == null)
-                        return;
+                        return; // There's no base!
                     helper.lastBaseExtremes = theBase.GetCheapBounds();
                 }
                 else if (helper.theBase == null)
@@ -51,7 +53,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         return;
                     }
                     helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     return;
                 }
 
@@ -75,7 +77,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             }
 
             if (helper.CollectedTarget)
-            {
+            {   // Unload all contents
                 helper.CollectedTarget = false;
                 if (helper.HeldBlock)
                 {
@@ -88,7 +90,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         if (hold.BlockLoaded())
                         {
                             helper.CollectedTarget = true;
-                            break;
+                            break;//Checking if tech is empty when unloading at base
                         }
                     }
                 }
@@ -96,20 +98,31 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     helper.actionPause = reverseFromResourceTime;
             }
             else
-            {
+            {   // Gather materials
                 helper.CollectedTarget = true;
                 if (!helper.HeldBlock)
                 {
                     helper.CollectedTarget = false;
                 }
+                /*
+                foreach (ModuleItemHolder hold in tank.blockman.IterateBlockComponents<ModuleItemHolder>())
+                {
+                    if (hold.BlockNotFullAndAvail())
+                    {
+                        helper.CollectedTarget = false;
+                        break;//Checking if tech is full after destroying a node
+                    }
+                }
+                */
                 if (helper.CollectedTarget)
                     helper.actionPause = reverseFromBaseTime;
             }
 
+            //DebugTAC_AI.Log(KickStart.ModID + ": Block is Present: " + helper.foundGoal);
             if (helper.CollectedTarget)
-            {
+            {   // BRANCH - Return to base
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from blocks...");
                     direct.Reverse(helper);
                     {  }
@@ -119,11 +132,11 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 if (!helper.foundBase)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Searching for nearest base!");
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     if (helper.theBase == null)
                     {
                         mind.CommanderMind = EnemyAttitude.Default;
-                        return;
+                        return; // There's no base!
                     }
                     direct.SetLastDest(helper.theBase.boundsCentreWorld);
                     dist = (tank.boundsCentreWorldNoCheck - helper.lastDestinationCore).magnitude;
@@ -141,6 +154,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Trying to unjam...");
                         helper.AvoidStuff = false;
                         helper.DriveVar = -1;
+                        //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                     }
                     else
                     {
@@ -149,6 +163,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         {
                             Visible blockHeld = helper.HeldBlock.visible;
                             helper.DropBlock((helper.lastBasePos.position + (Vector3.up * AIECore.ExtremesAbs(blockHeld.block.BlockCellBounds.extents))) - helper.HeldBlock.visible.centrePosition);
+                            //blockHeld.centrePosition = helper.lastBasePos.position + (Vector3.up * AIECore.ExtremesAbs(blockHeld.block.BlockCellBounds.extents));
                         }
                         catch { }
                         helper.AvoidStuff = false;
@@ -193,6 +208,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at base!");
                         {  }
+                        //helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                         if (needsToSlowDown)
                             helper.ThrottleState = AIThrottleState.Yield;
@@ -210,9 +226,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 helper.foundGoal = false;
             }
             else
-            {
+            {   // BRANCH - Go look for blocks
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Base
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
                     {  }
@@ -220,7 +236,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 if (!helper.foundGoal)
                 {
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     helper.foundGoal = AIECore.FetchLooseBlocks(tank.rootBlockTrans.position, mind.MaxCombatRange, out var tmpRes);
                     helper.theResource = tmpRes;
                     if (helper.foundGoal) helper.theResourceNode = tmpRes;

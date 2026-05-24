@@ -14,10 +14,15 @@ namespace TAC_AI.AI.Movement
         }
     }
 
+    /// <summary>
+    /// Evaluates world tiles (in smaller tiles) to figure out how path-findable they are.
+    ///   It's a heightmap of the terrain accounting for obsticles.
+    ///   Hosted in TankAIManager.
+    /// </summary>
     public class AIEPathMapper : MonoBehaviour
     {
         public static bool EnableAdvancedPathing => PathRequestsToCalcPerFrame != 0;
-        private static bool ForceSphereCasts => true;
+        private static bool ForceSphereCasts => true;//ManGameMode.inst.GetCurrentGameType() == ManGameMode.GameType.RaD;
 
         internal static AIEPathMapper inst;
         public const int chunksPerTileWH = 64;
@@ -26,6 +31,9 @@ namespace TAC_AI.AI.Movement
         public const int AutoPathersToCalcPerFrame = 2;
         public static int PathRequestsToCalcPerFrame = 1;
 
+        /// <summary>
+        /// TerrainHeightVarianceMaxDifference
+        /// </summary>
         public static float THVMD => KickStart.TerrainHeight;
         public static float vertOffset => KickStart.TerrainHeightOffset;
         public const byte maxAltByte = 128;
@@ -65,6 +73,7 @@ namespace TAC_AI.AI.Movement
                     {
                         try
                         {
+                            // Neat tile overlay
                             item.Value.tile.m_ModifiedQuadTree.Draw(item.Value.tile.CalcSceneOrigin(), true);
 
                             if (drawFrame)
@@ -73,6 +82,8 @@ namespace TAC_AI.AI.Movement
                                 {
                                     try
                                     {
+                                        //DebugTAC_AI.Log("DrawObsticles()");
+                                        //item2.DrawGizmos();
                                         var WP = (WorldPosition)posGet.GetValue(item2);
                                         Vector3 scenePosGrounded = WP.ScenePosition.SetY(GetAltitudeCached(WP.ScenePosition));
                                         switch ((SceneryBlocker.Shape)shape.GetValue(item2))
@@ -162,6 +173,9 @@ namespace TAC_AI.AI.Movement
             }
         }
 
+        /// <summary>
+        /// Destination, Pathers
+        /// </summary>
         internal static readonly List<AIEAutoPather> pathRequests = new List<AIEAutoPather>();
         internal static readonly List<AIEAutoPather> pathRequestsSuspended = new List<AIEAutoPather>();
         private static int pathStep = 0;
@@ -179,6 +193,7 @@ namespace TAC_AI.AI.Movement
                 {
                     if (path.CanContinue())
                     {
+                        //DebugTAC_AI.Log("Path can continue, resuming...");
                         pathRequests.Add(path);
                         pathRequestsSuspended.RemoveAt(pathStepS);
                     }
@@ -210,6 +225,7 @@ namespace TAC_AI.AI.Movement
                 }
                 catch (TileNotLoadedException)
                 {
+                    //DebugTAC_AI.Log("Path hit unloaded, waiting for tile to become available...");
                     pathRequestsSuspended.Add(path);
                     pathRequests.RemoveAt(pathStep);
                 }
@@ -251,6 +267,7 @@ namespace TAC_AI.AI.Movement
                 DebugTAC_AI.Log("AIEPathMapper(RegisterTile) - tile " + tile.Coord + " already registered; skipping.");
                 return;
             }
+            //DebugTAC_AI.Log("AIEPathMapper: Registered tile " + tile.Coord.ToString());
             tilesMapped.Add(tile.Coord, AIPathTileCached.GetAIPathTileCached(tile));
         }
         public static void UnregisterTile(WorldTile tile)
@@ -295,6 +312,8 @@ namespace TAC_AI.AI.Movement
                 if (wTile == null)
                 {
                     throw new TileNotLoadedException("GetAlt - Hit non-loaded World-Tile");
+                    //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
+                    //return maxAltByte;
                 }
                 RegisterTile(wTile);
                 if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))
@@ -328,6 +347,8 @@ namespace TAC_AI.AI.Movement
                 var wTile = ManWorld.inst.TileManager.LookupTile(scenePos, false);
                 if (wTile == null)
                 {
+                    //throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
+                    //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
                     return maxAltByte;
                 }
                 RegisterTile(wTile);
@@ -362,6 +383,8 @@ namespace TAC_AI.AI.Movement
                         if (wTile == null)
                         {
                             throw new TileNotLoadedException("GetHighestAltInRadius - Hit non-loaded World-Tile");
+                            //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
+                            //return maxAltByte;
                         }
                         RegisterTile(wTile);
                         if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))
@@ -523,6 +546,8 @@ namespace TAC_AI.AI.Movement
                         if (wTile == null)
                         {
                             throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
+                            //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
+                            //return maxAltByte;
                         }
                         RegisterTile(wTile);
                         if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))
@@ -568,6 +593,8 @@ namespace TAC_AI.AI.Movement
                         if (wTile == null)
                         {
                             throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
+                            //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
+                            //return maxAltByte;
                         }
                         RegisterTile(wTile);
                         if (tilesMapped.TryGetValue(wp.TileCoord, out AIPathTileCached tile2))
@@ -615,6 +642,8 @@ namespace TAC_AI.AI.Movement
                         var wTile = ManWorld.inst.TileManager.LookupTile(posAlt, false);
                         if (wTile == null)
                         {
+                            //throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
+                            //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
                             return maxAltByte;
                         }
                         RegisterTile(wTile);
@@ -660,6 +689,8 @@ namespace TAC_AI.AI.Movement
                         var wTile = ManWorld.inst.TileManager.LookupTile(posAlt, false);
                         if (wTile == null)
                         {
+                            //throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
+                            //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
                             return false;
                         }
                         RegisterTile(wTile);
@@ -707,6 +738,8 @@ namespace TAC_AI.AI.Movement
                         var wTile = ManWorld.inst.TileManager.LookupTile(posAlt, false);
                         if (wTile == null)
                         {
+                            //throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
+                            //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
                             return false;
                         }
                         RegisterTile(wTile);
@@ -734,6 +767,7 @@ namespace TAC_AI.AI.Movement
             ToFill = Mathf.Max(ToFill, EvalRad * 2);
             float unitTop = pather.MoveGridScale / 2;
             byte unitTopByte = SceneAltToChunkAlt(scenePos.y + unitTop);
+            //byte unitBottomByte = SceneAltToChunkAlt(scenePos.y - unitTop);
             if (unitTopByte > GetChunkAltWater())
                 return false;
 
@@ -757,6 +791,8 @@ namespace TAC_AI.AI.Movement
                         var wTile = ManWorld.inst.TileManager.LookupTile(posAlt, false);
                         if (wTile == null)
                         {
+                            //throw new TileNotLoadedException("GetAltitudeCached - Hit non-loaded World-Tile");
+                            //DebugTAC_AI.Assert("Trying to path on a NULL WorldTile at " + wp.TileCoord);
                             return false;
                         }
                         RegisterTile(wTile);
@@ -796,11 +832,13 @@ namespace TAC_AI.AI.Movement
         private static int layerMask = Globals.inst.layerTerrain.mask | Globals.inst.layerScenery.mask | Globals.inst.layerLandmark.mask | Globals.inst.layerSceneryCoarse.mask;
         internal static bool GetActiveAlt(Vector3 scenePos, out float height, out Collider col)
         {
+            //DebugTAC_AI.Log("GetActiveAlt Triggered");
             scenePos.y += THVMD + vertOffset;
             if (Physics.SphereCast(scenePos, EvalRad, -Vector3.up, out RaycastHit hit, THVMD, layerMask, QueryTriggerInteraction.Ignore))
             {
                 height = scenePos.y - hit.distance;
                 col = hit.collider;
+                //DebugTAC_AI.Assert("GetActiveAlt returned " + height + " on target " + hit.collider.name + ", layer " + hit.collider.gameObject.layer);
                 return true;
             }
             height = 0;
@@ -929,6 +967,7 @@ namespace TAC_AI.AI.Movement
                             }
                         }
                     }
+                    //DebugTAC_AI.Log("GatherAllPossibleBlockers() - On tile " + tile.Coord + " Searching from " + min + " to " + max +  " Gathered " + blockers.Count + " blockers.");
                 }
                 catch { };
             }
@@ -937,6 +976,9 @@ namespace TAC_AI.AI.Movement
             {
                 return (EvalChunk(pos, Throws) >> 1) < GetChunkAltWater();
             }
+            /// <summary>
+            /// Obst is an uncalculated devience in height presented by an unloaded object
+            /// </summary>
             internal bool NotLoaded(WorldPosition pos, bool Throws)
             {
                 return (EvalChunk(pos,Throws) & 1) == 1;
@@ -978,10 +1020,15 @@ namespace TAC_AI.AI.Movement
                 bool isTrue = (chunkByte >> 1) < GetChunkAltWater();
                 if (isTrue && !KickStart.isWaterModPresent)
                 {
+                    // We encountered this issue too frequently.  This is now disabled.
+                    //throw new Exception("BytesToWater returned true when no water is present");
                     return false;
                 }
                 return isTrue;
             }
+            /// <summary>
+            /// Obst is an uncalculated devience in height presented by an unloaded object
+            /// </summary>
             internal bool BytesToNotLoaded(ref byte chunkByte)
             {
                 return (chunkByte & 1) == 1;
@@ -1045,11 +1092,14 @@ namespace TAC_AI.AI.Movement
                 if (z > chunksPerTileIndex)
                     throw new Exception("EvalChunk expects x to be within [0-" + chunksPerTileIndex + "] but was given " + z + " instead");
 
+                //x = Mathf.Clamp(x, 0, chunksPerTileIndex);
+                //z = Mathf.Clamp(z, 0, chunksPerTileIndex);
 
                 int index = x + (z * chunksPerTileWH);
                 byte chunkByte = chunkBytes[index];
                 if (chunkByte == 0)
                 {
+                    //float variance = EvalTerrainDelta(scenePos, EvalRad);
                     bool obst = false;
                     int grid = ManPath.inst.GridSquareSize;
                     Vector3 scenePos = pos.ScenePosition;
@@ -1059,6 +1109,8 @@ namespace TAC_AI.AI.Movement
                     {
                         if (IsBlocked(scenePos))
                             obst = true;
+                        //else if (SceneAltToChunkAlt(height) != BytesToAlt(ref chunkByte, pos))
+                        //        throw new Exception("EvalChunk - MISMATCH WITH CompactChunkByte and GetAltitude while no Obsticle is present");
                     }
                     else
                         obst = true;
@@ -1068,16 +1120,20 @@ namespace TAC_AI.AI.Movement
                         {
                             if (GetActiveAlt(scenePos, out float alt, out Collider col))
                             {
+                                //DebugTAC_AI.Log("Pos " + scenePos + " is Obstructed and height calc with height " + alt);
                                 AddObstruction(col);
                                 chunkByte = CompactChunkByte(SceneAltToChunkAlt(alt), false);
                             }
                             else
                             {
+                                //DebugTAC_AI.Log("Pos " + scenePos + " is Obstructed but loaded with height " + height);
                                 chunkByte = CompactChunkByte(SceneAltToChunkAlt(height), false);
                             }
                         }
                         else
                         {
+                            //throw new TileNotLoadedException("Pos " + scenePos + " is Obstructed, tile not loaded, height is " + height);
+                            //DebugTAC_AI.Log("Pos " + scenePos + " is Obstructed, tile not loaded, height is " + height);
                             chunkByte = CompactChunkByte(SceneAltToChunkAlt(height), true);
                         }
                     }
@@ -1085,6 +1141,7 @@ namespace TAC_AI.AI.Movement
                     {
                         chunkByte = CompactChunkByte(SceneAltToChunkAlt(height), false);
                     }
+                    //AIGlobals.PopupPlayerInfo(diff.ToString(), WorldPosition.FromScenePosition(ManWorld.inst.ProjectToGround(scenePos, true)));
                     chunkBytes[index] = chunkByte;
                 }
                 if (ThrowException && BytesToNotLoaded(ref chunkByte))
@@ -1099,6 +1156,7 @@ namespace TAC_AI.AI.Movement
                 int x = (int)((inTile.x * tileToChunk) + 0.5f);
                 int z = (int)((inTile.z * tileToChunk) + 0.5f);
 
+                //AIGlobals.PopupPlayerInfo(toSet.ToString(), pos);
                 chunkBytes[x + (z * chunksPerTileWH)] = toSet;
             }
             internal void AddObstruction(Collider col)

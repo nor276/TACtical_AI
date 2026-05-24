@@ -8,6 +8,7 @@ namespace TAC_AI
     public class ModuleHarvestReciever : MonoBehaviour, IAIFollowable
     {
         TankBlock TankBlock;
+        // Returns the position of itself in the world as a point the AI can pathfind to
         public Tank tank { get; private set; }
         public Transform trans;
         public ModuleItemHolder holder;
@@ -28,6 +29,7 @@ namespace TAC_AI
             TankBlock.SubToBlockAttachConnected(null, OnDetach);
             if (TankBlock.tank)
                 OnAttach();
+            //holder.TakeItemEvent.Subscribe(); // too late
         }
         public void OnTaken(Visible vis, ModuleItemHolder.Stack stack)
         {
@@ -42,10 +44,12 @@ namespace TAC_AI
             {
                 if (holder.Acceptance.HasFlag(ModuleItemHolder.AcceptFlags.Blocks))
                 {
+                    //DebugTAC_AI.Log("Block " + name + " is a Block Receiver");
                     AIECore.BlockHandlers.Add(this);
                 }
                 if (holder.Acceptance.HasFlag(ModuleItemHolder.AcceptFlags.Chunks))
                 {
+                    //DebugTAC_AI.Log("Block " + name + " is a Chunk Receiver");
                     AIECore.Depots.Add(this);
                 }
             }

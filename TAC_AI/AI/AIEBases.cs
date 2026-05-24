@@ -10,12 +10,12 @@ namespace TAC_AI.AI
     internal class AIEBases
     {
         internal static bool BaseConstructTech(Tank tech, Snapshot techToMake)
-        {
+        {   // Expand the base!
             InvokeHelper.Invoke(DoBaseConstructTech, 0.1f, tech, techToMake);
             return true;
         }
         private static void DoBaseConstructTech(Tank tech, Snapshot techToMake)
-        {
+        {   // Expand the base!
             try
             {
                 if (!Singleton.Manager<ManWorld>.inst.CheckIsTileAtPositionLoaded(tech.boundsCentreWorld))

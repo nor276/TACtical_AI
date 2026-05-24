@@ -61,10 +61,10 @@ namespace TAC_AI.Templates
 
         private static GameObject GUIWindow;
         private static DebugRawTechSpawner inst;
-        private static Rect HotWindow = new Rect(0, 0, 200, 230);
+        private static Rect HotWindow = new Rect(0, 0, 200, 230);   // the "window"
         private const int RawTechSpawnerID = 8002;
 
-        private const string redStart = "<color=#ffcccbff><b>";
+        private const string redStart = "<color=#ffcccbff><b>";//"<color=#f23d3dff><b>";
         private static List<Tank> techCache = new List<Tank>();
 
         public static void Initiate()
@@ -718,7 +718,7 @@ namespace TAC_AI.Templates
                         DisplayRawTechInfoOnHoverLocal(listTemp, step);
                         HoriPosOff += ButtonWidth;
                     }
-                    catch { }
+                    catch { }// error on handling something
                 }
             }
             GUILayout.EndHorizontal();
@@ -1201,7 +1201,7 @@ namespace TAC_AI.Templates
                 {
                     bool defaultMode = true;
                     if (TrackedMode)
-                    {
+                    { // REMOVE ALL TRACKED
                         DebugTAC_AI.Log(KickStart.ModID + ": RemoveAllEnemiesImmedeately - CALLED TrackedMode");
                         defaultMode = false;
                         try
@@ -1240,7 +1240,7 @@ namespace TAC_AI.Templates
                         }
                     }
                     if (ALLMode)
-                    {
+                    { // REMOVE ALL STORED
                         DebugTAC_AI.Log(KickStart.ModID + ": RemoveAllEnemiesImmedeately - CALLED ALLMode");
                         defaultMode = false;
                         var STs = ManSaveGame.inst.CurrentState?.m_StoredTiles;
@@ -1319,7 +1319,7 @@ namespace TAC_AI.Templates
                         if (WT.StoredVisiblesWaitingToLoad != null && WT.StoredVisiblesWaitingToLoad.Count > 0 && remove.visible.isActive)
                         {
                             step++;
-                            continue;
+                            continue; // TECHS ARE LOADING AND IF WE REMOVE IT NOW IT WILL IGNORE TEAMS
                         }
 
                         if (AIGlobals.VisibleIsSafelyRemoveable(remove.ID, remove.TeamID) && (remove.visible == null || !remove.visible.isActive))
@@ -1503,6 +1503,7 @@ namespace TAC_AI.Templates
                 });
         }
 
+        // Utilities
         internal static bool CheckValidMode()
         {
 #if DEBUG

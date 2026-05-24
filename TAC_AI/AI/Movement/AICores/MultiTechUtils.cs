@@ -9,6 +9,11 @@ namespace TAC_AI.AI.Movement.AICores
 {
     internal static class MultiTechUtils
     {
+        /// <summary>
+        /// THIS IS A DIRECTOR
+        /// </summary>
+        /// <param name="help"></param>
+        /// <param name="tank"></param>
         internal static Vector3 HandleMultiTech(TankAIHelper help, Tank tank, ref EControlCoreSet core)
         {
             Vector3 targPos;
@@ -31,7 +36,7 @@ namespace TAC_AI.AI.Movement.AICores
                     targPos = AIEPathing.GetDriveApproxAirDirector(help.theResource.tank, help, out bool IsMoving);
                     if (IsMoving)
                     {
-                        help.AutoSpacing = 0;
+                        help.AutoSpacing = 0;//0.1f;
                         core.TurningStrictness = ESteeringStrength.MaxSteering;
                         if (Vector3.Dot(tank.rootBlockTrans.forward, (targPos - tank.boundsCentreWorldNoCheck).normalized) >= 0)
                         {
@@ -65,7 +70,7 @@ namespace TAC_AI.AI.Movement.AICores
                 }
             }
             else
-            {
+            {   // act like a trailer
                 core.DriveDir = EDriveFacing.Neutral;
                 targPos = tank.boundsCentreWorldNoCheck;
                 help.AutoSpacing = 0;

@@ -86,7 +86,7 @@ namespace TAC_AI
                     if (storedTile?.m_StoredVisibles != null)
                     {
                         if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out var techs) && techs != null)
-                        {
+                        {   // Try in the unloaded tile!?
                             for (int step = 0; step < techs.Count; step++)
                             {
                                 var val = techs[step] as ManSaveGame.StoredTech;
@@ -99,7 +99,7 @@ namespace TAC_AI
                             }
                         }
                         if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Chunk, out var chuns) && chuns != null)
-                        {
+                        {   // Try in the unloaded tile!?
                             for (int step = 0; step < chuns.Count; step++)
                             {
                                 var val = chuns[step];
@@ -108,7 +108,7 @@ namespace TAC_AI
                             }
                         }
                         if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Block, out var blocs) && blocs != null)
-                        {
+                        {   // Try in the unloaded tile!?
                             for (int step = 0; step < blocs.Count; step++)
                             {
                                 var val = blocs[step];
@@ -140,7 +140,7 @@ namespace TAC_AI
                     if (storedTile?.m_StoredVisibles != null)
                     {
                         if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out var techs) && techs != null)
-                        {
+                        {   // Try in the unloaded tile!?
                             for (int step = 0; step < techs.Count; step++)
                             {
                                 var val = techs[step] as ManSaveGame.StoredTech;
@@ -153,7 +153,7 @@ namespace TAC_AI
                             }
                         }
                         if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Chunk, out var chuns) && chuns != null)
-                        {
+                        {   // Try in the unloaded tile!?
                             for (int step = 0; step < chuns.Count; step++)
                             {
                                 var val = chuns[step];
@@ -162,7 +162,7 @@ namespace TAC_AI
                             }
                         }
                         if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Block, out var blocs) && blocs != null)
-                        {
+                        {   // Try in the unloaded tile!?
                             for (int step = 0; step < blocs.Count; step++)
                             {
                                 var val = blocs[step];
@@ -275,7 +275,7 @@ namespace TAC_AI
                             if (storedTile?.m_StoredVisibles != null)
                             {
                                 if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out var techs) && techs != null)
-                                {
+                                {   // Try in the unloaded tile!?
                                     for (int step = 0; step < techs.Count; step++)
                                     {
                                         var val = techs[step] as ManSaveGame.StoredTech;
@@ -288,7 +288,7 @@ namespace TAC_AI
                                     }
                                 }
                                 if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Chunk, out var chuns) && chuns != null)
-                                {
+                                {   // Try in the unloaded tile!?
                                     if (chuns.Any())
                                     {
                                         chuns.Clear();
@@ -296,7 +296,7 @@ namespace TAC_AI
                                     }
                                 }
                                 if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Block, out var blocs) && blocs != null)
-                                {
+                                {   // Try in the unloaded tile!?
                                     if (blocs.Any())
                                     {
                                         blocs.Clear();
@@ -317,7 +317,7 @@ namespace TAC_AI
                             if (storedTile?.m_StoredVisibles != null)
                             {
                                 if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out var techs) && techs != null)
-                                {
+                                {   // Try in the unloaded tile!?
                                     for (int step = 0; step < techs.Count; step++)
                                     {
                                         var val = techs[step] as ManSaveGame.StoredTech;
@@ -330,7 +330,7 @@ namespace TAC_AI
                                     }
                                 }
                                 if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Chunk, out var chuns) && chuns != null)
-                                {
+                                {   // Try in the unloaded tile!?
                                     if (chuns.Any())
                                     {
                                         chuns.Clear();
@@ -338,7 +338,7 @@ namespace TAC_AI
                                     }
                                 }
                                 if (storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Block, out var blocs) && blocs != null)
-                                {
+                                {   // Try in the unloaded tile!?
                                     if (blocs.Any())
                                     {
                                         blocs.Clear();

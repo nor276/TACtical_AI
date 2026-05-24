@@ -36,6 +36,10 @@ namespace TAC_AI.Templates
             Disarmed = false;
             ForceCompleted = false;
         }
+        /// <summary>
+        /// WARNING OVERWRITES Purposes!!!
+        /// </summary>
+        /// <param name="tech"></param>
         public RawTechPopParams(RawTech tech)
         {
             _purposes = tech.purposes;
@@ -52,6 +56,10 @@ namespace TAC_AI.Templates
             SpawnCharged = true;
             ForceCompleted = false;
         }
+        /// <summary>
+        /// The dominant faction that composes the Tech, and what faction it should spawn under
+        /// Built at runtime, so it should be accurate
+        /// </summary>
         public FactionSubTypes Faction {
             get => _Faction;
             set
@@ -61,9 +69,16 @@ namespace TAC_AI.Templates
             } }
         private FactionSubTypes _Faction = FactionSubTypes.NULL;
         public int FactionHash { get; private set; }
+        /// <summary>
+        /// How far the player is in terms of progression.  This is weighed in against the highest FactionLevel block on the Tech.
+        /// To prevent Techs with high-level blocks from spawning in too early.
+        /// </summary>
         public FactionLevel Progression;
         public BaseTerrain Terrain;
         private HashSet<BasePurpose> _purposes;
+        /// <summary>
+        /// WARNING: DO NOT ASSIGN A HASHSET THAT IS ALREADY USED ELSEWHERE
+        /// </summary>
         public HashSet<BasePurpose> Purposes
         {
             get => _purposes;
@@ -84,6 +99,9 @@ namespace TAC_AI.Templates
             }
         }
         public RawTechOffset Offset;
+        /// <summary>
+        /// DO NOT GIVE THIS A VALUE IF Faction IS UNSET - IT WILL NOT BE RESPECTED
+        /// </summary>
         public int TargetFactionGrade;
         public int MaxPrice;
         public bool ForceAnchor

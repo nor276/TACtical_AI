@@ -9,6 +9,7 @@ namespace TAC_AI.AI.AlliedOperations
         internal const int reverseFromResourceTime = 35;
         public static void MotivateCharge(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Energizer) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = (helper.DriverType == AIDriverType.Pilot || helper.DriverType == AIDriverType.Astronaut);
 
@@ -18,6 +19,7 @@ namespace TAC_AI.AI.AlliedOperations
 
             BGeneral.ResetValues(helper, ref direct);
 
+            // No running here - this is a combat case!
 
             TechEnergy.EnergyState state = tank.EnergyRegulator.Energy(TechEnergy.EnergyType.Electric);
             if (helper.CollectedTarget)
@@ -38,9 +40,9 @@ namespace TAC_AI.AI.AlliedOperations
             }
 
             if (!helper.CollectedTarget)
-            {
+            {   // BRANCH - Not Charged: Recharge!
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
                     {  }
@@ -50,9 +52,9 @@ namespace TAC_AI.AI.AlliedOperations
                 if (!helper.foundBase)
                 {
                     hasMessaged = AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ":  Searching for nearest charger!");
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     if (helper.theBase == null)
-                        return;
+                        return; // There's no base!
                     helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
                 }
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -67,6 +69,7 @@ namespace TAC_AI.AI.AlliedOperations
                         helper.AvoidStuff = false;
                         helper.ThrottleState = AIThrottleState.ForceSpeed;
                         helper.DriveVar = -1;
+                        //helper.TryHandleObstruction(hasMessaged, dist, false, false);
                     }
                     else
                     {
@@ -113,6 +116,7 @@ namespace TAC_AI.AI.AlliedOperations
                     {
                         hasMessaged = AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ":  Arrived at base!");
                         {  }
+                        //helper.ThrottleState = AIThrottleState.Yield;
                         helper.SettleDown();
                     }
                 }
@@ -126,9 +130,9 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.foundGoal = false;
             }
             else
-            {
+            {   // BRANCH - Charged: Find a chargeable target
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Base
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
                     {  }
@@ -136,7 +140,7 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 if (!helper.foundGoal)
                 {
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     helper.foundGoal = AIECore.FetchLowestChargeAlly(tank.boundsCentreWorldNoCheck, helper, out var tmpRes);
                     helper.theResource = tmpRes;
                     hasMessaged = AIECore.AIMessage(tech: tank, ref hasMessaged, tank.name + ":  Scanning for low batteries...");
@@ -148,7 +152,7 @@ namespace TAC_AI.AI.AlliedOperations
                         helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
                     }
                     direct.DriveDest = EDriveDest.ToBase;
-                    return;
+                    return; // There's no resources left!
                 }
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
                 helper.DriveVar = 1;

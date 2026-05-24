@@ -15,52 +15,72 @@ namespace TAC_AI.AI
 
         public enum FlightType
         {
-            Aircraft,
-            Helicopter,
-            VTOL,
+            Aircraft,   // Horizontal flight
+            Helicopter, // Vertical flight
+            VTOL,       // Both Horizontal and vertical flight
         }
 
-        internal FlightType FlyStyle;
+        internal FlightType FlyStyle;             // Dictates the way the AI should fly the Tech
 
-        public override Vector3 PathPoint => PathPointSet;
-        public Vector3 PathPointSet = Vector3.zero;
-        public float DestSuccessRad
+        //Manuvering (Post-Pathfinding)
+        /// <summary>
+        /// Where we try to fly to
+        /// </summary>
+        public override Vector3 PathPoint => PathPointSet;// Aircraft-specific destination handling
+        public Vector3 PathPointSet = Vector3.zero; // Aircraft-specific destination handling
+        public float DestSuccessRad // When we have reached our airborne destination
         {
             get { try { return Helper.AutoSpacing; } catch { return 10; } }
         }
 
-        public float AdvisedThrottle = 0;
-        public float MainThrottle = 0;
-        public float CurrentThrottle = 0;
+        // Forward for aircraft, Upwards for helicopters
+        public float AdvisedThrottle = 0;               // Throttle to use when chasing or cruising
+        public float MainThrottle = 0;                  // Ideal Throttle to chase after
+        public float CurrentThrottle = 0;               // Throttle the craft knows it's going at
 
-        public BlockManager.BlockIterator<ModuleBooster> Engines => Tank.blockman.IterateBlockComponents<ModuleBooster>();
-        public BlockManager.BlockIterator<ModuleAirBrake> Brakes => Tank.blockman.IterateBlockComponents<ModuleAirBrake>();
-        public BlockManager.BlockIterator<ModuleWing> Wings => Tank.blockman.IterateBlockComponents<ModuleWing>();
-        public bool NoProps = false;
-        public bool SkewedFlightCenter = false;
+        // Systems Check
+        public BlockManager.BlockIterator<ModuleBooster> Engines => Tank.blockman.IterateBlockComponents<ModuleBooster>();     // keep track of aircraft propultion
+        public BlockManager.BlockIterator<ModuleAirBrake> Brakes => Tank.blockman.IterateBlockComponents<ModuleAirBrake>();     // keep tracck of airbrakes
+        public BlockManager.BlockIterator<ModuleWing> Wings => Tank.blockman.IterateBlockComponents<ModuleWing>();          // keep track of the wings
+        public bool NoProps = false;            // Do we have to rely on fuel only?
+        public bool SkewedFlightCenter = false; // Are we going to struggle when turning?
 
+        //Tech Flight Data Gathering
         public float lastDataGatherTime = 0;
-        public Vector3 PropBias = Vector3.zero;
+        public Vector3 PropBias = Vector3.zero; // Center of thrust (RAW) of all forwards props
         public float FwdThrust = 0;
         public float UpThrust = 0;
-        public Vector3 BoostBias = Vector3.zero;
+        public Vector3 BoostBias = Vector3.zero;// Center of thrust of all boosters, center of boost
         public float BoosterThrust = 0;
+        /// <summary>
+        /// Thrust to Weight Ratio - Minimum % max thrust needed to overcome mass
+        /// </summary>
         public float UpTtWRatio = 0;
 
-        public float SlowestPropLerpSpeed = 1;
-        public float PropLerpValue = 10;
-        public float AerofoilSluggishness = 1;
-        public float RollStrength = 1;
+        /// <summary>
+        /// The lower this is, the slower it is
+        /// </summary>
+        public float SlowestPropLerpSpeed = 1;  // Slow action demand based on propeller responsiveness
+        /// <summary>
+        /// Increases as SlowestPropLerpSpeed decreases
+        /// </summary>
+        public float PropLerpValue = 10;        // aux value used for some engine calculations
+        public float AerofoilSluggishness = 1;  // Slow action demand based on aerofoil responsiveness
+        public float RollStrength = 1;          // How far to roll 90 degrees
+        /// <summary>
+        /// The higher the values, the less stiff the controls will be
+        /// </summary>
         public Vector3 FlyingChillFactor = Vector3.one * 30;
 
-        public int ErrorsInTakeoff = 0;
-        public int ErrorsInUTurn = 0;
-        public bool LargeAircraft = false;
-        public bool ForcePitchUp = false;
-        public bool TakeOff = false;
-        public bool Grounded = false;
-        public bool TargetGrounded = false;
-        public bool LowerEngines = false;
+        //Error-Checking
+        public int ErrorsInTakeoff = 0;         // If this gets too high, then this tech isn't meant to fly
+        public int ErrorsInUTurn = 0;           // If this gets too high, then this tech isn't meant to Immelmann
+        public bool LargeAircraft = false;      // Restrict turning to 45 and no U-Turns
+        public bool ForcePitchUp = false;       // Emergency nose up
+        public bool TakeOff = false;            // taking off from ground
+        public bool Grounded = false;           // aircraft deemed too damaged to fly
+        public bool TargetGrounded = false;     // Are we dealing with a target that is on the ground?
+        public bool LowerEngines = false;       // Choppers: Too high! Too high!  Airplanes: Conserve booster fuel
 
         protected override void OnPreInitiate()
         {
@@ -120,6 +140,7 @@ namespace TAC_AI.AI
 
             foreach (ModuleBooster module in Engines)
             {
+                //Get the slowest spooling one
                 foreach (FanJet jet in module.transform.GetComponentsInChildren<FanJet>(true))
                 {
                     float thrust = (float)RawTechBase.thrustRate.GetValue(jet);
@@ -141,15 +162,16 @@ namespace TAC_AI.AI
                 }
                 foreach (BoosterJet boost in module.transform.GetComponentsInChildren<BoosterJet>(true))
                 {
-                    Vector3 localFwd = -boost.LocalThrustDirection;
+                    Vector3 localFwd = -boost.LocalThrustDirection; // Booster force vector is negative
                     float force = (float)boostGet.GetValue(boost);
                     if (boost.ConsumesFuel)
                     {
                         consumeBoosters++;
                         guzzleLevel += boost.BurnRate;
 
-                        if (localFwd.z > 0)
+                        if (localFwd.z > 0) // Booster force vector is negative
                             boosterThrust += Mathf.Max(localFwd.z * force, 0);
+                        //We have to get the total thrust in here accounted for as well because the only way we CAN boost is ALL boosters firing!
                         boostBiasDirection += localFwd * force;
                     }
                     else
@@ -164,6 +186,7 @@ namespace TAC_AI.AI
                 }
             }
 
+            // this assumes IDEAL, which isn't always the case.  We have to compensate later on!
             float GravityForce = Tank.rbody.mass * Tank.GetGravityScale() * TankAIManager.GravMagnitude;
             UpTtWRatio = UpThrust / GravityForce;
 
@@ -171,7 +194,7 @@ namespace TAC_AI.AI
             {
                 NoProps = true;
                 if (boostBiasDirection == Vector3.zero)
-                {
+                {   //IT HAS NO VALID PROPS OR BOOSTERS!!!!
                     if (firstCheck)
                         DebugTAC_AI.LogAISetup(KickStart.ModID + ": Tech " + Tank.name + " DOES NOT HAVE ANY PROPS OR BOOSTERS TO FLY USING!!");
                 }
@@ -185,7 +208,7 @@ namespace TAC_AI.AI
             if (firstCheck)
                 DebugTAC_AI.LogAISetup(KickStart.ModID + ": Tech " + Tank.name + " PropBias " + PropBias + ", BoostBias " + BoostBias);
             if (Mathf.Abs(Vector3.Dot(PropBias, Vector3.right)) > 0.2f)
-            {
+            {   //CENTER OF THRUST MAY BE OFF!!!
                 SkewedFlightCenter = true;
                 if (firstCheck)
                     DebugTAC_AI.LogAISetup(KickStart.ModID + ": Tech " + Tank.name + " reported to have off-centered thrust of a factor of " + Mathf.Abs(Vector3.Dot(biasDirection.normalized, Vector3.right)) + ".  \nAs all props don't have uniform thrust backwards and forwards (in relation to the root cab), the AI may not be able to fly correctly!!!");
@@ -195,11 +218,15 @@ namespace TAC_AI.AI
             SlowestPropLerpSpeed = lowestDelta;
             PropLerpValue = AIGlobals.PropLerpStrictness / SlowestPropLerpSpeed;
         }
+        /// <summary>
+        /// MUST come AFTER CheckEngines()!
+        /// </summary>
         private void CheckWings()
         {
             float aerofoilSpeed = 100;
             foreach (ModuleWing module in Wings)
             {
+                //Get teh slowest spooling one
                 foreach (ModuleWing.Aerofoil foil in module.m_Aerofoils)
                 {
                     if (foil.flapTurnSpeed > 0.01f)
@@ -225,18 +252,19 @@ namespace TAC_AI.AI
             AerofoilSluggishness = AIGlobals.AerofoilSluggishnessBaseValue / aerofoilSpeed;
             if (FlyStyle == FlightType.Helicopter)
             {
+                //FlyingChillFactor is calculated and set in HelicopterAICore.Initiate()
             }
             else
             {
                 if (LargeAircraft)
                 {
                     FlyingChillFactor = Vector3.one * AerofoilSluggishness * AIGlobals.LargeAircraftChillFactorMulti;
-                    FlyingChillFactor.y = 5;
+                    FlyingChillFactor.y = 5;    // need accuraccy for large aircraft bombing runs
                 }
                 else
                 {
                     FlyingChillFactor = Vector3.one * AerofoilSluggishness * AIGlobals.AircraftChillFactorMulti;
-                    FlyingChillFactor.y = 0.75f;
+                    FlyingChillFactor.y = 0.75f;  // Yaw isn't normally too strong on aircraft so we give it a boost.
                 }
             }
 
@@ -244,10 +272,12 @@ namespace TAC_AI.AI
         }
         private void CheckAllFlightBlocks()
         {
+            // SETUP
             CheckEngines(true);
             CheckWings();
         }
 
+        //Navigation Director - set airborne positions for the plane to fly to based on lastDestination
         public override void DriveDirector(ref EControlCoreSet core)
         {
             TankAIHelper helper = Helper;
@@ -265,18 +295,19 @@ namespace TAC_AI.AI
             {
                 this.ForcePitchUp = false;
                 if (this.Grounded)
-                {
+                {   //Become a ground vehicle for now
                     if (!AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents * 2))
                     {
                         return;
                     }
+                    //Try fighting the controls to land safely
                     return;
                 }
                 if (!this.TargetGrounded)
                     PathPointSet = AIEPathing.OffsetFromGroundA(helper.lastDestinationCore, helper);
                 this.AICore.DriveDirector(ref core);
             }
-            else if (helper.AIAlign == AIAlignment.NonPlayer)
+            else if (helper.AIAlign == AIAlignment.NonPlayer) //enemy
             {
                 if (!this.TargetGrounded)
                     PathPointSet = AIEPathing.OffsetFromGroundA(helper.lastDestinationCore, helper);
@@ -302,25 +333,28 @@ namespace TAC_AI.AI
             {
                 this.ForcePitchUp = false;
                 if (this.Grounded)
-                {
+                {   //Become a ground vehicle for now
                     if (!AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents * 2))
                     {
                         return;
                     }
+                    //Try fighting the controls to land safely
                     return;
                 }
                 core.lastDestination = AIEPathing.OffsetFromGroundA(helper.RTSDestination, helper);
                 this.AICore.DriveDirectorRTS(ref core);
             }
-            else if (helper.AIAlign == AIAlignment.NonPlayer)
+            else if (helper.AIAlign == AIAlignment.NonPlayer) //enemy
             {
                 this.AICore.DriveDirectorEnemyRTS(EnemyMind, ref core);
             }
             return;
         }
 
+        //Flight Maintainer - handle the flight between airborne positions
         public override void DriveMaintainer(ref EControlCoreSet core)
         {
+            //Universal handler
             TankAIHelper helper = this.Helper;
             Tank tank = this.Tank;
 
@@ -351,6 +385,14 @@ namespace TAC_AI.AI
             return Helper.lastDestinationCore;
         }
 
+        // Action Updaters
+        /// <summary>
+        /// Returns true if the craft is likely never going to recover
+        /// </summary>
+        /// <param name="thisControl"></param>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
+        /// <param name="pilot"></param>
         private bool TestForMayday(TankAIHelper helper, Tank tank)
         {
             if (helper.PendingDamageCheck)
@@ -416,7 +458,7 @@ namespace TAC_AI.AI
                     else
                         boostJets = helper.FullBoost;
                 }
-                else
+                else // VTOL
                 {
                     if (MainThrottle > 0.1f && Helper.LocalSafeVelocity.z < AIGlobals.AirStallSpeed + 5 && !Tank.beam.IsActive)
                         boostJets = true;
@@ -426,6 +468,7 @@ namespace TAC_AI.AI
                         boostJets = helper.FullBoost;
                 }
 
+                // Still try to move wheels and other things
                 if (CurrentThrottle + (SlowestPropLerpSpeed * Time.deltaTime) < MainThrottle)
                 {
                     CurrentThrottle += SlowestPropLerpSpeed * Time.deltaTime;
@@ -435,7 +478,7 @@ namespace TAC_AI.AI
                     CurrentThrottle -= SlowestPropLerpSpeed * Time.deltaTime;
                 }
                 else
-                {
+                {   //Snap
                     CurrentThrottle = MainThrottle;
                 }
             }
@@ -450,11 +493,11 @@ namespace TAC_AI.AI
                     CurrentThrottle -= SlowestPropLerpSpeed * Time.deltaTime;
                 }
                 else
-                {
+                {   //Snap
                     CurrentThrottle = MainThrottle;
                 }
                 if (FlyStyle == FlightType.Aircraft)
-                {
+                {   // Some aircraft stall when pitching up - this should help avoid that
                     if (CurrentThrottle > 1f)
                     {
                         boostProps = true;

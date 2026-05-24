@@ -11,7 +11,7 @@ namespace TAC_AI.Templates
     }
     public enum BaseTypeLevel
     {
-        Basic,
+        Basic,      //basic base
         Advanced,
         Headquarters,
         Overkill,
@@ -21,28 +21,29 @@ namespace TAC_AI.Templates
     {
         Any,
         AnyNonSea,
-        Land,
-        Sea,
-        Air,
-        Chopper,
-        Space
+        Land,   // is anchored
+        Sea,    // floats on water
+        Air,    // doubles as airplane
+        Chopper,// relies on props to stay airborne
+        Space   // mobile base that flies beyond
     }
     public enum BasePurpose
     {
-        AnyNonHQ,
-        HarvestingNoHQ,
-        Defense,
-        Harvesting,
-        Autominer,
-        TechProduction,
-        Headquarters,
-        MPUnsafe,
-        HasReceivers,
-        NotStationary,
-        AttractTech,
-        NoWeapons,
-        Fallback,
-        Sniper,
-        NANI,
+        AnyNonHQ,       // Any base that's not an HQ
+        HarvestingNoHQ, // Any harvesting base that's not an HQ
+        Defense,        // Strictly defensive base element
+        Harvesting,     // Has Delivery cannons
+        Autominer,      // Can mine unlimited BB (DO NOT ATTACH THIS TAG TO HQs!!!)
+        TechProduction, // Base with Explosive Bolts attached
+                        //   As of Update 1.8.3, this is now considered a Garrison
+        Headquarters,   // Calls in techs from orbit using funds
+        MPUnsafe,       // MP blocked crafting blocks
+        HasReceivers,   // Has receivers
+        NotStationary,  // Mobile Tech
+        AttractTech,    // Reserved for Attract (or an endgame spawn)
+        NoWeapons,      // unarmed
+        Fallback,       // run out of other options
+        Sniper,          // Lock to harder difficulties
+        NANI,           // Incomprehensibly powerful Tech spawn
     }
 }

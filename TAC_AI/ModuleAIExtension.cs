@@ -14,6 +14,7 @@ namespace TAC_AI
     {
         public AIDriverType PreferedDriver = AIDriverType.AutoSet;
 
+        // Set by saves ingame
         [SSaveField]
         public AIDriverType SavedAIDriver;
         [SSaveField]
@@ -36,6 +37,64 @@ namespace TAC_AI
         public float lastSetRangeMin = 5000;
         [SSaveField]
         public float lastSetRangeMax = 5000;
+        /*
+        // What can this new AI do?
+        //   PRETTY MUCH ALL OF THE BELOW - except the ones with '>' by them for now.
+        // COMBAT
+        Escort,     // Good ol' player defender                     (Classic player defense numbnut)
+        Assault,    // Run off and attack the enemies on your radar (Runs off (beyond radar range!) to attack enemies)
+        Aegis,      // Protects the nearest non-player allied Tech  (Follows nearest ally, will chase enemy some distance)
+
+        // RESOURCES
+        Prospector, // Harvest Chunks and return them to base       (Returns chunks when full to nearest receiver)
+        Scrapper,   // Grab loose blocks but avoid combat           (Return to nearest base when threatened)
+        Energizer,  // Charges up and/or heals other techs          (Return to nearest base when out of power)
+
+        // MULTECH  // Enabled for all                              (MultiTech) - BuildBeam disabled, will fire at any angle.
+        MTTurret,   // Only turns to aim at enemy                     Also will follow nearest tech that's Build Beaming
+        MTSlave,    // Does not move on own but does shoot back
+        MTMimic,    // Copies the actions of the closest non-MT Tech in relation
+
+        // ADVANCED    (REQUIRES TOUGHER ENEMIES TO USE!)           (can't just do the same without the enemies attacking these ways as well...)
+        Aviator,    // Flies aircraft, death from above, nuff said  (Flies above ground, by the player and keeps distance) [unload distance will break!]
+        Buccaneer,  // Sails ships amongst ye seas~                 (Avoids terrain above water level)
+        Astrotech,  // Flies hoverships and kicks Tech              (Follows player a certain distance above ground level and can follow into the sky)
+
+        //The actual module to add
+        "TAC_AI.ModuleAIExtension":{ // Add a special AI type to your AI Module
+            // Set the ones you want your AI to support to true
+            // -----COMBAT-----
+            // - Escort is enabled by default since you have to corral your minions somehow
+            "Assault": false,
+            "Aegis": false,
+
+            // -----RESOURCES-----
+            "Prospector": false,
+            "Scrapper": false,
+            "Energizer": false,
+
+            // ----TOUGHER ENEMIES----
+            "Aviator": false,
+            "Buccaneer": false,
+            "Astrotech": false,
+
+            // ----EXTRAS----
+            "AutoAnchor": false,    // Should the AI anchor and un-anchor automatically?
+            "MeleePreferred": false,// Should the AI ram the enemy?
+            "SidePreferred": false, // Should the AI orbit the enemy? (Partially overrides melee)
+            "AdvAvoidence": false,  // Should the AI avoid two allied techs at once?
+            "AdvancedAI": false,    // Should the AI take combat calculations and retreat if nesseary? (N/A atm)
+            "MTForAll": false,      // Should the AI listen to other Tech MT commands?
+            "AidAI": false,         // Should the AI be willing to sacrifice themselves for their owner's safety? - (N/A)
+            "SelfRepairAI": false,  // Can the AI self-repair?
+            "InventoryUser" = false;// Can the AI use the player Inventory?
+            "Builder" = false;      // Can the AI build new Techs?
+            "AnimeAI": false,       // Work with the AnimeAI mod and display a character for this AI? (And also allow interaction with other characters?)
+
+            "MinCombatRange": 50,   // Min range the AI will keep from an enemy
+            "MaxCombatRange": 100,  // Max range the AI will travel from it's priority defence target (or x2 assassin provoke radius from home)
+        }
+        */
         [SSaveField]
         public float lastObjectiveRange = AIGlobals.DefaultMaxObjectiveRange;
         [SSaveField]
@@ -44,32 +103,48 @@ namespace TAC_AI
         public string SavedTechBlueprint = null;
 
 
+        // Set the ones you want your AI to support to true
+        //   note to self - make these flags because it's taking more RAM than it should
+        // -----COMBAT-----
+        // - Escort is enabled by default since you have to corral your minions somehow
         public bool Assault = false;
         public bool Aegis = false;
 
+        // -----RESOURCES-----
         public bool Prospector = false;
         public bool Scrapper = false;
         public bool Energizer = false;
 
+        // ----TOUGHER ENEMIES----
         public bool Aviator = false;
         public bool Buccaneer = false;
         public bool Astrotech = false;
 
-        public bool AutoAnchor = false;
-        public bool MeleePreferred = false;
-        public bool SidePreferred = false;
-        public bool AdvancedAI = false;
-        public bool AdvAvoidence = false;
-        public bool MTForAll = false;
-        public bool AidAI = false;
-        public bool SelfRepairAI = false;
-        public bool InventoryUser = false;
-        public bool Builder = false;
+        // ----EXTRAS----
+        public bool AutoAnchor = false;     // Should the AI handle anchors automatically?
+        public bool MeleePreferred = false; // Should the AI ram the enemy?
+        public bool SidePreferred = false;  // Should the AI orbit the enemy?
+        public bool AdvancedAI = false;     // Should the AI take combat calculations and retreat if nesseary?
+        public bool AdvAvoidence = false;   // Should the AI avoid two allied techs at once?
+        public bool MTForAll = false;       // Should the AI listen to non-player Tech MT commands?
+        public bool AidAI = false;          // Should the AI be willing to sacrifice themselves for their owner's (or asset's) safety?
+        public bool SelfRepairAI = false;   // Can the AI self-repair?
+        public bool InventoryUser = false;  // Can the AI use the player Inventory?
+        public bool Builder = false;        // Can the AI build new Techs?
 
+        /// <summary>
+        /// Range to chase enemy
+        /// </summary>
         public float MaxCombatRange = 100;
+        /// <summary>
+        /// Minimum range to enemy
+        /// </summary>
         public float MinCombatRange = 50;
         public float MaxObjectiveRange = AIGlobals.DefaultMaxObjectiveRange;
 
+        /// <summary>
+        /// Changed from OnFirstAttach
+        /// </summary>
         protected override void Pool()
         {
             if (block.IsAttached)
@@ -253,7 +328,7 @@ namespace TAC_AI
                         break;
                     case BlockTypes.BF_AIModule_Guard_212:
                         Astrotech = true;
-                        SelfRepairAI = true;
+                        SelfRepairAI = true; // EXTREMELY POWERFUL
                         InventoryUser = true;
                         AdvAvoidence = true;
                         MinCombatRange = 60;
@@ -289,6 +364,7 @@ namespace TAC_AI
         }
 
         [Serializable]
+        // Now obsolete
         public class SerialData : Module.SerialData<SerialData>
         {
             public AIType savedMode;
@@ -357,9 +433,9 @@ namespace TAC_AI
             try
             {
                 if (saving)
-                {
+                {   //Save to snap
                     if (KickStart.EnableBetterAI && !Singleton.Manager<ManScreenshot>.inst.TakingSnapshot)
-                    {
+                    {   //Allow resaving of Techs but not saving this to snapshot to prevent bugs
                         var Helper = block.tank.GetHelperInsured();
                         SavedAIDriver = Helper.DriverType;
                         SavedAI = Helper.DediAI;
@@ -414,7 +490,7 @@ namespace TAC_AI
                     }
                 }
                 else
-                {
+                {   //Load from save
                     try
                     {
                         if (!LoadToTech())
@@ -506,7 +582,7 @@ namespace TAC_AI
                     catch { }
                 }
             }
-            catch { }
+            catch { } // MP caused error - cannot resolve
         }
 
         internal void OnSerializeSnapshot(bool saving, TankPreset.BlockSpec blockSpec, bool tankPresent)

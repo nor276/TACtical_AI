@@ -28,8 +28,12 @@ namespace TAC_AI
             return false;
         }
     }
+    /// <summary>
+    /// Stores all global information for this mod. Edit at your own risk.
+    /// </summary>
     public class AIGlobals
     {
+        // Note improve AI navigation around water - they keep driving into the water and get stuck
         public static bool IsNotAttract => ManGameMode.inst.GetCurrentGameType() != ManGameMode.GameType.Attract;
 
         private static FieldInfo getCamTank = typeof(TankCamera).GetField("m_hideHud", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -138,6 +142,13 @@ namespace TAC_AI
         public static bool PlayerIsOnLowQualitySettings => ManProfile.inst.GetCurrentUser().m_GraphicsSettings.m_QualityLevel <= 1;
 
 
+        // AIERepair contains the self-repair stats
+        // EnemyWorldManager contains the unloaded enemy stats
+
+        //-------------------------------------
+        //              CONSTANTS
+        //-------------------------------------
+        // SPAWNING
         public const int SmolTechBlockThreshold = 24;
         public const int DefenderWeaponCount = 12;
         public const int HomingWeaponCount = 25;
@@ -146,6 +157,7 @@ namespace TAC_AI
         public const int MaxEradicatorTechs = 2;
         public const int MaxBlockLimitAttract = 128;
 
+        // BASES
         public static bool CancelOnErrorTech = true;
         public const short BaseAnchorMinimumTimeDelay = 20;
         public const int NaturalBaseSpacingFromOriginTiles = 2;
@@ -155,14 +167,15 @@ namespace TAC_AI
         public const float NaturalBaseDifficultyScalingWithCoordDist = 0.135f;
         public const float NaturalBaseFactionDifficultyScalingWithCoordDist = 0.2f;
 
+        // GENERAL AI PARAMETERS
         public const float DefaultMaxObjectiveRange = 750;
-        public const float TargetVelocityLeadPredictionMulti = 0.01f;
+        public const float TargetVelocityLeadPredictionMulti = 0.01f; // for projectiles of speed 100
         public const float LeadPredictionMaxTOF = 3f;
         public const float StationaryMoveDampening = 6;
         public const int TeamRangeStart = 256;
         public const short NetAIClockPeriod = 30;
 
-        public const float TargetCacheRefreshInterval = 1.5f;
+        public const float TargetCacheRefreshInterval = 1.5f;  // Seconds until we try to gather enemy Techs within range
         public const float TargetCacheRefreshIntervalCombat = 0.4f;
 
         internal static GUIButtonMadness ModularMenu;
@@ -251,6 +264,7 @@ namespace TAC_AI
         }
 
         public static IntVector3 RTSDisabled => IntVector3.invalid;
+        // General
         public const int LonerEnemyTeam = ManSpawn.NewEnemyTeam;
         public const int DefaultEnemyTeam = ManSpawn.FirstEnemyTeam;
         public const float YieldSpeed = 10;
@@ -259,6 +273,7 @@ namespace TAC_AI
         public const float defaultExpandRad = 24f;
         public const float defaultExpandRadRange = 192f;
 
+        // Elevation
         public const float GroundOffsetGeneralAir = 10;
         public const float GroundOffsetRTSAir = 24;
         public const float GroundOffsetAircraft = 22;
@@ -266,16 +281,19 @@ namespace TAC_AI
         public const float GroundOffsetChopperExtra = 5f;
         public const float GroundOffsetCrashWarnChopperDelta = -2.5f;
 
-        public const float SafeAnchorDist = 50f;
+        // Anchors
+        public const float SafeAnchorDist = 50f;     // enemy too close to anchor
+        /// <summary> How much do we dampen anchor movements by? </summary>
         public const int AnchorAimDampening = 45;
-        public const short MaxAnchorAttempts = 3;
+        public const short MaxAnchorAttempts = 3;//12;
 
+        // Unjamming
         public const int UnjamUpdateFire = 25;
         public const int UnjamUpdateStart = 120;
         public const int UnjamUpdateTicks = 120;
         public const int UnjamUpdateEndDelay = 20;
 
-        public const int UrgencyOverloadReconsideration = 180;
+        public const int UrgencyOverloadReconsideration = 180;//80
         public const int UnjamUpdateDrop = UnjamUpdateStart + UnjamUpdateTicks;
         public const int UnjamUpdateEnd = UnjamUpdateDrop + UnjamUpdateEndDelay;
         public const float AngularProgressThreshold = 0.5f;
@@ -284,18 +302,19 @@ namespace TAC_AI
 
         public const float EnemyInitGrace = 1.0f;
 
+        // Pathfinding
         internal static Bitfield<ObjectTypes> emptyBitMask = new Bitfield<ObjectTypes>();
         internal static Bitfield<ObjectTypes> blockBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[1] { ObjectTypes.Block });
         internal static Bitfield<ObjectTypes> techBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[1] { ObjectTypes.Vehicle });
         internal static Bitfield<ObjectTypes> sceneryBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[1] { ObjectTypes.Scenery });
         internal static Bitfield<ObjectTypes> crashBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[2] { ObjectTypes.Scenery, ObjectTypes.Vehicle });
 
-        public const float AIPathingSuccessRad = 2.4f;
-        public const float AIPathingSuccessRadPrecise = 1.2f;
+        public const float AIPathingSuccessRad = 2.4f; // How far should the tech radius from the path point to consider finishing the path point?
+        public const float AIPathingSuccessRadPrecise = 1.2f; // How far should the tech radius from the path point to consider finishing the path point?
 
-        public const int PathfindingExtraSpace = 6;
-        public const float DefaultDodgeStrengthMultiplier = 1.75f;
-        public const float AirborneDodgeStrengthMultiplier = 0.4f;
+        public const int PathfindingExtraSpace = 6;  // Extra pathfinding space
+        public const float DefaultDodgeStrengthMultiplier = 1.75f;  // The motivation in trying to move away from a tech in the way
+        public const float AirborneDodgeStrengthMultiplier = 0.4f;  // The motivation in trying to move away from a tech in the way
         public const float FindItemScanRangeExtension = 50;
         public const float FindBaseScanRangeExtension = 500;
         public const int ReverseDelay = 500;
@@ -303,11 +322,14 @@ namespace TAC_AI
         public const float BeamFlipTippedHoldSecs = 1.5f;
         public const float PlayerAISpeedPanicDividend = 8;
         public const float EnemyAISpeedPanicDividend = 9;
+        /// <summary>Depth that land Techs are able to drive into</summary>
         public const float WaterDepthTechHeightPercent = 0.35f;
 
-        public const float PropLerpStrictness = 10f;
+        // Control the aircrafts and AI
+        public const float PropLerpStrictness = 10f;// 10
         public const int MaxTakeoffFailiures = 240;
         public const float BoosterThrustBias = 0.5f;
+        /// <summary> TtWR = Thrust to Weight Ratio </summary>
         public const float ImmelmanTtWRThreshold = 1.5f;
         public static float ChopperDownAntiBounce = 0.5f;
         public static float ChopperThrottleDamper = 1.25f;
@@ -315,16 +337,16 @@ namespace TAC_AI
         public const float AircraftDestSuccessRadius = 32;
         public const float AerofoilSluggishnessBaseValue = 30;
         public const float AircraftMaxDive = 0.75f;
-        public const float AircraftChillFactorMulti = 4.5f;
-        public const float LargeAircraftChillFactorMulti = 1.25f;
+        public const float AircraftChillFactorMulti = 4.5f;         // More accuraccy, less responsiveness
+        public const float LargeAircraftChillFactorMulti = 1.25f;   // More responsiveness, less accuraccy
 
-        public const float AirNPTDespawnHeightOffset = 250f;
-        public const float AirNPTMaxHeightOffset = 150f;
-        public const float AirWanderMaxHeightIngame = 100f;
-        public static float AirWanderMaxHeight => IsNotAttract ? AirWanderMaxHeightIngame : AirNPTMaxHeightOffset;
-        public const float AirPromoteSpaceHeight = 150;
-        public const float AirMaxYaw = 0.45f;
-        public const float AirMaxYawBankOnly = 0.75f;
+        public const float AirNPTDespawnHeightOffset = 250f; // Beyond this height from the player the AI will be despawned
+        public const float AirNPTMaxHeightOffset = 150f;     // How high the AI is allowed to go while in the Attract mode
+        public const float AirWanderMaxHeightIngame = 100f;//75;// How high the AI is allowed to go while wandering randomly above the player
+        public static float AirWanderMaxHeight => IsNotAttract ? AirWanderMaxHeightIngame : AirNPTMaxHeightOffset;         // How far the AI is allowed to go while wandering randomly above the player
+        public const float AirPromoteSpaceHeight = 150;     // The height the player, beyond passing, will encounter more spacecraft
+        public const float AirMaxYaw = 0.45f;//0.2f; // 0 - 1 (float)
+        public const float AirMaxYawBankOnly = 0.75f; // 0 - 1 (float)
 
         public const float ChopperYChillFactorMulti = 0.2f;
         public const float ChopperXZChillFactorMulti = 2.5f;
@@ -338,34 +360,40 @@ namespace TAC_AI
         public const float HovershipUpDriveMulti = 1f;
         public const float HovershipDownDriveMulti = 0.6f;
 
-        public const int LargeAircraftSize = 15;
-        public const float AirStallSpeed = 42;
+        public const int LargeAircraftSize = 15;            // The size of which we count an aircraft as large
+        /// <summary> IN m/s !!!</summary>
+        public const float AirStallSpeed = 42;//25          // The speed of which most wings begin to stall at
         public const float GroundAttackStagingDistMain = 275;
-        public static float GroundAttackStagingDist => IsNotAttract ? 120 : GroundAttackStagingDistMain;
+        public static float GroundAttackStagingDist => IsNotAttract ? 120 : GroundAttackStagingDistMain;   // Distance to fly (in meters!) before turning back
         public const float TechSplitDelay = 0.5f;
 
-        public const float MinimumCloseInSpeedSqr = 2.56f;
-        public const float BlockAttachDelay = 0.75f;
-        public const float MaxBlockGrabRange = 47.5f;
-        public const float MaxBlockGrabRangeAlt = 5;
-        public const float ItemGrabStrength = 1750;
-        public const float ItemThrowVelo = 115;
-        public const float AircraftHailMaryRange = 65f;
+        // Item Handling
+        public const float MinimumCloseInSpeedSqr = 2.56f;      // If we are closing in on our target slower than this (with wrong heading), we drive slowly
+        public const float BlockAttachDelay = 0.75f;        // How long until we actually attach the block when playing the placement animation
+        public const float MaxBlockGrabRange = 47.5f;       // Less than player range to compensate for precision
+        public const float MaxBlockGrabRangeAlt = 5;        // Lowered range to allow scrap magnets to have a chance
+        public const float ItemGrabStrength = 1750;         // The max acceleration to apply when holding an item
+        public const float ItemThrowVelo = 115;             // The max velocity to apply when throwing an item
+        public const float AircraftHailMaryRange = 65f;     // Try throw things this far away for aircraft
+        //  because we don't want to burn daylight trying to land and takeoff again
 
+        // Charger Parameters
         public const float minimumChargeFractionToConsider = 0.75f;
 
-        public const float TargetValidationDelay = 0.6f;
+        // Combat Parameters
+        public const float TargetValidationDelay = 0.6f;//1.5f;
         public const int DefaultMaxTargetingRange = 1500;
 
-        public const int ProvokeTime = 200;
+        // Combat target switching
+        public const int ProvokeTime = 200;         // Roughly around 200/40 = 5 seconds
         public const int ProvokeTimeShort = 80;
         public const float LOSLostGraceTime = 3.0f;
-        public const int DamageAlertThreshold = 45;
+        public const int DamageAlertThreshold = 45;// Above this damage we react to the threat
         public const float DamageAlertCumulativeThreshold = 60f;
         public const float DamageAlertDecayWindowSeconds = 3.0f;
         public const float DamageAlertDecayPerSec = DamageAlertCumulativeThreshold / DamageAlertDecayWindowSeconds;
-        public const float ScanDelay = 0.5f;
-        public const float PestererSwitchDelay = 12.5f;
+        public const float ScanDelay = 0.5f;        // Seconds until we try to find a appropreate target
+        public const float PestererSwitchDelay = 12.5f; // Seconds before Pesterers find a new random target
 
         public const float CombatRangeRetentionMult = 1.5f;
         public const float CombatRangeRetentionMultSqr = CombatRangeRetentionMult * CombatRangeRetentionMult;
@@ -373,20 +401,24 @@ namespace TAC_AI
         public const float RTSLockMaxRangeMultiplier = 2.5f;
         public const float RTSLockMaxRangeMultiplierSqr = RTSLockMaxRangeMultiplier * RTSLockMaxRangeMultiplier;
 
+        // ENEMY AI PARAMETERS
+        // Active Enemy AI Techs
         public const float EnemyTeamAwarenessUpdateDelay = 6;
-        public const float DamageAngerDropRelations = 2500;
+        public const float DamageAngerDropRelations = 2500;//2500
         public const float DamageAngerCoolRatePerSec = 25;
         public const int DefaultEnemyScanRange = 150;
         public const int TileFringeDist = 96;
         public const float BatteryRetreatPercent = 0.25f;
 
+        // Attack Detection/Chase ranges
         public const int DefaultEnemyMaxCombatRange = 150;
         public const int PassiveMaxCombatRange = 75;
-        public const int BaseFounderMaxCombatRange = 60;
-        public const int BossMaxCombatRange = 250;
-        public const int InvaderMaxCombatRange = 250;
-        public const float SpyperMaxCombatRange = 175;
+        public const int BaseFounderMaxCombatRange = 60;     //
+        public const int BossMaxCombatRange = 250;        //
+        public const int InvaderMaxCombatRange = 250;        //
+        public const float SpyperMaxCombatRange = 175;    //
 
+        // Combat Minimum Spacing Ranges
         public const float MinCombatRangeDefault = 12;
         public const float MinCombatRangeSpyper = 60;
         public const float SpacingRangeSpyperAir = 72;
@@ -396,19 +428,20 @@ namespace TAC_AI
         public const float BomberDropZoneTolerance = 8;
         public const float GCRamSpacer = -32f;
 
+        // Non-Player Base Checks
         public static bool StartingBasesAreAirdropped = false;
         public static float EnemyBaseMakerChance = 25;
         public const float StartBaseMinSpacing = 450;
         public static bool AllowInfAutominers = true;
         public static bool NoBuildWhileInCombat = true;
-        public const int MinimumBBToTryExpand = 10000;
+        public const int MinimumBBToTryExpand = 10000; // Before expanding
         public const int MinimumBBToTryBribe = 100000;
         public const float BribeMulti = 1.5f;
         public const int BaseExpandChance = 65;
         public const int MinResourcesReqToCollect = 12;
         public const int EnemyBaseMiningMaxRange = 250;
         public const int EnemyExtendActionRangeShort = 500;
-        public const int EnemyExtendActionRange = EnemyExtendActionRangeShort + 32;
+        public const int EnemyExtendActionRange = EnemyExtendActionRangeShort + 32; //the extra 32 to account for tech sizes
         public const float EnemyKeepAwakeRange = 700f;
 
         public const float MinDiveAGL = 60f;
@@ -424,20 +457,27 @@ namespace TAC_AI
         public const int MPEachBaseProfits = 250;
         public const float RaidCooldownTimeSecs = 1200;
         public const int IgnoreBaseCullingTilesFromOrigin = 8388607;
+        /// <summary>
+        /// SaveLoadDelay
+        /// </summary>
         public const float SLDBeforeBuilding = 90;
         public const float DelayBetweenBuilding = 30;
 
         public const float MaximumNeutralMonitorSqr = 175f * 175f;
 
+        // Colors
         internal static Color PlayerColor => AltUI.ColorDefaultPlayer;
         internal static Color PlayerAutoColor = new Color(0.35f, 0.85f, 0.475f, 1);
+        // ENEMY BASE TEAMS
         internal static Color EnemyColor => AltUI.ColorDefaultEnemy;
 
         internal static Color NeutralColor => AltUI.ColorDefaultNeutral;
         internal static Color SubNeutralColor = new Color(0.5f, 0, 0.5f, 1);
         internal static Color FriendlyColor => AltUI.ColorDefaultFriendly;
 
+        /// <summary> increments NEGATIVELY </summary>
         public const int EnemyTeamsRangeStart = -1073741828;
+                                               //2147483647
         internal static bool IsAttract => ManGameMode.inst.GetCurrentGameType() == ManGameMode.GameType.Attract;
 
         private const float BaseChanceNonHosileDefaultMulti = 0.1f;
@@ -474,7 +514,7 @@ namespace TAC_AI
         {
             WorldTile WT = ManWorld.inst.TileManager.LookupTile(coord);
             if (WT != null && WT.SaveData != null && WT.SaveData.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out var vals))
-            {
+            {   // Our TrackedVisible does exist, now to find it...
                 for (int step = 0; step < vals.Count; step++)
                 {
                     var val = vals[step];
@@ -486,7 +526,7 @@ namespace TAC_AI
             }
             var tile = ManSaveGame.inst.GetStoredTile(coord, false);
             if (tile != null && tile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out vals))
-            {
+            {   // Try in the unloaded tile!?
                 for (int step = 0; step < vals.Count; step++)
                 {
                     var val = vals[step];
@@ -504,7 +544,7 @@ namespace TAC_AI
                     ManSaveGame.StoredTile storedTile = null;
                     ManSaveGame.LoadObjectFromRawJson(ref storedTile, jsonTile, false, false);
                     if (storedTile != null && storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out vals))
-                    {
+                    {   // Try in the unloaded tile!?
                         for (int step = 0; step < vals.Count; step++)
                         {
                             var val = vals[step];
@@ -516,6 +556,7 @@ namespace TAC_AI
                     }
                 }
             }
+            // Our storedTech DOES NOT EXISTS
             return null;
         }
         public static ManSaveGame.StoredTech RemoveStoredTech(int visID, IntVector2 coord, bool removeFromJSONToo)
@@ -544,7 +585,7 @@ namespace TAC_AI
             }
             var tile = ManSaveGame.inst.GetStoredTile(coord, false);
             if (tile != null && tile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out var vals2))
-            {
+            {   // Try in the unloaded tiles!?
                 for (int step = 0; step < vals2.Count; step++)
                 {
                     var val = vals2[step];
@@ -563,7 +604,7 @@ namespace TAC_AI
                     ManSaveGame.StoredTile storedTile = null;
                     ManSaveGame.LoadObjectFromRawJson(ref storedTile, jsonTile, false, false);
                     if (storedTile != null && storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out vals2))
-                    {
+                    {   // Try in the unloaded tile!?
                         for (int step = 0; step < vals2.Count; step++)
                         {
                             var val = vals2[step];
@@ -578,6 +619,7 @@ namespace TAC_AI
                                     {
                                         ManUI.inst.ShowErrorPopup("Impossible!  We removed the visible of ID \"" + val2.m_ID +
                                             "\" from the serial data but it still exists!");
+                                        //throw new InvalidOperationException("Impossible!  We removed the tech from the serial data but it still exists!");
                                     }
                                 }
                                 return val as ManSaveGame.StoredTech;
@@ -586,9 +628,16 @@ namespace TAC_AI
                     }
                 }
             }
+            // Our storedTech DOES NOT EXISTS
             return null;
         }
 
+        /// <summary>
+        /// WIP
+        /// </summary>
+        /// <param name="posScene"></param>
+        /// <param name="anchored"></param>
+        /// <returns></returns>
         public static RadarTypes DetermineRadarType(int ID, Vector3 posScene, bool anchored)
         {
             WorldPosition WP = WorldPosition.FromScenePosition(posScene);
@@ -605,6 +654,7 @@ namespace TAC_AI
             return anchored ? RadarTypes.Base : RadarTypes.Vehicle;
         }
 
+        // Utilities
         public static Quaternion LookRot(Vector3 forward) => LookRot(forward, Vector3.up);
         public static Quaternion LookRot(Vector3 forward, Vector3 up)
         {
@@ -640,6 +690,11 @@ namespace TAC_AI
                 !IsPlayerTeam(team) && team != ManSpawn.NeutralTeam;
         }
 
+        /// <summary>
+        /// Returns true if the target visible is loaded in a way that DOES NOT overlap unloaded tiles!!!
+        /// </summary>
+        /// <param name="tileCoord"></param>
+        /// <returns></returns>
         public static bool CanPlaceSafelyInTile(IntVector2 tileCoord, IntVector2 overlapDir)
         {
             if (overlapDir != IntVector2.zero)
@@ -662,6 +717,9 @@ namespace TAC_AI
             nextSplitAllowedTime = Time.unscaledTime + delay;
             return true;
         }
+        /// <summary>
+        /// Set to -1 to recache the count immedeately next update
+        /// </summary>
         internal static int SceneTechCount = -1;
         public static bool AtSceneTechMaxSpawnLimit()
         {
@@ -711,6 +769,11 @@ namespace TAC_AI
         }
 
         private static List<Tank> TEMP = new List<Tank>();
+        /// <summary>
+        /// WILL RESET ON NEXT CALL
+        /// </summary>
+        /// <param name="team"></param>
+        /// <returns></returns>
         public static List<Tank> GetAllPlayerControlledTechs()
         {
             TEMP.Clear();
@@ -812,6 +875,9 @@ namespace TAC_AI
             teamInst = ManBaseTeams.GetNewBaseTeam(TeamRelations.Enemy);
             return teamInst.teamID;
         }
+        /// <summary>
+        /// Attackable neutral
+        /// </summary>
         public static int GetRandomSubNeutralBaseTeam(bool forceNew = true)
         {
             if (!forceNew && ManBaseTeams.inst.teams.Any() && UnityEngine.Random.Range(0, 1f) <= ManBaseTeams.PercentChanceExisting &&
@@ -1004,7 +1070,7 @@ namespace TAC_AI
             return true;
         }
 
-        public static bool CanPurgeTradingStation(int team, string locName)
+        public static bool CanPurgeTradingStation(int team, string locName)//GSO Trading Station - GSOTradingStation
         {
             return team == ManSpawn.NeutralTeam && !locName.NullOrEmpty() &&
                 (locName == "GSOTradingStation" || locName == "GSO Trading Station");
@@ -1082,7 +1148,7 @@ namespace TAC_AI
                     ManSaveGame.StoredTile storedTile = null;
                     bool changed = true;
                     while (changed)
-                    {
+                    {   // too kuking lazy to deal with the stupid iterator exception so keep whailing at it until we do no more changes
                         changed = false;
                         try
                         {
@@ -1092,7 +1158,7 @@ namespace TAC_AI
                                     continue;
                                 ManSaveGame.LoadObjectFromRawJson(ref storedTile, tile.Value, false, false);
                                 if (storedTile != null && storedTile.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out var vals2))
-                                {
+                                {   // Try in the unloaded tile!?
                                     int removedFromThis = 0;
                                     for (int step = 0; step < vals2.Count; step++)
                                     {
@@ -1157,13 +1223,13 @@ namespace TAC_AI
                             else if (item.visible != null)
                             {
                                 DebugTAC_AI.Info(KickStart.ModID + ": ID [" + item.ID + "] Active, tracked, registered team");
-                            }
+                            }   // The visible is null!!! - now check to see if it exists somewhere
                             else if (ManSaveGame.inst.LookupSerializedVisible(item.HostID) != null)
-                            {
+                            {   // It EXISTS, we do not remove
                                 DebugTAC_AI.Info(KickStart.ModID + ": ID [" + item.ID + "] Serialized, tracked, registered team");
                             }
                             else
-                            {
+                            {   // It might be in limbo???
                                 WorldPosition WP = item.GetWorldPosition();
                                 WorldTile tile = ManWorld.inst.TileManager.LookupTile(WP.TileCoord);
                                 if (tile != null && tile.StoredVisiblesWaitingToLoad != null &&
@@ -1176,7 +1242,7 @@ namespace TAC_AI
                                     DebugTAC_AI.DevPopupLog(KickStart.ModID + ": ID [" + item.ID + "]!!! Active NOT hooked to TV, tracked, registered team");
                                 }
                                 else
-                                {
+                                {   // UNLOADED!?!
                                     var ST = FindStoredTech(item.ID, WP.TileCoord, false);
                                     if (ST != null)
                                         DebugTAC_AI.Info(KickStart.ModID + ": ID [" + item.ID + "] Stored, tracked, registered team");
@@ -1213,13 +1279,13 @@ namespace TAC_AI
                             else if (item.visible != null)
                             {
                                 DebugTAC_AI.DevPopupLog(KickStart.ModID + ": ID [" + item.ID + "]! Active, tracked, team NOT registered");
-                            }
+                            }   // The visible is null!!! - now check to see if it exists somewhere
                             else if (ManSaveGame.inst.LookupSerializedVisible(item.HostID) != null)
-                            {
+                            {   // It EXISTS, we do not remove
                                 DebugTAC_AI.DevPopupLog(KickStart.ModID + ": ID [" + item.ID + "]! Serialized, tracked, team NOT registered");
                             }
                             else
-                            {
+                            {   // It might be in limbo???
                                 WorldPosition WP = item.GetWorldPosition();
                                 WorldTile tile = ManWorld.inst.TileManager.LookupTile(WP.TileCoord);
                                 if (tile != null && tile.StoredVisiblesWaitingToLoad != null &&
@@ -1232,7 +1298,7 @@ namespace TAC_AI
                                     DebugTAC_AI.DevPopupLog(KickStart.ModID + ": ID [" + item.ID + "]!!!! Active NOT hooked to TV, tracked, team NOT registered");
                                 }
                                 else
-                                {
+                                {   // UNLOADED!?!
                                     var ST = FindStoredTech(item.ID, WP.TileCoord, false);
                                     if (ST != null)
                                         DebugTAC_AI.DevPopupLog(KickStart.ModID + ": ID [" + item.ID + "]!!!! Stored, tracked, team NOT registered");
@@ -1335,8 +1401,15 @@ namespace TAC_AI
             }
         }
 
+        //Actions
+
+        /// <summary>
+        /// Remove a Tech from existance
+        /// </summary>
+        /// <param name="tech"></param>
+        /// <param name="player"></param>
         internal static void Purge(ManSaveGame.StoredTech tech, bool removeFromJSONToo)
-        {
+        {   //
             if (ManNetwork.IsNetworked)
             {
             }
@@ -1345,8 +1418,13 @@ namespace TAC_AI
                 RemoveStoredTech(tech.m_ID, GetWorldPos(tech).TileCoord, removeFromJSONToo);
             }
         }
+        /// <summary>
+        /// Remove a Tech from existance
+        /// </summary>
+        /// <param name="tech"></param>
+        /// <param name="player"></param>
         internal static void Purge(Tank tech)
-        {
+        {   //
             if (ManNetwork.IsNetworked)
             {
                 PurgeHost(tech.visible.ID, tech.name);
@@ -1360,8 +1438,13 @@ namespace TAC_AI
                 }
             }
         }
+        /// <summary>
+        /// Remove a Tech from existance
+        /// </summary>
+        /// <param name="tech"></param>
+        /// <param name="player"></param>
         internal static bool PurgeHost(int HostVisibleID, string name)
-        {
+        {   //
             if (!ManNetwork.IsHost)
                 throw new Exception(KickStart.ModID + ": SpecialAISpawner.PurgeHost called on non-host");
             DebugTAC_AI.Log(KickStart.ModID + ": PurgeHost - Name " + name + " | " + HostVisibleID + "  Callstack: " + StackTraceUtility.ExtractStackTrace());
@@ -1452,10 +1535,15 @@ namespace TAC_AI
             }
             return false;
         }
+        /// <summary>
+        /// Remove a Tech from existance the cool way
+        /// </summary>
+        /// <param name="tech"></param>
+        /// <param name="player"></param>
         internal static void Eradicate(Tank tech)
-        {
+        {   //
             if (ManNetwork.IsNetworked)
-            {
+            {   // Too laggy to use distintegrate and explode - we just remove it normally instead.
                 try
                 {
                     TrackedVisible TV = ManVisible.inst.GetTrackedVisibleByHostID(tech.netTech.HostID);

@@ -202,6 +202,8 @@ namespace TAC_AI
 
         private static int localConnectionID { get { return ManNetwork.inst.Client.connection.connectionId; } }
 
+
+        // AIRTSCommandMessage
         public static void TryBroadcastRTSCommand(uint netTechID, Vector3 Pos)
         {
             if (!ManNetwork.IsNetworked) return;
@@ -253,6 +255,7 @@ namespace TAC_AI
             }
         }
 
+        // AIRTSControlMessage
         public static void TryBroadcastRTSControl(uint netTechID, bool isRTS)
         {
             if (!ManNetwork.IsNetworked) return;
@@ -305,6 +308,7 @@ namespace TAC_AI
             }
         }
 
+        // AIRTSAttackComm
         public static void TryBroadcastRTSAttack(uint netTechID, uint TargetNetTechID)
         {
             if (!ManNetwork.IsNetworked) return;
@@ -360,6 +364,7 @@ namespace TAC_AI
             }
         }
 
+        // AITypeChangeMessage
         public static void TryBroadcastNewAIState(uint netTechID, AIType AIType, AIDriverType AIDriver)
         {
             if (!ManNetwork.IsNetworked) return;
@@ -415,6 +420,12 @@ namespace TAC_AI
             }
         }
 
+        // AIRetreatMessage
+        /// <summary>
+        /// sent from both clients and server
+        /// </summary>
+        /// <param name="team"></param>
+        /// <param name="retreat"></param>
         public static void TryBroadcastNewRetreatState(int team, bool retreat)
         {
             if (!ManNetwork.IsNetworked) return;
@@ -464,6 +475,12 @@ namespace TAC_AI
             }
         }
 
+        // AIEnemyState
+        /// <summary>
+        /// SERVER SENT
+        /// </summary>
+        /// <param name="netTechID"></param>
+        /// <param name="smartz"></param>
         public static void TryBroadcastNewEnemyState(uint netTechID, EnemySmarts smartz)
         {
             if (HostExists && ManNetwork.IsHost) try
@@ -493,6 +510,7 @@ namespace TAC_AI
             DebugTAC_AI.Assert(true, KickStart.ModID + ": OnServerEnemyAISetup should not be sent to host.  This should not be happening.");
         }
 
+        // AIEnemySiege
         public static void TryBroadcastNewEnemySiege(int Team, int TeamTargeted, long HP, bool starting)
         {
             if (HostExists && ManNetwork.IsHost) try
@@ -527,15 +545,20 @@ namespace TAC_AI
 
         public static class Patches
         {
+            /// <summary>
+            /// Note: Both sides must subscribe to work!
+            /// </summary>
             [HarmonyPatch(typeof(NetPlayer), "OnStartClient")]
             static class OnStartClient
             {
                 static void Postfix(NetPlayer __instance)
                 {
+                    // Standard
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRetreatRequest, new ManNetwork.MessageHandler(OnClientSetRetreatState));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIADVTypeChange, new ManNetwork.MessageHandler(OnClientSetNewAIState));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIEnemyType, new ManNetwork.MessageHandler(OnClientEnemyAISetup));
 
+                    // RTS
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRTSPosCommand, new ManNetwork.MessageHandler(OnClientAcceptRTSCommand));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRTSPosControl, new ManNetwork.MessageHandler(OnClientAcceptRTSControl));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRTSAttack, new ManNetwork.MessageHandler(OnClientAcceptRTSAttack));
@@ -552,10 +575,12 @@ namespace TAC_AI
                 {
                     if (!HostExists)
                     {
+                        // Standard
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRetreatRequest, new ManNetwork.MessageHandler(OnServerSetRetreatState));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIADVTypeChange, new ManNetwork.MessageHandler(OnServerSetNewAIState));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIEnemyType, new ManNetwork.MessageHandler(OnServerEnemyAISetup));
 
+                        // RTS
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRTSPosCommand, new ManNetwork.MessageHandler(OnServerAcceptRTSCommand));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRTSPosControl, new ManNetwork.MessageHandler(OnServerAcceptRTSControl));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRTSAttack, new ManNetwork.MessageHandler(OnServerAcceptRTSAttack));

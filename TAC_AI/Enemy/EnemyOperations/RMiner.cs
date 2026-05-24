@@ -13,11 +13,12 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     {
         public static void MineYerOwnBusiness(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Prospector) what to do movement-wise
             int errorCode = 0;
             try
             {
                 Vector3 veloFlat = Vector3.zero;
-                if ((bool)tank.rbody)
+                if ((bool)tank.rbody)   // So that drifting is minimized
                 {
                     veloFlat = helper.SafeVelocity;
                     veloFlat.y = 0;
@@ -31,6 +32,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 
                 BGeneral.ResetValues(helper, ref direct);
 
+                // VALIDATION CHECKS OF TRACTOR BED FILL STATUS
                 if (helper.CollectedTarget)
                 {
                     errorCode = 2;
@@ -41,7 +43,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         if (!hold.IsEmpty && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                         {
                             helper.CollectedTarget = true;
-                            break;
+                            break;//Checking if tech is empty when unloading at base
                         }
                     }
                     if (!helper.CollectedTarget)
@@ -57,7 +59,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         if (!hold.IsFull && hold.Acceptance == flag && hold.IsFlag(ModuleItemHolder.Flags.Collector))
                         {
                             helper.CollectedTarget = false;
-                            break;
+                            break;//Checking if tech is full after destroying a node
                         }
                     }
                     if (helper.CollectedTarget)
@@ -77,7 +79,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     errorCode = 6;
                     if (!BGeneral.GetBase(helper, tank, true, ref dist, ref hasMessaged, ref direct))
-                    {
+                    {   // No base!!!
                         return;
                     }
 
@@ -85,10 +87,10 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     if (helper.MovementController is AIControllerAir)
                     {
                         if (helper.MovementController.AICore is Movement.AICores.HelicopterAICore)
-                        {
+                        {   // Float over target and unload
                             float distFlat = (tank.boundsCentreWorldNoCheck - helper.theBase.boundsCentreWorldNoCheck).ToVector2XZ().magnitude;
                             if (distFlat < helper.lastBaseExtremes)
-                            {
+                            {   // Final approach - turn off avoidence
                                 helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                                 helper.AvoidStuff = false;
                                 if (helper.recentSpeed == 1)
@@ -112,9 +114,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             }
                         }
                         else
-                        {
+                        {   // Fly aircraft
                             if (dist < helper.lastBaseExtremes + helper.lastTechExtents + AIGlobals.AircraftHailMaryRange)
-                            {
+                            {   // Final approach - turn off avoidence
                                 helper.theBase.GetHelperInsured().SlowForApproacher(helper);
                                 helper.AvoidStuff = false;
                                 if (helper.recentSpeed == 1)
@@ -224,9 +226,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     if (!helper.foundGoal)
                     {
                         errorCode = 104;
-                        helper.EstTopSped = 1;
+                        helper.EstTopSped = 1;//slow down the clock to reduce lagg
                         BGeneral.StopByBase(helper, tank, true, ref dist, ref hasMessaged, ref direct);
-                        return;
+                        return; // There's no resources left!
                     }
                     else if (helper.theResource != null)
                     {

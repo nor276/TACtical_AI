@@ -15,10 +15,15 @@ namespace TAC_AI
 {
     public enum TeamRelations : int
     {
+        /// <summary>Attack, but can be swayed with Bribe</summary>
         Enemy,
+        /// <summary>Don't attack unless attacked once -> Attack the attacker</summary>
         SubNeutral,
+        /// <summary>Don't attack at all.  Usually indestructable.</summary>
         Neutral,
+        /// <summary>Fight on the player's side</summary>
         Friendly,
+        // Special
         AITeammate,
         SameTeam = 9001,
     }
@@ -26,9 +31,15 @@ namespace TAC_AI
     {
         public static bool IsValid(this TeamBasePointer point) => point != null && point.valid;
     }
+    /// <summary>
+    ///  Can represent both a tech that is present and not present
+    /// </summary>
     public interface TeamBasePointer
     {
         string Name { get; }
+        /// <summary>
+        ///  MAY NOT ALWAYS BE PRESENT
+        /// </summary>
         Tank tank { get; }
         int BuildBucks { get; }
         void AddBuildBucks(int value);
@@ -45,6 +56,9 @@ namespace TAC_AI
         public int teamID;
         internal int Team => teamID;
         public string teamName;
+        /// <summary>
+        /// DO NOT MODIFY DIRECTLY, use AddBuildBucks() and related instead!
+        /// </summary>
         public int buildBucks;
         internal int BuildBucks => buildBucks;
         public int SetBuildBucks
@@ -84,6 +98,7 @@ namespace TAC_AI
             }
         }
         internal bool bankrupt = false;
+        /// <summary> This team has not enough Build Bucks </summary>
         internal bool Bankrupt => bankrupt;
 
         public int hqVisibleID = -1;
@@ -128,19 +143,31 @@ namespace TAC_AI
                 hqVisibleID = -1;
         }
         public int PlayerTeam = int.MinValue;
+        /// <summary>
+        /// The fallback relation for any unknown relations
+        /// </summary>
         public int relationInt = (int)TeamRelations.Enemy;
 
+        /// <summary>
+        /// This rises each time the team is attacked by other teams it isn't an Enemy, if it gets too high, relations shall drop
+        /// </summary>
         [JsonIgnore]
         public float angerThreshold = 0;
+        /// <summary> DO NOT SET - PUBLIC FOR SERIALIZATION </summary>
         public bool Infighting = false;
         internal bool IsInfighting => Infighting;
+        /// <summary>This means the team cannot be changed, or have it's relations changed with any other teams</summary>
         public bool IsReadonly = false;
 
+        /// <summary>
+        /// Should NEVER be changed under ANY circumstances!
+        /// </summary>
         internal TeamRelations defaultRelations
         {
             get => (TeamRelations)relationInt;
             set { relationInt = (int)value; }
         }
+        /// <summary> teamID, TeamAlignment</summary>
         public Dictionary<int, TeamRelations> align = new Dictionary<int, TeamRelations>();
 
         internal IEnumerable<Tank> AllTechsIterator => TankAIManager.GetTeamTanks(teamID);
@@ -164,6 +191,7 @@ namespace TAC_AI
             return false;
         }
 
+        /// <summary> SERIALIZATION (or default attack-all teams) ONLY </summary>
         public EnemyTeamData() {}
         public EnemyTeamData(int team, bool infighting, TeamRelations defaultRelations = TeamRelations.Enemy)
         {
@@ -187,6 +215,9 @@ namespace TAC_AI
         }
         public TeamRelations GetRelations(int teamOther, TeamRelations fallback = TeamRelations.Enemy) =>
             ManBaseTeams.GetRelationsWritablePriority(teamID, teamOther, fallback);
+        /// <summary>
+        /// DO NOT CALL THIS FROM ANYWHERE OTHER THAN ManBaseTeams
+        /// </summary>
         internal TeamRelations Alignment_Internal(int teamOther)
         {
             switch (teamOther)
@@ -232,6 +263,7 @@ namespace TAC_AI
 #endif
         }
 
+        // EnemyPurchase
         public void AddBuildBucks(int toAdd)
         {
             if (IsReadonly)
@@ -424,6 +456,12 @@ namespace TAC_AI
             Set(team, TeamRelations.Enemy);
         }
 
+        /// <summary>
+        /// This is VERY lazy.  There's only a small chance it will actually transfer the funds to the real strongest base.
+        /// <para>This is normally handled automatically by the manager, but you can call this if you want to move the cash NOW</para>
+        /// </summary>
+        /// <param name="funds">The EnemyBaseFunder that contains the money to move</param>
+        /// <returns>True if it actually moved the money</returns>
         public bool SetHQToStrongestOrRandomBase()
         {
             if (IsReadonly)
@@ -531,6 +569,7 @@ namespace TAC_AI
         public int ready = 0;
         [SSaveField]
         private int lowTeam = AIGlobals.EnemyTeamsRangeStart;
+        /// <summary> Team, Amount </summary>
         public static Event<int, int> BuildBucksUpdatedEvent = new Event<int, int>();
         public static Event<int> TeamAlignmentDeltaEvent = new Event<int>();
         public static Event<int> TeamRemovedEvent = new Event<int>();
@@ -897,14 +936,16 @@ namespace TAC_AI
             return 0;
         }
 
+        // Relations
         private static bool GetRelationsWithWriteablePriority(int teamID1, int teamID2, out EnemyTeamData ETD)
         {
             if (teamID2 < teamID1)
-            {
+            {   // Lowest team gets searched first
                 int swapper = teamID1;
                 teamID1 = teamID2;
                 teamID2 = swapper;
             }
+            // ALWAYS prioritize the non-immutable ones to get the correct alignment!
             if (inst.teams.TryGetValue(teamID1, out ETD) && !ETD.IsReadonly)
                 return true;
             if (inst.teams.TryGetValue(teamID2, out ETD))
@@ -916,11 +957,13 @@ namespace TAC_AI
         private static bool GetRelationsWithReadonlyPriority(int teamID1, int teamID2, out EnemyTeamData ETD)
         {
             if (teamID2 < teamID1)
-            {
+            {   // Lowest team gets searched first
                 int swapper = teamID1;
                 teamID1 = teamID2;
                 teamID2 = swapper;
             }
+            // ALWAYS prioritize the immutable ones to get the correct alignment!
+            // ALWAYS prioritize the non-immutable ones to get the correct alignment!
             if (inst.teams.TryGetValue(teamID1, out ETD) && ETD.IsReadonly)
                 return true;
             if (inst.teams.TryGetValue(teamID2, out ETD))
@@ -949,6 +992,9 @@ namespace TAC_AI
             }
             return fallback;
         }
+        /// <summary>
+        /// MUTED for now.  We will now use boolean checking to insure this NEVER happens
+        /// </summary>
         private static void ComplainOnIllegalTeamModification()
         {
 #if DEBUG
@@ -1290,7 +1336,9 @@ namespace TAC_AI
                 }
                 else
                 {
+                    // Clean up any "corrupted" teams
                     InsureDefaultTeams(true);
+                    // Continue with loading
                     foreach (var item in inst.teams)
                     {
                         TankAIManager.UpdateEntireTeam(item.Key);
@@ -1503,11 +1551,11 @@ namespace TAC_AI
                 int team = read.ReadPackedInt32();
                 int BB = read.ReadPackedInt32();
                 if (BB == int.MinValue)
-                {
+                {   // REMOVE
                     OnTeamDestroyedRemoteClient(team);
                 }
                 else
-                {
+                {   // Add/Update
                     var teamInst = InsureBaseTeam(team);
                     teamInst.SetBuildBucks = BB;
                     UnpackTeamAlignmentInfo(ref read, ref teamInst.align);
@@ -1548,11 +1596,21 @@ namespace TAC_AI
         {
             netHook.Enable();
         }
+        /// <summary>
+        /// Just permits it to carry on
+        /// </summary>
+        /// <param name="update"></param>
+        /// <param name="isServer"></param>
+        /// <returns></returns>
         internal static bool OnReceiveTeamUpdate(NetworkedAITeamUpdate update, bool isServer)
         {
             return true;
         }
 
+
+        // ------------------------------------
+        //               LEGACY
+        // ------------------------------------
 
         private static bool IsLegacyBaseTeam(int team)
         {

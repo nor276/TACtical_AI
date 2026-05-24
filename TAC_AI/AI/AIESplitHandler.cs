@@ -74,8 +74,9 @@ namespace TAC_AI.AI
                                 }
                                 else
                                 {
+                                    //It's likely not a base
                                     if (tank.IsAnchored && !tank.blockman.IterateBlockComponents<ModuleTechController>().FirstOrDefault())
-                                    {
+                                    {   // It's a fragment of the base - recycle it to prevent unwanted mess from getting in the way
                                         RLoadedBases.RecycleTechToTeam(tank);
                                         continue;
                                     }
@@ -105,10 +106,12 @@ namespace TAC_AI.AI
                                     var mind = tank.GetComponent<EnemyMind>();
                                     if (mind)
                                     {
+                                        // it's a minion of the base
                                         if (mind.CommanderAttack == EAttackMode.Safety)
                                             mind.CommanderAttack = EAttackMode.Chase;
                                     }
 
+                                    // Charge the new Tech and send it on it's way!
                                     RawTechLoader.ChargeAndClean(tank);
                                     tank.visible.Teleport(tank.boundsCentreWorldNoCheck + (tank.rootBlockTrans.forward *
                                         tank.blockBounds.size.magnitude), tank.rootBlockTrans.rotation, false, false);
@@ -188,7 +191,7 @@ namespace TAC_AI.AI
                     }
                 }
                 else
-                {
+                {   // We assume flares or a drone/infantry to launch
                     helper.DediAI = AIType.Escort;
                 }
                 helper.SetDriverType(AIECore.HandlingDetermine(tank, helper));

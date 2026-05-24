@@ -8,6 +8,9 @@ using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI
 {
+    /// <summary>
+    /// Handles all anchored operations
+    /// </summary>
     internal class AIControllerStatic : MovementControllerBase
     {
         public Vector3 AimTarget = Vector3.zero;
@@ -44,7 +47,7 @@ namespace TAC_AI.AI
             }
             Helper.TryInsureAutoAnchor();
 
-            if (Helper.AIAlign == AIAlignment.Player)
+            if (Helper.AIAlign == AIAlignment.Player)// Allied
             {
                 if (AICore == null)
                 {
@@ -54,14 +57,14 @@ namespace TAC_AI.AI
                 }
                 AICore.DriveDirector(ref core);
             }
-            else
+            else//ENEMY
             {
                 AICore.DriveDirectorEnemy(EnemyMind, ref core);
             }
         }
 
         public override void DriveDirectorRTS(ref EControlCoreSet core)
-        {
+        {   // Ignore player movement commands but follow attack commands
             if (Helper == null)
             {
                 string tankName = Tank.IsNotNull() ? Tank.name : "UNKNOWN_TANK";
@@ -70,7 +73,7 @@ namespace TAC_AI.AI
             }
             Helper.TryInsureAutoAnchor();
 
-            if (Helper.AIAlign == AIAlignment.Player)
+            if (Helper.AIAlign == AIAlignment.Player)// Allied
             {
                 if (AICore == null)
                 {
@@ -80,7 +83,7 @@ namespace TAC_AI.AI
                 }
                 AICore.DriveDirectorRTS(ref core);
             }
-            else
+            else//ENEMY
             {
                 AICore.DriveDirectorEnemyRTS(EnemyMind, ref core);
             }

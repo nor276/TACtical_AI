@@ -13,11 +13,16 @@ using UnityEngine;
 
 namespace TAC_AI.AI
 {
+    /// <summary>
+    /// This AI either runs normally in Singleplayer, or on the Server in Multiplayer
+    /// </summary>
     public class TankAIHelper : MonoBehaviour, IWorldTreadmill
     {
 
         public Tank tank;
         public AITreeType.AITypes lastAIType;
+        //Tweaks (controlled by Module)
+        /// <summary> The type of vehicle the AI controls </summary>
         public AIDriverType DriverType
         {
             get => driveType;
@@ -25,6 +30,7 @@ namespace TAC_AI.AI
             {
                 if (driveType != value)
                 {
+                    //DebugTAC_AI.Assert("Driver Type change " + driveType + " -> " + value);
                     driveType = value;
                 }
             }
@@ -58,8 +64,10 @@ namespace TAC_AI.AI
             lastSwapRequest = reason;
             MovementAIControllerDirty = true;
         }
+        /// <summary> The task the AI will perform </summary>
         public AIType DediAI = AIType.Escort;
-        public EAttackMode AttackMode = EAttackMode.Circle;
+        /// <summary> How to attack the enemy </summary>
+        public EAttackMode AttackMode = EAttackMode.Circle; // How to attack the enemy
         public float TurretFraction = 0f;
         private float combatCyclePhase01 = -1f;
         private AlliedOperationsController _OpsController;
@@ -91,6 +99,7 @@ namespace TAC_AI.AI
             }
         }
 
+        // Checking Booleans
         public bool AIDriving {
             get
             {
@@ -130,6 +139,9 @@ namespace TAC_AI.AI
             (DriveDirDirected > EDriveFacing.Neutral && (ThrottleState == AIThrottleState.ForceSpeed || DoSteerCore));
         public bool UsingPathfinding => ControlCore.DrivePathing >= EDrivePathing.Path;
 
+        // Settables in ModuleAIExtension - "turns on" functionality on the host Tech, none of these force it off
+        /// <summary> Should the other mimic AIs ignore controls from this Tech?
+        /// Additionally when anchored, ignore collision with this Tech? </summary>
         private bool _isMultiTech = false;
         public bool IsMultiTech
         {
@@ -141,12 +153,19 @@ namespace TAC_AI.AI
                 _isMultiTech = value;
             }
         }
+        /// <summary> Should the AI chase the enemy? </summary>
         public bool ChaseThreat = true;
+        /// <summary> Should the AI Auto-BuildBeam on flip? </summary>
         public bool RequestBuildBeam = true;
 
+        // Player Toggleable
+        /// <summary> Should the AI take combat calculations and retreat if nesseary? </summary>
         public bool AdvancedAI => Allied ? (AISetSettings.AdvancedAI && AILimitSettings.AdvancedAI) : AISetSettings.AdvancedAI;
+        /// <summary> Should the AI only follow player movement while in MT mode? </summary>
         public bool AllMT => Allied ? (AISetSettings.AllMT && AILimitSettings.AllMT) : AISetSettings.AllMT;
+        /// <summary> Should the AI ram the enemy? </summary>
         public bool FullMelee => Allied ? (AISetSettings.FullMelee && AILimitSettings.FullMelee) : AISetSettings.FullMelee;
+        /// <summary> Should the AI circle the enemy? </summary>
         public bool SideToThreat => Allied ? (AISetSettings.SideToThreat && AILimitSettings.SideToThreat) : AISetSettings.SideToThreat;
 
         public bool CombatWantsCircleNow()
@@ -165,16 +184,28 @@ namespace TAC_AI.AI
             return phase < frac;
         }
 
+        // Repair Auxilliaries
+        /// <summary> Auto-repair builds the tech to the last memory state.
+        /// This does not save between play sessions. </summary>
         public bool AutoRepair => Allied ? (AISetSettings.AutoRepair && AILimitSettings.AutoRepair) : AISetSettings.AutoRepair;
+        /// <summary> Draw from player inventory reserves </summary>
         public bool UseInventory => Allied ? (AISetSettings.UseInventory && AILimitSettings.UseInventory) : AISetSettings.UseInventory;
 
+
+        // Additional
+        /// <summary> Should the AI toggle the anchor when it is still? </summary>
         public bool AutoAnchor = false;
+        /// <summary> Should the AI avoid two techs at once? </summary>
         public bool SecondAvoidence = false;
 
+        // Distance operations - Automatically accounts for tech sizes
         public AISettingsSet AISetSettings = AISettingsSet.DefaultSettable;
         public AISettingsLimit AILimitSettings = default;
+        /// <summary> Spacing: The range the AI will linger from the enemy while attacking if PursueThreat is true </summary>
         public float MinCombatRange => AISetSettings.CombatSpacing;
+        /// <summary> Chase: How far should we pursue the enemy? </summary>
         public float MaxCombatRange => AISetSettings.CombatChase;
+        /// <summary> The range the AI will linger from the target objective in general </summary>
         public float MaxObjectiveRange => AISetSettings.ObjectiveRange;
         internal float JobSearchRange
         {
@@ -182,28 +213,30 @@ namespace TAC_AI.AI
             set => AISetSettings.ScanRange = value;
         }
 
+        // Allied AI Operating Allowed types (self-filling)
+        // WARNING - These values are set to TRUE when called.
         private AIEnabledModes AIWorkingModes = AIEnabledModes.None;
-        public bool isAssassinAvail
+        public bool isAssassinAvail //Is there an Assassin-enabled AI on this tech?
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Assassin); }
             set { AIWorkingModes |= AIEnabledModes.Assassin; }
         }
-        public bool isAegisAvail
+        public bool isAegisAvail    //Is there an Aegis-enabled AI on this tech?
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Aegis); }
             set { AIWorkingModes |= AIEnabledModes.Aegis; }
         }
-        public bool isProspectorAvail
+        public bool isProspectorAvail  //Is there a Prospector-enabled AI on this tech?
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Prospector); }
             set { AIWorkingModes |= AIEnabledModes.Prospector; }
         }
-        public bool isScrapperAvail
+        public bool isScrapperAvail   //Is there a Scrapper-enabled AI on this tech?
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Scrapper); }
             set { AIWorkingModes |= AIEnabledModes.Scrapper; }
         }
-        public bool isEnergizerAvail
+        public bool isEnergizerAvail   //Is there a Energizer-enabled AI on this tech?
         {
             get { return AIWorkingModes.HasFlag(AIEnabledModes.Energizer); }
             set { AIWorkingModes |= AIEnabledModes.Energizer; }
@@ -224,6 +257,7 @@ namespace TAC_AI.AI
             set { AIWorkingModes |= AIEnabledModes.Buccaneer; }
         }
 
+        // General AI Handling
         public AIRunState RunState {
             get => _RunState;
             set
@@ -243,8 +277,11 @@ namespace TAC_AI.AI
                 }
             }
         }
-        private AIRunState _RunState = AIRunState.Advanced;
+        private AIRunState _RunState = AIRunState.Advanced;      // Disable the AI to make way for Default AI
 
+        /// <summary>
+        /// 0 is off, 1 is enemy, 2 is obsticle
+        /// </summary>
         public AIWeaponState ActiveAimState = AIWeaponState.Normal;
         public AIWeaponType WeaponAimType = AIWeaponType.Unknown;
         public void ResetToNormalAimState()
@@ -259,37 +296,55 @@ namespace TAC_AI.AI
         public bool WasRetreatingInCombat = false;
         internal bool beEvilRegenAttempted = false;
 
-        public AIAlignment AIAlign = AIAlignment.Static;
-        public AIWeaponState WeaponState = AIWeaponState.Normal;
-        public bool UpdateDirectorsAndPathing = false;
-        public bool UsingAirControls = false;
-        internal int FrustrationMeter = 0;
-        internal float Urgency = 0;
-        internal float UrgencyOverload = 0;
+        public AIAlignment AIAlign = AIAlignment.Static;             // 0 is static, 1 is ally, 2 is enemy
+        public AIWeaponState WeaponState = AIWeaponState.Normal;    // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic
+        public bool UpdateDirectorsAndPathing = false;       // Collision avoidence active this FixedUpdate frame?
+        public bool UsingAirControls = false; // Use the not-VehicleAICore cores
+        internal int FrustrationMeter = 0;  // tardiness buildup before we use our guns to remove obsticles
+        internal float Urgency = 0;         // tardiness buildup before we just ignore obstructions
+        internal float UrgencyOverload = 0; // builds up too much if our max speed was set too high
 
+        /// <summary>
+        /// Repairs requested?
+        /// </summary>
  public bool PendingDamageCheck = true;
 
-        public float DamageThreshold = 0;
+        public float DamageThreshold = 0;   // How much damage have we taken? (100 is total destruction)
 
-        internal Vector3 lastDestinationOp => ControlOperator.lastDestination;
-        internal Vector3 lastDestinationCore => ControlCore.lastDestination;
+        // Directional Handling
+        /// <summary>
+        /// IN WORLD SPACE
+        /// Handles all Director/Operator decisions
+        /// </summary>
+        internal Vector3 lastDestinationOp => ControlOperator.lastDestination; // Where we drive to in the world
+        /// <summary>
+        /// IN WORLD SPACE
+        /// Handles all Core decisions
+        /// </summary>
+        internal Vector3 lastDestinationCore => ControlCore.lastDestination;// Vector3.zero;    // Where we drive to in the world
 
         internal float lastOperatorRange { get { return _lastOperatorRange; } private set { _lastOperatorRange = value; } }
         private float _lastOperatorRange = 0;
         internal float lastCombatRange => _lastCombatRange;
         private float _lastCombatRange = 0;
         internal float lastPathPointRange = 0;
-        public float NextFindTargetTime = 0;
+        public float NextFindTargetTime = 0;      // Updates to wait before target swatching
 
-        internal bool hasAI = false;
-        internal AIDirtyState dirtyAI = AIDirtyState.Not;
+        //AutoCollection
+        internal bool hasAI = false;    // Has an active AI module
+        /// <summary>
+        /// Set to dirty when we make any changes to the AI
+        /// </summary>
+        internal AIDirtyState dirtyAI = AIDirtyState.Not;  // Update Player AI state if needed
         public enum AIDirtyState
         {
             Not,
+            /// <summary>Reboots the AI if it just changed alignment</summary>
             Dirty,
+            /// <summary>Forces the AI to reboot as if it was just loaded into the world, very costly.</summary>
             DirtyAndReboot,
         }
-        internal bool dirtyExtents = false;
+        internal bool dirtyExtents = false;    // The Tech has new blocks attached recently
 
         internal float EstTopSped = 0;
         internal float recentSpeed = 1;
@@ -319,8 +374,15 @@ namespace TAC_AI.AI
         public Visible lastLockOnTarget;
         public Transform Obst;
         internal Tank lastCloseAlly;
+        // Non-Tech specific objective AI Handling
         internal float lastBaseExtremes = 10;
+        /// <summary>
+        /// Counts also as [recharge home, block rally]
+        /// </summary>
         internal Tank theBase = null;
+        /// <summary>
+        /// Counts also as [loose block, target enemy, target to charge]
+        /// </summary>
         private Visible _theResource = null;
         internal Visible theResource
         {
@@ -337,10 +399,14 @@ namespace TAC_AI.AI
         internal Visible theResourceNode = null;
         internal Visible theHostTech = null;
         internal Visible theGuardedAlly = null;
+        /// <summary>
+        /// The EXACT transform that we want to close in on
+        /// </summary>
         internal IAIFollowable lastBasePos;
         internal bool foundBase = false;
         internal bool foundGoal = false;
 
+        // MultiTech AI Handling
         internal HashSet<Tank> MultiTechsAffiliated = new HashSet<Tank>();
         internal bool MTMimicHostAvail = false;
         internal bool MTLockedToTechBeam = false;
@@ -348,13 +414,25 @@ namespace TAC_AI.AI
         internal Vector3 MTOffsetRot = Vector3.forward;
         internal Vector3 MTOffsetRotUp = Vector3.up;
 
+        //  !!ADVANCED!!
+        /// <summary>
+        /// Use 3D navigation  (VehicleAICore)
+        /// Normally this AI navigates on a 2D plane but this enables it to follow height.
+        /// </summary>
         internal bool Attempt3DNavi = false;
-        internal Vector3 Navi3DDirect = Vector3.zero;
-        internal Vector3 Navi3DUp = Vector3.zero;
-        public float GroundOffsetHeight = AIGlobals.GroundOffsetGeneralAir;
+        /// <summary>
+        /// In WORLD space rotation, position relative from Tech mass center
+        /// </summary>
+        internal Vector3 Navi3DDirect = Vector3.zero;   // Forwards facing for 3D
+        /// <summary>
+        /// In WORLD space rotation, position relative from Tech mass center
+        /// </summary>
+        internal Vector3 Navi3DUp = Vector3.zero;       // Upwards direction for 3D
+        public float GroundOffsetHeight = AIGlobals.GroundOffsetGeneralAir;           // flote above ground this dist
         internal Snapshot lastBuiltTech = null;
         internal Vector3 PathPoint => MovementController.PathPoint;
 
+        //Timestep
         internal const float AnchorTicksPerSecond = 5f;
         private float anchorRestStart = -1f;
         internal int DelayedAnchorClock
@@ -386,6 +464,13 @@ namespace TAC_AI.AI
             set { if (value <= 0) unanchorTimer.Clear(); else unanchorTimer.Set(value / AnchorTicksPerSecond); }
         }
 
+        // Hierachy System:
+        //   Operations --[ControlPre]-> Maintainer --[ControlPost]-> Core
+        //Drive Direction Handlers
+        // We need to tell the AI some important information:
+        //  Target Destination
+        //  Direction to point while heading to the target
+        //  Driving direction in relation to driving to the target
         private EControlOperatorSet ControlOperator = EControlOperatorSet.Default;
         private int controlOperatorSetTick = 0;
         internal int ControlOperatorAgeFrames => Time.frameCount - controlOperatorSetTick;
@@ -406,7 +491,9 @@ namespace TAC_AI.AI
         internal bool IsDirectedMovingToDest => ControlOperator.DriveDest > EDriveDest.FromLastDestination;
         internal bool IsDirectedMovingFromDest => ControlOperator.DriveDest == EDriveDest.FromLastDestination;
 
+        /// <summary> Drive direction </summary>
         internal EDriveFacing DriveDirDirected => ControlOperator.DriveDir;
+        /// <summary> Move to a dynamic target </summary>
         internal EDriveDest DriveDestDirected => ControlOperator.DriveDest;
         private EControlCoreSet ControlCore = EControlCoreSet.Default;
         public string GetCoreControlString()
@@ -428,12 +515,16 @@ namespace TAC_AI.AI
             ControlCore = cont;
         }
 
+        /// <summary> Do we steer to target destination? </summary>
         internal bool DoSteerCore => ControlCore.DriveDir > EDriveFacing.Neutral;
 
+        /// <summary> Drive AWAY from target </summary>
         internal bool AdviseAwayCore => ControlCore.DriveDest == EDriveDest.FromLastDestination;
 
-        public float AutoSpacing = 0;
-        public float DriveVar { get; set; } = 0;
+        //Finals
+        /// <summary> Leave at 0 to disable automatic spacing </summary>
+        public float AutoSpacing = 0;              // Minimum radial spacing distance from destination
+        public float DriveVar { get; set; } = 0; // Forwards drive (-1, 1)
         public float GetDrive => MovementController.GetDrive;
 
         public AIThrottleState ThrottleState { get; set; } = AIThrottleState.FullSpeed;
@@ -463,23 +554,23 @@ namespace TAC_AI.AI
             if (stateHistoryRing.Count == 0) return "(empty)";
             return string.Join("\n  ", stateHistoryRing.ToArray());
         }
-        public bool AvoidStuff { get; internal set; } = true;
+        public bool AvoidStuff { get; internal set; } = true;            // Try avoiding allies and obsticles
 
         internal AIAnchorState AnchorState = AIAnchorState.None;
         internal bool AnchorStateAIInsure = false;
 
-        public bool FIRE_ALL { get; internal set; } = false;
-        internal bool FullBoost = false;
-        internal bool LightBoost = false;
-        internal bool FirePROPS = false;
-        internal bool ForceSetBeam = false;
-        public bool CollectedTarget = false;
-        public bool Retreat { get; internal set; } = false;
+        public bool FIRE_ALL { get; internal set; } = false;   // hold down tech's spacebar
+        internal bool FullBoost = false;            // hold down boost button
+        internal bool LightBoost = false;           // moderated booster pressing
+        internal bool FirePROPS = false;            // hold down prop button
+        internal bool ForceSetBeam = false;         // activate build beam
+        public bool CollectedTarget = false;      // this Tech's storage objective status (resources, blocks, energy)
+        public bool Retreat { get; internal set; } = false;              // ignore enemy position and follow intended destination (but still return fire)
 
-        public bool Avoiding { get; internal set; } = false;
-        public bool IsTryingToUnjam { get; internal set; } = false;
+        public bool Avoiding { get; internal set; } = false;             // We are currently avoiding something
+        public bool IsTryingToUnjam { get; internal set; } = false;      // Is this tech unjamming?
         public bool PendingHeightCheck
-        {
+        {// Queue a driving depth check for a naval tech - or any tech that really needs this lol
 
             get => _LowestPointOnTech == -1;
             set
@@ -491,7 +582,7 @@ namespace TAC_AI.AI
             }
         }
         public float LowestPointOnTech
-        {
+        {// The lowest point in relation to the tech's block-based center
             get
             {
                 if (_LowestPointOnTech == -1)
@@ -500,9 +591,12 @@ namespace TAC_AI.AI
             }
             set => _LowestPointOnTech = value;
         }
-        private float _LowestPointOnTech = 0;
+        private float _LowestPointOnTech = 0;       // the lowest point in relation to the tech's block-based center
         internal bool BoltsFired = false;
 
+        /// <summary>
+        /// ONLY SET EXTERNALLY BY NETWORKING
+        /// </summary>
         public bool isRTSControlled { get; internal set; } = false;
         public bool RTSControlled
         {
@@ -617,16 +711,24 @@ namespace TAC_AI.AI
             MaintainersAndDirectors,
             Recycle,
         }
+        /// <summary>
+        /// Force the tech to be controlled by external means.
+        /// Returning true lets the AI in this mod OVERRIDE what you put in!.
+        /// </summary>
         public Func<TankAIHelper, ExtControlStatus, bool> AIControlOverride = null;
-        public bool PlayerAllowAutoAnchoring = false;
+        public bool PlayerAllowAutoAnchoring = false;   // Allow auto-anchor
+        /// <summary> Set the AI back to Escort next update </summary>
         public bool ExpectAITampering = false;
 
+
+        // ----------------------------  AI Cores  ----------------------------
         public IMovementAIController MovementController;
         public AIEAutoPather autoPather => (MovementController is AIControllerDefault def) ? def.Pathfinder : null;
 
         private int delayedSubscribeRetries = 0;
         private const int MaxDelayedSubscribeRetries = 5;
 
+        // ----------------------------  Awareness Subscriptions  ----------------------------
         public TankAIHelper Subscribe()
         {
             if (tank != null)

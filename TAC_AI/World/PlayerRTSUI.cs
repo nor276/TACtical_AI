@@ -35,8 +35,8 @@ namespace TAC_AI.World
 
         private static float widthW = MaxWindowWidth + Offset;
         private static float heightW = MaxWindowHeight + Offset;
-        private static Rect CommandBar = new Rect(0, 0, widthW, heightW + 20);
-        private static Rect CommandBarSmall = new Rect(0, 0, (ButtonWidth * 3) + Offset, 50 + Offset);
+        private static Rect CommandBar = new Rect(0, 0, widthW, heightW + 20);   // the "window"
+        private static Rect CommandBarSmall = new Rect(0, 0, (ButtonWidth * 3) + Offset, 50 + Offset);   // the "window"
         private static Vector2 scrolll = new Vector2(0, 0);
         private static float scrolllSize = 50;
         private static int Offset = 20;
@@ -1048,7 +1048,7 @@ namespace TAC_AI.World
         }
 
         private const int AIRTSDisplayToolID = 8016;
-        private static Rect toolWindow = new Rect(0, 0, 200, 80);
+        private static Rect toolWindow = new Rect(0, 0, 200, 80);   // the "window"
         private static TankAIHelper hovered => ManWorldRTS.inst.PlayerHovered ? ManWorldRTS.inst.PlayerHovered : ManWorldRTS.inst.OtherHovered;
         private static void GUIHandlerInfo(int ID)
         {
@@ -1063,9 +1063,9 @@ namespace TAC_AI.World
         }
 
         private static Texture2D NoHPBar;
-        private static Texture2D HPBarGreen;
-        private static Texture2D HPBarRed;
-        private static Texture2D HPBarBlue;
+        private static Texture2D HPBarGreen; //= Texture2D.whiteTexture;
+        private static Texture2D HPBarRed;// = Texture2D.blackTexture;
+        private static Texture2D HPBarBlue;// = Texture2D.blackTexture;
         private static Texture2D OutlineMain;
         private static Texture2D OutlineFollower;
         private static Texture2D OutlinePlayer;
@@ -1088,11 +1088,13 @@ namespace TAC_AI.World
             HPBarGreen.SetPixels(0, 0, 2, 2, new Color[4] { colorC, colorC, colorC, colorC, });
             HPBarGreen.Apply();
 
+            //colorC = new Color(1, 0.3f, 0.4f, 1f);
             colorC = new Color(1, 0.675f, 0.8f, 1f);
             HPBarRed = new Texture2D(2, 2, TextureFormat.RGBA32, false, false);
             HPBarRed.SetPixels(0, 0, 2, 2, new Color[4]{ colorC, colorC, colorC, colorC, });
             HPBarRed.Apply();
 
+            //colorC = new Color(0.225f, 0.75f, 1, 1f);
             colorC = new Color(0.675f, 0.8f, 1f, 1f);
             HPBarBlue = new Texture2D(2, 2, TextureFormat.RGBA32, false, false);
             HPBarBlue.SetPixels(0, 0, 2, 2, new Color[4] { colorC, colorC, colorC, colorC, });

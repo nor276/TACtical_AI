@@ -8,6 +8,9 @@ using TAC_AI.World;
 
 namespace TAC_AI
 {
+    /// <summary>
+    /// Handles NON-PLAYER Techs.  Needs to be reset and recollected each save reload.  Also does not maintain connections with Techs that are unloaded or destroyed.
+    /// </summary>
     public class TechUnitGroup : ListHashSet<TankAIHelper>
     {
         public Func<int> Team;
@@ -19,11 +22,21 @@ namespace TAC_AI
             PlaySFX = playSFX;
         }
 
+        /// <summary>
+        /// true values move to the front
+        /// </summary>
+        /// <param name="func"></param>
+        /// <returns></returns>
         public TechUnitGroup ReorderBy(Func<TankAIHelper, bool> func)
         {
             this.InsertionSort((x) => func(x) ? 1 : 0);
             return this;
         }
+        /// <summary>
+        /// true values move to the back
+        /// </summary>
+        /// <param name="func"></param>
+        /// <returns></returns>
         public TechUnitGroup ReorderByDescending(Func<TankAIHelper, bool> func)
         {
             this.InsertionSort((x) => func(x) ? 0 : 1);
@@ -40,7 +53,7 @@ namespace TAC_AI
             if (helper.tank.netTech?.NetPlayer)
             {
                 if (helper.tank.netTech.NetPlayer != ManNetwork.inst.MyPlayer)
-                    return false;
+                    return false;// cannot grab other player tech
             }
             Add(helper);
             ManWorldRTS.dirtyLocalPlayer = true;
@@ -50,7 +63,7 @@ namespace TAC_AI
         {
             if (helper.tank.netTech?.NetPlayer)
             {
-                return false;
+                return false;// cannot grab other player tech
             }
             Remove(helper);
             ManWorldRTS.dirtyLocalPlayer = true;
@@ -81,12 +94,13 @@ namespace TAC_AI
         }
         private bool HandleSelectTargetTank(Vector3 cmdTargPoint, Visible cmdTargVis, bool stackCommands)
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectTargetTank.");
             Tank cmdTargTech = cmdTargVis.block.tank;
             if ((bool)cmdTargTech)
             {
                 bool responded = false;
                 if (cmdTargTech.IsEnemy(ManPlayer.inst.PlayerTeam))
-                {
+                {   // Attack Move
                     foreach (TankAIHelper helper in this)
                     {
                         if (helper != null)
@@ -115,13 +129,13 @@ namespace TAC_AI
                 else if (cmdTargTech.IsFriendly(ManPlayer.inst.PlayerTeam))
                 {
                     if (cmdTargTech.IsPlayer)
-                    {
+                    {   // Reset to working order
                         foreach (TankAIHelper helper in this)
                         {
                             if (helper != null)
                             {
                                 if (helper == cmdTargTech)
-                                {
+                                {// We are selecting ourselves, we just stay put
                                     if (stackCommands)
                                     {
                                         ManWorldRTS.inst.QueueNextCommand(helper, PositionTweak(cmdTargPoint));
@@ -156,7 +170,7 @@ namespace TAC_AI
                         }
                     }
                     else
-                    {
+                    {   // Protect/Defend
                         try
                         {
                             if (cmdTargTech.IsAnchored)
@@ -208,7 +222,8 @@ namespace TAC_AI
                                 {
                                     if (helper != null)
                                     {
-                                        if (helper.isAegisAvail)
+                                        //bool LandAIAssigned = help.DediAI < AIType.MTTurret;
+                                        if (helper.isAegisAvail)// && LandAIAssigned)
                                         {
                                             if (stackCommands)
                                             {
@@ -270,6 +285,7 @@ namespace TAC_AI
         }
         private bool HandleSelectTerrain(Vector3 cmdTargPoint, bool stackCommands)
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectTerrain. - " + StackTraceUtility.ExtractStackTrace());
             Vector3 cmdTargPointTerrain = PositionTweak(cmdTargPoint);
             if (!stackCommands && this.Count == 1)
             {
@@ -311,12 +327,14 @@ namespace TAC_AI
                     }
                 }
             }
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectTerrain.");
             if (PlaySFX && this.Any())
                 Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AcceptMission);
             return this.Any();
         }
         private bool HandleSelectScenery(Vector3 cmdTargPoint, Visible cmdTargVis, bool stackCommands)
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectScenery.");
 
             bool responded = false;
             if (cmdTargVis)
@@ -325,7 +343,7 @@ namespace TAC_AI
                 if ((bool)cmdTargNode)
                 {
                     if (!cmdTargNode.GetComponent<Damageable>().Invulnerable)
-                    {
+                    {   // Mine Move
                         foreach (TankAIHelper helper in this)
                         {
                             if (helper != null)
@@ -371,7 +389,7 @@ namespace TAC_AI
                             Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.Undo);
                     }
                     else
-                    {
+                    {   // Just issue a movement command, it's a flattened rock or "landmark"
                         HandleSelectTerrain(cmdTargPoint, stackCommands);
                     }
                     return responded;
@@ -399,6 +417,7 @@ namespace TAC_AI
         }
         private bool HandleSelectBlock(Vector3 cmdTargPoint, Visible cmdTargVis, bool stackCommands)
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": HandleSelectBlock.");
 
             bool responded = false;
             if (cmdTargVis)

@@ -9,6 +9,7 @@ namespace TAC_AI.AI.AlliedOperations
         internal const int reverseFromResourceTime = 35;
         public static void MotivateKill(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Assassin) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = (helper.DriverType == AIDriverType.Pilot || helper.DriverType == AIDriverType.Astronaut);
 
@@ -40,7 +41,7 @@ namespace TAC_AI.AI.AlliedOperations
             if (!helper.CollectedTarget || helper.Retreat)
             {
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
                     {  }
@@ -50,9 +51,9 @@ namespace TAC_AI.AI.AlliedOperations
                 if (!helper.foundBase)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Searching for nearest charger!");
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     if (helper.theBase == null)
-                        return;
+                        return; // There's no base!
                     helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
                 }
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -126,7 +127,7 @@ namespace TAC_AI.AI.AlliedOperations
             else
             {
                 if (helper.ActionPause > 0)
-                {
+                {   // BRANCH - Reverse from Base
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from base...");
                     direct.Reverse(helper);
                     {  }
@@ -134,7 +135,7 @@ namespace TAC_AI.AI.AlliedOperations
                 }
                 if (!helper.foundGoal)
                 {
-                    helper.EstTopSped = 1;
+                    helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     helper.foundGoal = AIECore.FindTarget(tank, helper, helper.theResource, out var tmpRes);
                     helper.theResource = tmpRes;
                     AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Scanning for enemies...");
@@ -142,10 +143,10 @@ namespace TAC_AI.AI.AlliedOperations
                     {
                         helper.foundBase = AIECore.FetchChargedChargers(tank, helper.JobSearchRange * 2.5f, out helper.lastBasePos, out helper.theBase, tank.Team);
                         if (helper.theBase == null)
-                            return;
+                            return; // There's no base!
                         helper.lastBaseExtremes = helper.theBase.GetCheapBounds();
                     }
-                    return;
+                    return; // There's no enemies left!
                 }
                 else if (!helper.theResource?.tank?.visible || !helper.theResource.tank.visible.isActive || !ManBaseTeams.IsEnemy(tank.Team, helper.theResource.tank.Team))
                 {
@@ -183,6 +184,7 @@ namespace TAC_AI.AI.AlliedOperations
 
         public static void ShootToDestroy(TankAIHelper helper, Tank tank)
         {
+            // Determines the weapons actions and aiming of the AI, this one is more fire-precise and used for turrets
             helper.WantsToFight = false;
 
             if (helper.theResource)

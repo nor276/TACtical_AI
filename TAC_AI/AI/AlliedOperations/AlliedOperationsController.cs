@@ -26,6 +26,7 @@ namespace TAC_AI.AI.AlliedOperations
                         BBase.HoldProtect(helper, helper.tank, ref direct);
                         break;
                     default:
+                        // I fight for my friends
                         BBase.HoldProtect(helper, helper.tank, ref direct);
                         BGeneral.AidDefend(helper, helper.tank);
                         break;
@@ -39,21 +40,25 @@ namespace TAC_AI.AI.AlliedOperations
                         switch (helper.DriverType)
                         {
                             case AIDriverType.Tank:
+                                // We move to victory
                                 BGeneral.AidDefend(helper, helper.tank);
                                 BEscort.MotivateMove(helper, helper.tank, ref direct);
                                 break;
 
                             case AIDriverType.Astronaut:
+                                // Grace from Space
                                 BGeneral.AidDefend(helper, helper.tank);
                                 BAstrotech.MotivateSpace(helper, helper.tank, ref direct);
                                 break;
 
                             case AIDriverType.Sailor:
+                                // Yarr
                                 BGeneral.AidDefend(helper, helper.tank);
                                 BBuccaneer.MotivateBote(helper, helper.tank, ref direct);
                                 break;
 
                             case AIDriverType.Pilot:
+                                // Fly and doggyfight
                                 BAviator.Dogfighting(helper, helper.tank);
                                 BAviator.MotivateFly(helper, helper.tank, ref direct);
                                 break;
@@ -73,43 +78,51 @@ namespace TAC_AI.AI.AlliedOperations
                         }
                         break;
                     case AIType.Assault:
+                        // Up your arsenal
                         BAssassin.ShootToDestroy(helper, helper.tank);
                         BAssassin.MotivateKill(helper, helper.tank, ref direct);
                         break;
 
                     case AIType.Aegis:
+                        // I fight for my friends (priority resource techs pending)
                         BGeneral.AidDefend(helper, helper.tank);
                         BAegis.MotivateProtect(helper, helper.tank, ref direct);
                         break;
 
                     case AIType.Prospector:
+                        // We back in the mine
                         BGeneral.SelfDefend(helper, helper.tank);
                         BProspector.MotivateMine(helper, helper.tank, ref direct);
                         break;
 
                     case AIType.Scrapper:
+                        // Grab Scrape and sell
                         BGeneral.SelfDefend(helper, helper.tank);
                         BScrapper.MotivateFind(helper, helper.tank, ref direct);
                         break;
 
                     case AIType.Energizer:
+                        // The thing that keeps going
                         BGeneral.SelfDefend(helper, helper.tank);
                         BEnergizer.MotivateCharge(helper, helper.tank, ref direct);
                         break;
 
                     case AIType.MTTurret:
+                        // Load, Aim,    FIIIIIRRRRRRRRRRRRRRRRRRRRRRRRRRRE!!!
                         BMultiTech.MimicDefend(helper, helper.tank);
                         BMultiTech.MTStatic(helper, helper.tank, ref direct);
-                        BMultiTech.BeamLockWithinBounds(helper, helper.tank);
+                        BMultiTech.BeamLockWithinBounds(helper, helper.tank); //lock rigidbody with closest non-MT Tech on build beam
                         break;
 
                     case AIType.MTStatic:
+                        // Defend and sit like good guard dog
                         BMultiTech.MimicDefend(helper, helper.tank);
                         BMultiTech.MTStatic(helper, helper.tank, ref direct);
-                        BMultiTech.BeamLockWithinBounds(helper, helper.tank);
+                        BMultiTech.BeamLockWithinBounds(helper, helper.tank); //lock rigidbody with closest non-MT Tech on build beam
                         break;
 
                     case AIType.MTMimic:
+                        // Copycat
                         BMultiTech.MimicAllClosestAlly(helper, helper.tank, ref direct);
                         break;
 

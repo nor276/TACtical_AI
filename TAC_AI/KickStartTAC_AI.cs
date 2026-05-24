@@ -21,6 +21,7 @@ namespace TAC_AI
             return true;
         }
 
+        // IDK what I should init here...
         public override void EarlyInit()
         {
             if (oInst == default)
@@ -34,6 +35,8 @@ namespace TAC_AI
         }
         public override void Init()
         {
+            // We do this check because this mod takes FOREVER to build, so we don't heed every reset
+            //   request - the mod is already built to handle that because of Unofficial.
             KickStart.ShouldBeActive = true;
             if (!isInit)
             {

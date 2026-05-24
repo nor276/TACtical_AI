@@ -6,6 +6,9 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement
 {
+    /// <summary>
+    /// Acts as the slow, non-immedeate pathfinding for land and sea AIs.
+    /// </summary>
 
     public class AIEAutoPather2D : AIEAutoPather
     {
@@ -22,6 +25,13 @@ namespace TAC_AI.AI.Movement
             AIEPathMapper.RegisterPather(this);
         }
 
+        /// <summary>
+        /// Must be called from within the class instance with the pather in it
+        /// </summary>
+        /// <param name="pathable"></param>
+        /// <param name="startPos"></param>
+        /// <param name="destPos"></param>
+        /// <returns></returns>
         public static bool DoPathfinding(ref IPathfindable pathable)
         {
             if (pathable == null)
@@ -30,6 +40,7 @@ namespace TAC_AI.AI.Movement
             Vector3 startPos = pathable.CurrentPosition();
             Vector3 destPos = pathable.GetTargetDestination();
 
+            // Check if we should just rely on immedeate pathing
             if (!IsFarEnough(startPos, destPos))
                 return false;
             var pathfinder = pathable.Pathfinder;
@@ -43,9 +54,11 @@ namespace TAC_AI.AI.Movement
             }
             else
             {
+                // Check if we should recalc it
                 if (IsFarEnough(pathfinder.EndPosWP.ScenePosition, destPos) || (pathfinder.IsFinished && !pathfinder.Success &&
                     IsFarEnough(pathfinder.StartPosWP.ScenePosition, startPos)))
                 {
+                    //DebugTAC_AI.Log("AIAutoPather - RECALC Called.");
                     pathfinder.Recalc(startPos, destPos);
                 }
             }
@@ -264,6 +277,10 @@ namespace TAC_AI.AI.Movement
         private static List<KeyValuePair<byte, IntVector2>> toCheckAlt = new List<KeyValuePair<byte, IntVector2>>();
         private static List<KeyValuePair<byte, IntVector2>> toCheckExtra = new List<KeyValuePair<byte, IntVector2>>();
         private static List<KeyValuePair<byte, IntVector2>> toCheckExtra2 = new List<KeyValuePair<byte, IntVector2>>();
+        /// <summary>
+        /// For each call, paths each tile every call PathingIterationsPerCall times
+        /// </summary>
+        /// <returns>True if calcing, false when finished</returns>
         public override bool CalcRoute()
         {
             if (PathingUnit == null)
@@ -469,6 +486,7 @@ namespace TAC_AI.AI.Movement
                 }
                 toCheck.Clear();
             }
+            //DebugTAC_AI.Log("AIAutoPather - Pathing attempt with " + pathed.Count);
             return true;
         }
 
@@ -482,6 +500,7 @@ namespace TAC_AI.AI.Movement
                 PathRoute.RemoveAt(0);
                 partialCache.Add(posD);
             }
+            //StartPos = PathRoute.Last();
             TryShorten(ref partialCache);
             DebugTAC_AI.LogPathing("AIAutoPather - Partial path with " + partialCache.Count + " points and " + pathed.Count + " attempts so far.");
             GetPathEarly(partialCache, submitCache);
@@ -694,6 +713,7 @@ namespace TAC_AI.AI.Movement
                 return;
             }
             int removed = 1;
+            // Remove loopbacks
             int index = 0;
             posssss.Clear();
             foreach (var item in PathRoute)
@@ -725,6 +745,7 @@ namespace TAC_AI.AI.Movement
                     }
                 }
             }
+            // Remove straight extra points
             for (int step = 0; step < PathRoute.Count - 2; step++)
             {
                 IntVector2 posCheck = PathRoute[step];

@@ -36,6 +36,9 @@ namespace TAC_AI.World
         }
     }
 
+    /// <summary>
+    /// The master class to command fleets of AI
+    /// </summary>
     public class NP_Presence
     {
 #if DEBUG
@@ -91,6 +94,7 @@ namespace TAC_AI.World
             team = Team;
         }
 
+        // Checks
         public bool HasMobileETUs()
         {
             return EMUs.ToList().Exists(delegate (NP_MobileUnit cand) { return cand.MoveSpeed > 12; });
@@ -145,6 +149,10 @@ namespace TAC_AI.World
             return teamValue;
         }
 
+        /// <summary>
+        /// Returns false if the team should be removed
+        /// </summary>
+        /// <returns></returns>
         public virtual bool UpdateOperatorRTS(List<NP_TechUnit> TUDestroyed)
         {
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommandRTS - Turn for Team " + Team);
@@ -159,11 +167,15 @@ namespace TAC_AI.World
             HandleRecharge();
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
             if (MainBase != null)
-            {
+            {   // To make sure little bases are not totally stagnant - the AI is presumed to be mining aand doing missions
                 PresenceDebugDEV(KickStart.ModID + ": UpdateGrandCommandRTS - Team final funds " + MainBase.BuildBucks);
             }
             return AnyLeftStanding;
         }
+        /// <summary>
+        /// Returns false if our team no longer exists
+        /// </summary>
+        /// <returns></returns>
         public virtual bool UpdateOperator()
         {
             PresenceDebug(KickStart.ModID + ": UpdateGrandCommand - Turn for Team " + Team);
@@ -177,12 +189,14 @@ namespace TAC_AI.World
 
         public virtual void UpdateMaintainer(float timeDelta)
         {
+            // The techs move every UpdateMoveDelay seconds
             foreach (var item in Fighting)
             {
                 item.MovementSceneDelta(timeDelta);
             }
         }
 
+        // Basics
         protected void HandleRepairs()
         {
             NP_BaseUnit funds = UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
@@ -256,6 +270,7 @@ namespace TAC_AI.World
             PresenceDebugDEV("HandleRecharge - Remaining " + excessEnergy + " energy");
         }
 
+        // Recon
         protected void HandleUnitRecon()
         {
             scannedPositions.Clear();
@@ -283,7 +298,7 @@ namespace TAC_AI.World
 
             if (MainBase != null)
             {
-                UnloadedBases.GetScannedTilesAroundTech(MainBase);
+                UnloadedBases.GetScannedTilesAroundTech(MainBase); // This happens first - home defense is more important
 
                 if (!attackStarted)
                 {
@@ -302,6 +317,7 @@ namespace TAC_AI.World
             }
         }
 
+        // Combat
         protected void HandleCombat(List<NP_TechUnit> TUDestroyed)
         {
             Fighting.Clear();
@@ -310,7 +326,7 @@ namespace TAC_AI.World
             {
                 if (Singleton.Manager<ManWorld>.inst.CheckIsTileAtPositionLoaded(Singleton.Manager<ManWorld>.inst.TileManager.CalcTileCentreScene(TT)))
                 {
-                    continue;
+                    continue; // tile loaded
                 }
                 if (ManEnemyWorld.TryGetConflict(TT, Team, out List<NP_TechUnit> Allies, out List<NP_TechUnit> Enemies))
                 {
@@ -403,15 +419,16 @@ namespace TAC_AI.World
             return damageTotal;
         }
 
+        // Movement
         protected void HandleUnitMoving()
         {
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
             if (MainBase == null)
-            {
+            {   // Attack the player
                 MoveAllETUsNoMainBase();
             }
             else
-            {
+            {   // Manage Base operations
                 switch (teamMode)
                 {
                     case AITeamMode.Retreating:
@@ -477,6 +494,11 @@ namespace TAC_AI.World
 
         private static StringBuilder moving = new StringBuilder();
         private static StringBuilder startedMove = new StringBuilder();
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="eventTile"></param>
+        /// <returns>True if a tech is moving</returns>
         private bool MoveAllETUs()
         {
             bool techsMoving = false;
@@ -658,6 +680,7 @@ namespace TAC_AI.World
             }
         }
 
+        // MISC
         internal void PresenceDebug(string thing)
         {
 #if DEBUG
@@ -700,6 +723,9 @@ namespace TAC_AI.World
 
     }
 
+    /// <summary>
+    /// The enemy base in world-relations
+    /// </summary>
     public class NP_Presence_Automatic : NP_Presence
     {
 
@@ -713,6 +739,10 @@ namespace TAC_AI.World
             canSiege = canLaunchSieges;
         }
 
+        /// <summary>
+        /// Returns false if the team should be removed
+        /// </summary>
+        /// <returns></returns>
         public override bool UpdateOperatorRTS(List<NP_TechUnit> TUDestroyed)
         {
             if (Team == SpecialAISpawner.trollTeam)
@@ -740,7 +770,7 @@ namespace TAC_AI.World
             HandleRecharge();
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
             if (MainBase != null)
-            {
+            {   // To make sure little bases are not totally stagnant - the AI is presumed to be mining aand doing missions
                 PresenceDebugDEV(KickStart.ModID + ": UpdateGrandCommandRTS - Team final funds " + MainBase.BuildBucks);
             }
             return AnyLeftStanding;
@@ -781,11 +811,19 @@ namespace TAC_AI.World
                 return base.MoveETU(ETU, ref techsMoving);
         }
 
+        // Checks
         public bool ShouldReturnToBase()
         {
             return teamMode == AITeamMode.Retreating || teamMode == AITeamMode.Defending;
         }
 
+        // Founder
+        /// <summary>
+        /// Don't use for end-of task sets
+        /// </summary>
+        /// <param name="initial"></param>
+        /// <param name="anon"></param>
+        /// <returns></returns>
         private static bool CanFounderSwitchState(AIFounderMode initial, AIFounderMode anon)
         {
             switch (initial)
@@ -825,6 +863,11 @@ namespace TAC_AI.World
                     throw new Exception(KickStart.ModID + ": EnemyPresence.CanSwitchState initial variable is invalid " + initial.ToString());
             }
         }
+        /// <summary>
+        /// WORK IN PROGRESS - returns false if it failed
+        /// </summary>
+        /// <param name="ETU"></param>
+        /// <param name="techsMoving"></param>
         private bool DoFounderMovement(NP_TechUnit ETU, ref bool techsMoving)
         {
             AIFounderMode takeAction;
@@ -844,6 +887,7 @@ namespace TAC_AI.World
             if (takeAction != AIFounderMode.HomeIdle && CanFounderSwitchState(founderMode, takeAction))
             {
                 founderMode = takeAction;
+                // Base is under attack
                 if (ManEnemyWorld.StrategicMoveQueue(ETU, lastEventTile, OnUnitReachDestinationBase, out bool fail))
                 {
                     PresenceDebug(" Founder " + ETU.Name.ToString() + " is moving to tile " + lastEventTile + " to do " + founderMode);
@@ -853,12 +897,17 @@ namespace TAC_AI.World
                     return false;
             }
             else
-            {
+            {   // Do random things
                 if (!SetFounderDestination(ETU, ref techsMoving))
                     return false;
             }
             return true;
         }
+        /// <summary>
+        /// WORK IN PROGRESS
+        /// </summary>
+        /// <param name="ETU"></param>
+        /// <param name="techsMoving"></param>
         private bool SetFounderDestination(NP_TechUnit ETU, ref bool techsMoving)
         {
             if (MainBase == null || lastFounderStopUpdateTicks > 0)
@@ -920,6 +969,7 @@ namespace TAC_AI.World
                 founderMode = AIFounderMode.HomeReturn;
         }
 
+        // Special
         private void HandleTraderTrolls()
         {
             int count = EMUs.Count;
@@ -940,6 +990,7 @@ namespace TAC_AI.World
             }
         }
 
+        // MISC
         public bool TryGetFounderUnloaded(out NP_MobileUnit ETUFounder)
         {
             ETUFounder = null;

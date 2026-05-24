@@ -18,6 +18,7 @@ namespace TAC_AI.AI.Movement.AICores
             this.controller = (AIControllerStatic)controller;
             this.tank = tank;
             controller.Helper.GroundOffsetHeight = controller.Helper.lastTechExtents + AIGlobals.GroundOffsetGeneralAir;
+            //DebugTAC_AI.Log(KickStart.ModID + ": StaticAICore - Init");
         }
 
         public Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset)
@@ -28,6 +29,7 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirector(ref EControlCoreSet core)
         {
             var helper = controller.Helper;
+            // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " drive was called");
             try
             {
                 helper.ThrottleState = AIThrottleState.PivotOnly;
@@ -71,6 +73,7 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorRTS(ref EControlCoreSet core)
         {
             DriveDirector(ref core);
+            // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " drive was called");DriveDirector()
             return true;
         }
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
@@ -85,6 +88,7 @@ namespace TAC_AI.AI.Movement.AICores
                 return true;
             }
             DriveDirectorEnemy(mind, ref core);
+            // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " drive was called");DriveDirector()
             return true;
         }
 
@@ -113,11 +117,12 @@ namespace TAC_AI.AI.Movement.AICores
 
         public bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
+            // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " normal drive was called");
             if (tank.IsSkyAnchored)
-            {
+            {   //3D movement
                 SkyMaintainer(ref core);
             }
-            else
+            else //Land movement
             {
                 Vector3 TurnVal = Vector3.zero;
 
@@ -147,15 +152,15 @@ namespace TAC_AI.AI.Movement.AICores
                 if (tank.control.AnyThrottleInAxes(Vector3.one))
                 {
                     if (tank.control.GetThrottle(0, out float throttleX))
-                    {
+                    {   // X
                         InputLineVal.x = throttleX;
                     }
                     if (tank.control.GetThrottle(1, out float throttleY))
-                    {
+                    {   // Y
                         InputLineVal.y = throttleY;
                     }
                     if (tank.control.GetThrottle(2, out float throttleZ))
-                    {
+                    {   // X
                         InputLineVal.z = throttleZ;
                     }
                     if (AIGlobals.ShowDebugFeedBack)
@@ -179,6 +184,7 @@ namespace TAC_AI.AI.Movement.AICores
 
             float driveMultiplier = 0;
 
+            //AI Steering Rotational
             Vector3 distDiff = controller.PathPoint - tank.boundsCentreWorldNoCheck;
             Vector3 turnVal;
             Vector3 forwardFlat = tank.rootBlockTrans.forward;
@@ -189,8 +195,10 @@ namespace TAC_AI.AI.Movement.AICores
             Vector3 turnValUp = AIGlobals.LookRot(tank.rootBlockTrans.InverseTransformDirection(forwardFlat.normalized), tank.rootBlockTrans.InverseTransformDirection(Vector3.up)).eulerAngles;
             if (helper.Navi3DUp == Vector3.up)
             {
+                //DebugTAC_AI.Log(KickStart.ModID + ": Forwards");
                 if (!helper.FullMelee && Vector3.Dot(helper.Navi3DDirect, tank.rootBlockTrans.forward) < 0.6f)
                 {
+                    //If overtilt then try get back upright again
                     turnVal.x = turnValUp.x;
                     turnVal.x = -AIGlobals.AngleUnsignedToSigned(turnVal.x) / 180f;
                 }
@@ -202,22 +210,27 @@ namespace TAC_AI.AI.Movement.AICores
                 turnVal.z = -AIGlobals.AngleUnsignedToSigned(turnVal.z) / 180f;
             }
             else
-            {
+            {   //Using broadside tilting
                 if (!helper.FullMelee && Vector3.Dot(helper.Navi3DUp, tank.rootBlockTrans.up) < 0.6f)
                 {
+                    //If overtilt then try get back upright again
                     turnVal.z = turnValUp.z;
                     turnVal.z = -AIGlobals.AngleUnsignedToSigned(turnVal.z) / 180f;
+                    //DebugTAC_AI.Log(KickStart.ModID + ": Broadside overloaded with value " + Vector3.Dot(helper.Navi3DUp, tank.rootBlockTrans.up));
                 }
                 else
                 {
+                    //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Z-tilt active");
                     turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.z) / 60f, -1, 1);
                 }
                 turnVal.x = turnValUp.x;
                 turnVal.x = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.x) / 60f, -1, 1);
             }
 
+            //Convert turnVal to runnable format
             turnVal.y = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.y) / 60f, -1, 1);
 
+            //DebugTAC_AI.Log(KickStart.ModID + ": TurnVal AIM " + turnVal);
 
             helper.Navi3DDirect = Vector3.zero;
             helper.Navi3DUp = Vector3.up;
@@ -237,6 +250,7 @@ namespace TAC_AI.AI.Movement.AICores
             else
                 TurnVal = Vector3.zero;
 
+            //AI Drive Translational
             Vector3 driveVal;
             if (helper.techIsApproaching)
             {
@@ -244,7 +258,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
             else if (helper.lastEnemyGet.IsNotNull() && !helper.IsMultiTech &&
                 AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
-            {
+            {   //level alt with enemy
                 controller.HoldHeight = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck.y + 4;
                 driveVal = tank.rootBlockTrans.InverseTransformVector(controller.PathPoint - tank.boundsCentreWorldNoCheck).normalized;
                 if (tank.IsFriendly() && helper.lastPlayer.IsNotNull())
@@ -298,7 +312,7 @@ namespace TAC_AI.AI.Movement.AICores
             if (!helper.IsMultiTech && CloseToGroundWarning)
             {
                 if (driveVal.y >= -0.5f && driveVal.y < 0f)
-                    driveVal.y = 0;
+                    driveVal.y = 0; // prevent airships from slam-dunk
                 else if (driveVal.y != -1)
                 {
                     driveVal.y += 0.5f;
@@ -306,6 +320,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
             Vector3 DriveVal = Vector3.zero;
 
+            // PREVENT GROUND CRASHING
             if (EmergencyUp)
             {
                 DriveVal = (tank.rootBlockTrans.InverseTransformVector(Vector3.up) * 2).Clamp01Box();
@@ -320,6 +335,8 @@ namespace TAC_AI.AI.Movement.AICores
                 helper.ProcessControl(DriveVal, TurnVal, Vector3.zero, false, false);
                 return;
             }
+            //helper.MinimumRad
+            // Prevent drifting
             Vector3 final = (driveVal * Mathf.Clamp(distDiff.magnitude / AIGlobals.StationaryMoveDampening, 0, 1) * driveMultiplier).Clamp01Box();
 
             if (core.DriveDir > EDriveFacing.Neutral)
@@ -333,15 +350,15 @@ namespace TAC_AI.AI.Movement.AICores
             }
 
             if (tank.control.GetThrottle(0, out float throttleX))
-            {
+            {   // X
                 final.x = throttleX;
             }
             if (tank.control.GetThrottle(1, out float throttleY))
-            {
+            {   // Y
                 final.y = throttleY;
             }
             if (tank.control.GetThrottle(2, out float throttleZ))
-            {
+            {   // X
                 final.z = throttleZ;
             }
 
@@ -349,6 +366,7 @@ namespace TAC_AI.AI.Movement.AICores
 
             if (AIGlobals.ShowDebugFeedBack)
             {
+                // DEBUG FOR DRIVE ERRORS
                 if (tank.IsAnchored)
                 {
                     DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, distDiff, new Color(0, 1, 1));

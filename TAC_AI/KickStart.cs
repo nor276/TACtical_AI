@@ -20,6 +20,9 @@ using ModHelper.Config;
 
 namespace TAC_AI
 {
+    // Previously an extension to RandomAdditions, TACtical AI is the AI branch of the mod.
+    //   Featuring a simple to use, fully-fledged AI which adapts to its vehicle nearly instantly
+    //   based on the parts attached to it, with minimal manual intervention.
     public class KickStart
     {
         internal const string ModID = "Advanced AI";
@@ -37,24 +40,33 @@ namespace TAC_AI
         public static bool ShouldBeActive = true;
         public static bool UseClassicRTSControls = false;
 #endif
-        public static bool UseNumpadForGrouping = false;
+        public static bool UseNumpadForGrouping = false;//
+        /// <summary> Toggles retreat state! </summary>
         internal static KeyCode RetreatHotkey = KeyCode.I;
         public static int RetreatHotkeySav = (int)RetreatHotkey;
+        /// <summary> Toggles RTS Mode </summary>
         internal static KeyCode CommandHotkey = KeyCode.K;
         public static int CommandHotkeySav = (int)CommandHotkey;
+        /// <summary> Fires bolts on selected Techs </summary>
         internal static KeyCode CommandBoltsHotkey = KeyCode.X;
         public static int CommandBoltsHotkeySav = (int)CommandBoltsHotkey;
+        /// <summary> Hold to select multiple </summary>
         internal static KeyCode MultiSelect = KeyCode.LeftShift;
         public static int MultiSelectKeySav = (int)MultiSelect;
+        /// <summary> Access the AI modal </summary>
         internal static KeyCode ModeSelect = KeyCode.J;
         public static int ModeSelectKeySav = (int)ModeSelect;
+        /// <summary> Interact with NPTss </summary>
         internal static KeyCode NPTInteract = KeyCode.T;
         public static int NPTInteractKeySav = (int)NPTInteract;
 
         public static float TerrainHeight => ManWorldGeneratorExt.CurrentTotalHeight;
         public static float TerrainHeightOffset => ManWorldGeneratorExt.CurrentMinHeight;
 
-        internal static int EnemyTeamTechLimit = 6;
+        /// <summary>
+        /// This is the Tech limit PER AI team
+        /// </summary>
+        internal static int EnemyTeamTechLimit = 6;// Allow the bases plus 6 additional capacity of the AIs' choosing
 
         public static float SavedDefaultEnemyFragility;
         public static float SavedDefaultBlockSurvivalChance = -1f;
@@ -91,22 +103,28 @@ namespace TAC_AI
             {
                 return AIPopMaxLimit;
             }
-        }
-        internal static int MaxEnemyBaseLimit = 3;
-        internal static int MaxEnemyHQLimit = 24;
-        internal static int MaxBasesPerTeam = 6;
+        }// How many techs that can exist before giving up tech splitting?
+        internal static int MaxEnemyBaseLimit = 3;  // How many different enemy team bases are allowed to exist in one instance
+        internal static int MaxEnemyHQLimit = 24;    // How many HQs are allowed to exist in one instance
+        /// <summary>
+        /// Maker bases (excludes defenses)
+        /// </summary>
+        internal static int MaxBasesPerTeam = 6;    // How many base expansions can a single team perform?
 
-        internal static short AIClockPeriod
+        /// <summary>
+        /// For handling Operations
+        /// </summary>
+        internal static short AIClockPeriod // How frequently we update
         {
             get
             {
                 return ManNetwork.IsNetworked ? AIGlobals.NetAIClockPeriod : AIClockPeriodSet;
             }
         }
-        public static short AIClockPeriodSet = 10;
+        public static short AIClockPeriodSet = 10;        // How frequently we update
 
 #if STEAM
-        public static bool EnableBetterAI = false;
+        public static bool EnableBetterAI = false;  // This is toggled based on if the mod is "enabled" by official
 #else
         public static bool EnableBetterAI = true;
 #endif
@@ -148,14 +166,17 @@ namespace TAC_AI
             }
         }
 
+        /// <summary>
+        /// For handing Directors
+        /// </summary>
         public static int AIDodgeCheapness = 20;
         public static float CombatFacingCyclePeriod = 4f;
         public static int AIPopMaxLimit = 8;
         public static bool MuteNonPlayerRacket = true;
         public static bool DisplayEnemyEvents = true;
-        public static bool AllowOverleveledBlockDrops { get { return EnemyBlockDropChance == 100; } }
+        public static bool AllowOverleveledBlockDrops { get { return EnemyBlockDropChance == 100; } } // Obsolete - true when
         public static bool enablePainMode = true;
-        public static bool EnemyEradicators = false;
+        public static bool EnemyEradicators = false;    // Insanely large or powerful Techs
         public static bool EnemiesHaveCreativeInventory = false;
 
         public static bool AISelfRepair => ManNetwork.IsNetworked ? AllowAISelfRepairInMP : AllowAISelfRepair;
@@ -164,7 +185,8 @@ namespace TAC_AI
 
         public static int ForceRemoveOverEnemyMaxCap = 4;
         public static bool ActiveSpawnFoundersOffScene = false;
-        public static float SpawnFoundersPositional = 0.05f;
+        /// <summary> % Chance NPT Founders spawn when a tile is loaded for the first time </summary>
+        public static float SpawnFoundersPositional = 0.05f;//0.2f;
         internal static bool AllowEnemiesToStartBases { get { return MaxEnemyBaseLimit != 0; } }
         internal static bool AllowEnemyBaseExpand { get { return MaxBasesPerTeam != 0; } }
         public static int LandEnemyOverrideChance {
@@ -179,14 +201,26 @@ namespace TAC_AI
         public static bool AllowAirEnemiesToSpawn = true;
         public static float AirEnemiesSpawnRate = 1;
         public static bool AllowSeaEnemiesToSpawn = true;
+        /// <summary>
+        /// Block spawning of Vanilla Techs when applicable
+        /// </summary>
         public static bool TryForceOnlyPlayerSpawns = false;
+        /// <summary>
+        /// Block spawning of This mod's Global Population Techs when applicable
+        /// </summary>
         public static bool TryForceOnlyPlayerLocalSpawns = false;
         public static bool AllowEnemiesToMine = true;
         public static bool DesignsToLog = false;
         public static bool CommitDeathMode = false;
         public static bool CatMode = false;
 
+        /// <summary>
+        /// Allows player to use the RTS HUD
+        /// </summary>
         public static bool AllowPlayerRTSHUD = true;
+        /// <summary>
+        /// Allows the enemies to act outside of the active play area.  Might be laggy
+        /// </summary>
         public static bool AllowStrategicAI = true;
         public static List<EnemyMaxDistLimit> limitTypes = new List<EnemyMaxDistLimit>()
         {
@@ -229,11 +263,16 @@ namespace TAC_AI
                     throw new NotImplementedException("Unknown EnemyMaxDistLimit mode: " + CullFarEnemyBasesMode);
             }
         }
-        public static int CullFarEnemyBasesDistance = 8;
+        public static int CullFarEnemyBasesDistance = 8;// How far from the player should enemy bases be removed
         public static int EnemyBaseUpdateMode = 2;
-        public static float EnemySellGainModifier = 1;
+        // from the world? IN TILES
+        public static float EnemySellGainModifier = 1; // multiply enemy sell gains by this value
 
+        //public static bool DestroyTreesInWater = false;
 
+        // Set on startup
+
+        // MOD SUPPORT
         internal static bool IsRandomAdditionsPresent = false;
         internal static bool isWaterModPresent = false;
         internal static bool isControlBlocksPresent = false;
@@ -247,6 +286,8 @@ namespace TAC_AI
         internal static bool isConfigHelperPresent = false;
         internal static bool isNativeOptionsPresent = false;
 
+
+        // Set ingame
         public static int Difficulty
         {
             get
@@ -259,7 +300,7 @@ namespace TAC_AI
         }
 
 #if STEAM
-        public static int difficulty = 85;
+        public static int difficulty = 85; // insure that only smart enemies spawn for STEAM release for now
 #else
         public static int difficulty = 50;
 #endif
@@ -271,6 +312,8 @@ namespace TAC_AI
         public static bool WarnOnEnemyLock = true;
         public static bool DisableEnemyFogOfWar = true;
 
+
+        //Calculated
         public static int LastRawTechCount = 0;
         public static int LowerDifficulty { get { return Mathf.Clamp(Difficulty - 50, 0, 99); } }
         public static int UpperDifficulty { get { return Mathf.Clamp(Difficulty + 50, 1, 100); } }
@@ -299,6 +342,7 @@ namespace TAC_AI
                     lastPlayerTechPrice = RawTechBase.GetBBCost(Singleton.playerTank);
                 }
                 int priceMax = (int)((((float)(Difficulty + 50) / 100) + 0.5f) * lastPlayerTechPrice);
+                // Easiest results in 50% max player cost spawns, Hardest results in 250% max player cost spawns, Regular is is 150% max player cost spawns.
                 return Mathf.Max(lastPlayerTechPrice / 2, priceMax);
             }
         }
@@ -531,6 +575,7 @@ namespace TAC_AI
         public static void MainOfficialInit()
         {
 
+            //Where the fun begins
 #if STEAM
             DebugTAC_AI.Log(KickStart.ModID + ": MAIN (Steam Workshop Version) startup");
             if (!VALIDATE_MODS())
@@ -540,7 +585,13 @@ namespace TAC_AI
 #else
             DebugTAC_AI.Log(KickStart.ModID + ": Startup was invoked by TTSMM!  Set-up to handle LATE initialization.");
 #endif
+            //throw new NullReferenceException("CrashHandle");
+
+            //SafeSaves.DebugSafeSaves.LogAll = true;
+            //Initiate the madness
             HookToSafeSaves();
+
+            //TinySettingsUtil.TryLoadFromDiskStatic<AIGlobals>("TAC_AI_Globals");
 
             LegModExt.InsurePatches();
             ManBaseTeams.Initiate();
@@ -556,6 +607,7 @@ namespace TAC_AI
             PatchMod();
 
             AIERepair.RefreshDelays();
+            // Because official fails to init this while switching modes
             SpecialAISpawner.DetermineActiveOnModeType();
             TankAIManager.inst.CorrectBlocksList();
 
@@ -595,6 +647,7 @@ namespace TAC_AI
 #if STEAM
         public static IEnumerable<float> MainOfficialInitIterate()
         {
+            //Where the fun begins
             DebugTAC_AI.Log(KickStart.ModID + ": MAIN [ITERATOR] (Steam Workshop Version) startup");
             if (!VALIDATE_MODS())
             {
@@ -602,6 +655,7 @@ namespace TAC_AI
                 yield break;
             }
 
+            //Initiate the madness
             HookToSafeSaves();
             LegModExt.InsurePatches();
             yield return 0.14f;
@@ -746,6 +800,7 @@ namespace TAC_AI
             }
 
             UpdateCullDist();
+            //InvokeHelper.ModsPostLoadEvent.Subscribe(AIWiki.InsureAllValidAIs);
             InvokeHelper.BlocksPostChangeEvent.Subscribe(AIWiki.InsureAllValidAIs);
         }
 
@@ -842,6 +897,7 @@ namespace TAC_AI
                 }
             }
 
+            // DE-INIT ALL
             GUINPTInteraction.DeInit();
             SpecialAISpawner.DeInit();
             ManEnemyWorld.DeInit();
@@ -865,9 +921,11 @@ namespace TAC_AI
 #else
         public static void Main()
         {
+            //Where the fun begins
             DebugTAC_AI.Log(KickStart.ModID + ": MAIN (TTMM Version) startup");
             if (!VALIDATE_MODS())
                 return;
+            //Initiate the madness
 #if DEBUG
             DebugTAC_AI.Log("-----------------------------------------");
             DebugTAC_AI.Log("-----------------------------------------");
@@ -878,7 +936,7 @@ namespace TAC_AI
             try
             {
                 if (isSteamManaged)
-                {
+                {   // Since TTSMM launches this instead LATE when +managettmm is active, we need to compensate by initing ALL on init in this case.
                     MainOfficialInit();
                     return;
                 }
@@ -1016,6 +1074,11 @@ namespace TAC_AI
             return false;
         }
 
+        /// <summary>
+        /// Only call for cases where we want only vanilla corps!
+        /// </summary>
+        /// <param name="type"></param>
+        /// <returns></returns>
         public static FactionSubTypes GetCorpExtended(BlockTypes type)
         {
             return (FactionSubTypes)Singleton.Manager<ManSpawn>.inst.GetCorporation(type);

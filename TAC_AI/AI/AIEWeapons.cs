@@ -19,7 +19,7 @@ namespace TAC_AI.AI
                         if (AIGlobals.AllowWeaponsDisarm2)
                         {
                             if (helper.DriverType == AIDriverType.Stationary || ManBaseTeams.IsEnemy(tank.Team, helper.lastEnemyGet.tank.Team))
-                            {
+                            {   // Stationary AI should NEVER lower guard - even against Sub-Neutrals
                                 helper.WeaponState = AIWeaponState.Enemy;
                                 helper.SuppressFiring(false);
                             }
@@ -72,7 +72,7 @@ namespace TAC_AI.AI
             {
 
                 if (helper.IsMultiTech)
-                {
+                {   // sync to host tech
                     Tank closeAlly;
                     if ((bool)helper.theResource?.tank)
                         closeAlly = helper.theResource.tank;

@@ -8,14 +8,21 @@ using TAC_AI.Templates;
 
 namespace TAC_AI.AI.Enemy
 {
+    /// <summary>
+    /// Where the brain is handled for enemies (and mayber non-player allies)
+    /// </summary>
     public class EnemyMind : MonoBehaviour
     {
+        // ESSENTIALS
         public Tank Tank { get; private set; }
         public TankAIHelper AIControl { get; private set; }
         internal EnemyOperationsController EnemyOpsController;
         public AIERepair.DesignMemory TechMemor => AIControl.TechMemor;
 
+        // Set on spawn
+        /// <summary>What kind of vehicle is this Enemy?</summary>
         private EnemyHandling evilCommander = EnemyHandling.Wheeled;
+        /// <summary>The way the enemy interacts with the player and world</summary>
         public EnemyHandling EvilCommander
         {
             get => evilCommander;
@@ -46,30 +53,41 @@ namespace TAC_AI.AI.Enemy
                 evilCommander = value;
             }
         }
+        /// <summary>What the Enemy does if there's no threats around.</summary>
         public EnemyAttitude CommanderMind = EnemyAttitude.Default;
+        /// <summary>The way the Enemy acts if there's a threat.</summary>
         public EAttackMode CommanderAttack
         {
             get => AIControl.AttackMode;
             set { AIControl.AttackMode = value; }
         }
+        /// <summary>The extent the Enemy will be "self-aware" and intellegent about it's current state</summary>
         public EnemySmarts CommanderSmarts = EnemySmarts.Default;
+        /// <summary>When the Enemy should press X and seperate bolts.</summary>
         public EnemyBolts CommanderBolts = EnemyBolts.Default;
+        /// <summary>How the enemy will handle attacking</summary>
         public EnemyStanding CommanderAlignment = EnemyStanding.Enemy;
 
+        /// <summary>Extra for determining mentality on auto-generation</summary>
         public FactionSubTypes MainFaction = FactionSubTypes.GSO;
+        /// <summary>Do we stay anchored?</summary>
         public bool StartedAnchored = false;
+        /// <summary>If we are feeling extra evil</summary>
         public bool AllowRepairsOnFly = false;
+        /// <summary>Shoot the big techs instead?</summary>
         public bool InvertBullyPriority = false;
+        /// <summary>Can this tech spawn blocks from inventory?</summary>
         public bool AllowInvBlocks = false;
+        /// <summary>Can we melee?</summary>
         public bool LikelyMelee
         {
             get => AIControl.FullMelee;
             set { AIControl.AISetSettings.FullMelee = value; }
-        }
+        }// The way the Enemy acts if there's a threat.
 
-        public bool SolarsAvail { get; internal set; } = false;
-        public bool Hurt { get; internal set; } = false;
-        public float MaxCombatRange
+        public bool SolarsAvail { get; internal set; } = false;        // Do we currently have solar panels
+        public bool Hurt { get; internal set; } = false;               // Are we damaged?
+        public float MaxCombatRange// Aggro range
         {
             get => AIControl.MaxCombatRange;
             set => AIControl.AISetSettings.CombatChase = value;
@@ -79,7 +97,7 @@ namespace TAC_AI.AI.Enemy
             get => AIControl.MinCombatRange;
             set => AIControl.AISetSettings.CombatSpacing = value;
         }
-        internal Vector3 sceneStationaryPos = Vector3.zero;
+        internal Vector3 sceneStationaryPos = Vector3.zero;  // For stationary techs like Wingnut who must hold ground
 
         internal bool IsPopulation => Tank.IsPopulation;
         internal bool BuildAssist = false;
@@ -87,6 +105,7 @@ namespace TAC_AI.AI.Enemy
         internal int BoltsQueued = 0;
 
         public bool AttackPlayer => CommanderAlignment == EnemyStanding.Enemy;
+        //public bool AttackAny => CommanderAlignment < EnemyStanding.SubNeutral;
         public bool CanCallRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team);
         public bool CanDoRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team) || IsPopulation;
 
@@ -94,6 +113,7 @@ namespace TAC_AI.AI.Enemy
 
         public void Initiate()
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": Launching Enemy AI for " + Tank.name);
             Tank = gameObject.GetComponent<Tank>();
             AIControl = gameObject.GetComponent<TankAIHelper>();
             AIControl.FinishedRepairEvent.Subscribe(OnFinishedRepairs);
@@ -125,6 +145,7 @@ namespace TAC_AI.AI.Enemy
             if (kept != this) return;
 
             initWindowEndTime = Time.time + AIGlobals.EnemyInitGrace;
+            //DebugTAC_AI.Log(KickStart.ModID + ": Refreshing Enemy AI for " + Tank.name);
             EnemyOpsController = new EnemyOperationsController(this);
             AIControl.RunState = AIRunState.Advanced;
             AIControl.MovementController.UpdateEnemyMind(this);
@@ -133,15 +154,16 @@ namespace TAC_AI.AI.Enemy
             BoltsQueued = 0;
             try
             {
-                MainFaction = TankExtentions.GetMainCorp(Tank);
+                MainFaction = TankExtentions.GetMainCorp(Tank);   //Will help determine their Attitude
             }
             catch
-            {
+            {   // can't always get this
                 MainFaction = FactionSubTypes.GSO;
             }
         }
         public void SetForRemoval()
         {
+            //DebugTAC_AI.Log(KickStart.ModID + ": Removing Enemy AI for " + Tank.name);
             Tank.DamageEvent.Unsubscribe(OnHit);
             if (AIControl)
                 Tank.DamageEvent.Subscribe(AIControl.OnHit);
@@ -198,7 +220,7 @@ namespace TAC_AI.AI.Enemy
             }
             else
             {
-                AIControl.FIRE_ALL = true;
+                AIControl.FIRE_ALL = true; // we do not want subneutrals firing all - this WILL cause collateral
             }
             if (AIControl.Provoked <= 0 && srcAlive)
             {
@@ -206,10 +228,12 @@ namespace TAC_AI.AI.Enemy
                 GetRevengeOn(AIControl.lastEnemyGet);
                 if (Tank.IsAnchored && Tank.GetComponent<RLoadedBases.EnemyBaseFunder>())
                 {
+                    // Execute remote orders to allied units - Attack that threat!
                     RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.AllHandsOnDeck);
                 }
                 else if (CommanderSmarts > EnemySmarts.Mild)
                 {
+                    // Execute remote orders to allied units - Attack that threat!
                     if (ManBaseTeams.IsSubNeutralBaseTeam(Tank.Team))
                         RLoadedBases.RequestFocusFireNPTs(this, AIControl.lastEnemyGet, RequestSeverity.Warn);
                     else
@@ -229,13 +253,13 @@ namespace TAC_AI.AI.Enemy
                 mind.Hurt = true;
                 mind.AIControl.PendingDamageCheck = true;
                 if (mind.BoltsQueued == 0 && ManNetwork.IsHost)
-                {
+                {   // do NOT destroy blocks on split Techs!
                     if (!blockLoss.GetComponent<ModuleTechController>())
                     {
                         if ((bool)mind.TechMemor)
-                        {
+                        {   // cannot self-destruct timer cabs or death
                             if (mind.TechMemor.ChanceGrabBackBlock())
-                                return;
+                                return;// no destroy block
                             mind.ChanceDestroyBlock(blockLoss);
                         }
                         else
@@ -258,7 +282,7 @@ namespace TAC_AI.AI.Enemy
                 {
                     if (ManNetwork.IsNetworked)
                         ManLooseBlocks.inst.RequestDespawnBlock(blockLoss, DespawnReason.Host);
-                    blockLoss.damage.SelfDestruct(0.6f);
+                    blockLoss.damage.SelfDestruct(0.6f); // - no get illegal blocks
                 }
                 else
                 {
@@ -281,8 +305,10 @@ namespace TAC_AI.AI.Enemy
         {
             try
             {
+                //DebugTAC_AI.Log(KickStart.ModID + ": OnFinishedRepair");
                 if (TechMemor)
                 {
+                    //DebugTAC_AI.Log(KickStart.ModID + ": TechMemor");
                     if (Tank.name.Contains('⟰'))
                     {
                         Tank.SetName(Tank.name.Replace(" ⟰", ""));
@@ -307,7 +333,7 @@ namespace TAC_AI.AI.Enemy
             {
                 if (forced)
                 {
-                    if (CommanderAttack == EAttackMode.Safety)
+                    if (CommanderAttack == EAttackMode.Safety) // no time for chickens
                         CommanderAttack = EAttackMode.Chase;
 
                     switch (CommanderMind)

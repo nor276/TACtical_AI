@@ -116,7 +116,7 @@ namespace TAC_AI.Templates
                 }
                 catch { }
             }
-            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);
+            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);//, RawTechExporter.JSONDEV);
         }
 
         internal static void DeployUncompressed(string location)
@@ -130,6 +130,7 @@ namespace TAC_AI.Templates
                 {
                     if (!dictSorted.TryGetValue(res, out _))
                         dictSorted.Add(res, item.Value);
+                    //Else, overlapping entry
                 }
                 else
                     needsToAddToSpawnBaseTypes = true;
@@ -200,14 +201,14 @@ namespace TAC_AI.Templates
                 }
             }
             string export = Path.Combine(new DirectoryInfo(Application.dataPath).Parent.ToString(), "MassExport");
-            File.WriteAllText(Path.Combine(export, "ESpawnBaseTypes.json"), "");
+            File.WriteAllText(Path.Combine(export, "ESpawnBaseTypes.json"), ""); // CLEAR
             List<string> toWrite = new List<string>();
             foreach (string str in basetypeNamesOrdered)
             {
                 toWrite.Add(str + ",");
             }
             File.AppendAllLines(Path.Combine(export, "ESpawnBaseTypes.json"), toWrite);
-            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);
+            return JsonConvert.SerializeObject(ClusterOut, Formatting.Indented);//, RawTechExporter.JSONDEV);
         }
 
         internal static void Organize(ref Dictionary<SpawnBaseTypes, RawTechTemplate> dict)

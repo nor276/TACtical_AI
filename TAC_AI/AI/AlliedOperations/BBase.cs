@@ -6,15 +6,21 @@ namespace TAC_AI.AI.AlliedOperations
 {
     internal static class BBase
     {
+        /// <summary>
+        /// Incomplete - artillery support mode
+        /// </summary>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
         public static void HoldSupport(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
             HoldProtect(helper, tank, ref direct);
         }
         public static void HoldProtect(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Base) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = true;
-            helper.ChaseThreat = false;
+            helper.ChaseThreat = false;    //Prevent the auto-driveaaaa
 
             BGeneral.ResetValues(helper, ref direct);
 

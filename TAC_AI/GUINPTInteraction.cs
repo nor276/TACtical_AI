@@ -34,14 +34,17 @@ namespace TAC_AI.AI
             netHook.Enable();
         }
 
+        //Handles the display that's triggered on right-click on friendly or neutral base team
         private static GUINPTInteraction inst;
         public static Vector3 PlayerLoc = Vector3.zero;
         public static bool isCurrentlyOpen = false;
         internal static Tank lastTank;
 
+        // Mode - Setting
         private static GameObject GUIWindow;
-        private static Rect HotWindow = new Rect(0, 0, 200, 160);
+        private static Rect HotWindow = new Rect(0, 0, 200, 160);   // the "window"
 
+        // Tech Tracker
         private static string teamName = "Unknown";
         private static int techCost = 0;
         private static int teamCost = 0;
@@ -162,6 +165,8 @@ namespace TAC_AI.AI
                 throw new Exception("teamName is worthless");
             }
             LaunchSubMenuClickable();
+            // BROKEN!!!!
+            //AIGlobals.ModularMenu.OpenGUI(lastTank.blockman.IterateBlocks().FirstOrDefault());
         }
         public static bool IsTankNull()
         {
@@ -223,7 +228,7 @@ namespace TAC_AI.AI
         private static int playerTeam => ManPlayer.inst.PlayerTeam;
         private static void GUIOwnTeam()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");
+            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
             if (GUILayout.Button(new GUIContent("Enable Auto", "Automatically Build Bases"), AltUI.ButtonGreen))
             {
                 ManSFX.inst.PlayUISFX(ManSFX.UISfxType.RadarOn);
@@ -236,7 +241,7 @@ namespace TAC_AI.AI
 
         private static void GUIAlliedAutoTeam()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");
+            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
             if (ManBaseTeams.TryGetBaseTeamDynamicOnly(lastTank.Team, out var ETD))
             {
                 GUILayout.BeginHorizontal(AltUI.TextfieldBlackHuge);
@@ -267,7 +272,7 @@ namespace TAC_AI.AI
         }
 
         private static void GUIBaseTeamStatic()
-        {
+        { // Bases that store BB
             int teamFunds = 0;
             if (ManBaseTeams.TryGetBaseTeamDynamicOnly(lastTank.Team, out var ETD))
             {
@@ -286,7 +291,7 @@ namespace TAC_AI.AI
                     }
                 }
             }
-            GUILayout.Label("<b>" + teamName + "</b>");
+            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
             GUILayout.BeginHorizontal();
             GUILayout.Label("¥¥: ");
             if (ManBaseTeams.TryGetBaseTeamDynamicOnly(lastTank.Team, out ETD))
@@ -432,7 +437,7 @@ namespace TAC_AI.AI
 
         private static void GUIBaseTeamTech()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");
+            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
             if (playerTeam == lastTank.Team)
             {
                 if (GUILayout.Button(new GUIContent("Enable Auto", "Automatically Build Bases"), AltUI.ButtonGreen))
@@ -530,7 +535,7 @@ namespace TAC_AI.AI
 
         private static void GUILoneTech()
         {
-            GUILayout.Label("<b>" + teamName + "</b>");
+            GUILayout.Label("<b>" + teamName + "</b>");//¥¥
             if (playerTeam == lastTank.Team)
             {
                 if (GUILayout.Button(new GUIContent("Enable Auto", "Automatically Build Bases"), AltUI.ButtonGreen))
@@ -575,6 +580,13 @@ namespace TAC_AI.AI
                 GUILayout.Label(GUI.tooltip, AltUI.LabelBlackWrap);
         }
 
+        /// <summary>
+        /// To be called on the requesting client to inform the server of changes.
+        /// </summary>
+        /// <param name="player">Sending player (from their own client)</param>
+        /// <param name="targetTech">The targeted Tech</param>
+        /// <param name="bribeAmount">Set to 0 to toggle team automation.
+        /// Any value above zero will be given to the targeted Tech's team's Build Bucks</param>
         public static void TrySendNPTBribe(NetPlayer player, Tank targetTech, int bribeAmount)
         {
             if (netHook.CanBroadcast() && !ManNetwork.IsHost)

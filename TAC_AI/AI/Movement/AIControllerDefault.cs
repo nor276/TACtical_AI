@@ -17,8 +17,11 @@ namespace TAC_AI.AI
     {
         internal static FieldInfo boostGet = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        public override Vector3 PathPoint => PathPointMain.ScenePosition;
-        private WorldPosition PathPointMain = WorldPosition.FromScenePosition(Vector3.zero);
+        //Manuvering (Post-Pathfinding)
+        /// <summary> The point where the AI is driving towards.  This is NOT the destination! </summary>
+        public override Vector3 PathPoint => PathPointMain.ScenePosition;// Where land and spaceships coordinate movement
+        /// <summary> The point where the AI is driving towards.  This is NOT the destination! </summary>
+        private WorldPosition PathPointMain = WorldPosition.FromScenePosition(Vector3.zero);// Where land and spaceships coordinate movement
         public Vector3 PathPointSet
         {
             set
@@ -31,10 +34,13 @@ namespace TAC_AI.AI
                 }
                 PathPointMain = WorldPosition.FromScenePosition(value);
             }
-        }
+        }// Where land and spaceships coordinate movement
 
-        public Vector3 BoostBias = Vector3.zero;
+        //Tech Drive Data Gathering
+        public Vector3 BoostBias = Vector3.zero;// Center of thrust of all boosters, center of boost
+        //public float BoosterThrustBias = 0.5f;
 
+        //AI Pathfinding
         public bool AutoPathfind { get; set; } = false;
         public bool Do3DPathing => Helper.Attempt3DNavi;
         public AIEAutoPather Pathfinder { get; set; }
@@ -84,6 +90,7 @@ namespace TAC_AI.AI
                 {
                     PathPlanned.Enqueue(item);
                     SB.Append(" > " + item.ScenePosition.ToString());
+                    //AIGlobals.PopupNeutralInfo(num + " | " + item.GameWorldPosition.ToString(), item);
                     num++;
                 }
                 DebugTAC_AI.Log(Tank.name + ": OnPartialPathfinding - Path -" + SB.ToString());
@@ -96,7 +103,7 @@ namespace TAC_AI.AI
             if (pos == null)
             {
                 PathPlanned.Clear();
-                return;
+                return; // Clearing
             }
             PathPlanned.Clear();
             if (DebugTAC_AI.NoLogPathing)
@@ -114,6 +121,7 @@ namespace TAC_AI.AI
                 {
                     DebugTAC_AI.Log(Tank.name + ": OnFinishedPathfinding - Finished AutoPathing with " + PathPlanned.Count + " waypoints to follow.");
                     DebugTAC_AI.Log(Tank.name + ": OnFinishedPathfinding - Path - NONE");
+                    //throw new Exception("OnFinishedPathfinding expects at least one pathing WorldPosition in pos, but received none!");
                     return;
                 }
 #if DEBUG
@@ -123,6 +131,7 @@ namespace TAC_AI.AI
                 {
                     PathPlanned.Enqueue(item);
                     SB.Append(" > " + item.ScenePosition.ToString());
+                    //AIGlobals.PopupNeutralInfo(num + " | " + item.GameWorldPosition.ToString(), item);
                     num++;
                 }
                 DebugTAC_AI.Log(Tank.name + ": OnFinishedPathfinding - Finished AutoPathing with " + PathPlanned.Count + " waypoints to follow.");
@@ -141,7 +150,7 @@ namespace TAC_AI.AI
                 return;
             }
 
-            if (this.Helper.AIAlign == AIAlignment.Player)
+            if (this.Helper.AIAlign == AIAlignment.Player)// Allied
             {
                 if (this.AICore == null)
                 {
@@ -151,7 +160,7 @@ namespace TAC_AI.AI
                 }
                 this.AICore.DriveDirector(ref core);
             }
-            else
+            else//ENEMY
             {
                 this.AICore.DriveDirectorEnemy(this.EnemyMind, ref core);
             }
@@ -165,7 +174,7 @@ namespace TAC_AI.AI
                 return;
             }
 
-            if (this.Helper.AIAlign == AIAlignment.Player)
+            if (this.Helper.AIAlign == AIAlignment.Player)// Allied
             {
                 if (this.AICore == null)
                 {
@@ -175,7 +184,7 @@ namespace TAC_AI.AI
                 }
                 this.AICore.DriveDirectorRTS(ref core);
             }
-            else
+            else//ENEMY
             {
                 this.AICore.DriveDirectorEnemyRTS(this.EnemyMind, ref core);
             }
@@ -225,6 +234,7 @@ namespace TAC_AI.AI
 
             foreach (ModuleBooster module in Tank.blockman.IterateBlockComponents<ModuleBooster>())
             {
+                //Get the slowest spooling one
                 foreach (FanJet jet in module.transform.GetComponentsInChildren<FanJet>())
                 {
                     float thrust = (float)RawTechBase.thrustRate.GetValue(jet);
@@ -235,6 +245,8 @@ namespace TAC_AI.AI
                         if (spin < lowestDelta)
                             lowestDelta = spin;
                     }
+                    //Vector3 fanDirection = (Vector3) fanDir.GetValue(jet);
+                    //if (fanDirection.x < -0.5)
                     if (Tank.rootBlockTrans.InverseTransformDirection(jet.EffectorForward).z < -0.5)
                     {
                         fanThrust += thrust;
@@ -249,11 +261,14 @@ namespace TAC_AI.AI
                     }
 
                     float force = (float)boostGet.GetValue(boost);
+                    //Vector3 jetDirection = (Vector3) boostDir.GetValue(boost);
+                    //if (jetDirection.x < -0.5)
                     if (Tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)).z < -0.5)
                     {
                         boosterThrust += force;
                     }
 
+                    //We have to get the total thrust in here accounted for as well because the only way we CAN boost is ALL boosters firing!
                     boostBiasDirection -= Tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)) * force;
                 }
             }
@@ -263,7 +278,7 @@ namespace TAC_AI.AI
         public void TryBoost(bool forwardsOnly = true)
         {
             if (Helper.Obst)
-                return;
+                return; // Prevent thrusting into trees
             if (forwardsOnly)
             {
                 if (BoostBias.z > 0.75f)
@@ -277,7 +292,7 @@ namespace TAC_AI.AI
         public void TryBoost(Vector3 headingLocalCab)
         {
             if (Helper.Obst)
-                return;
+                return; // Prevent thrusting into trees
             if (Vector3.Dot(BoostBias, headingLocalCab) > 0.75f)
                 Helper.MaxBoost();
         }

@@ -38,25 +38,26 @@ namespace TAC_AI.AI.Movement.AICores
                 return true;
             }
             if (tank.wheelGrounded || pilot.ForcePitchUp)
-            {
+            {   // Try and takeoff like helicopter
                 pilot.MainThrottle = HelicopterUtils.ModerateUpwardsThrust(tank, helper, pilot,
                     AIEPathing.OffsetFromGroundA(tank.boundsCentreWorldNoCheck, helper, helper.lastTechExtents * 2).y);
                 pilot.UpdateThrottle(helper);
                 HelicopterUtils.AngleTowardsUp(pilot, tank.boundsCentreWorldNoCheck, helper.lastDestinationCore, ref core, true);
             }
             else
-            {
+            {   //Fly like plane
                 if (PerformUTurn > 0)
-                {
+                {   //The Immelmann Turn
+                    //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  U-Turn level " + pilot.PerformUTurn + "  throttle " + pilot.CurrentThrottle);
                     pilot.MainThrottle = 1;
                     pilot.UpdateThrottle(helper);
                     if ( helper.LocalSafeVelocity.z < AIGlobals.AirStallSpeed - 4)
-                    {
+                    {   //ABORT!!!
                         DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  Aborted U-Turn with velocity " + helper.LocalSafeVelocity.z);
                         PerformUTurn = -1;
                     }
                     else if (Vector3.Dot(Vector3.down,  helper.SafeVelocity.normalized) > 0.4f)
-                    {
+                    {   //ABORT!!!
                         DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  Aborted U-Turn as too much movement to the ground");
                         PerformUTurn = -1;
                     }

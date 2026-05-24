@@ -16,6 +16,7 @@ namespace TAC_AI
         internal static class ManSpawnPatches
         {
             internal static Type target = typeof(ManSpawn);
+            //DelayedLoadRequest
             private static void OnDLCLoadComplete_Postfix(ManSpawn __instance)
             {
                 try
@@ -33,6 +34,7 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ManLooseBlocks);
 
+            //AITechLivesMatter
             private static bool OnServerAttachBlockRequest_Prefix(ManLooseBlocks __instance, ref NetworkMessage netMsg)
             {
                 if (AIERepair.NonPlayerAttachAllow)
@@ -90,8 +92,10 @@ namespace TAC_AI
         {
             internal static Type target = typeof(ManTechs);
 
+            //PatchTankToHelpAI
             private static void RegisterTank_Postfix(ManTechs __instance, ref Tank t)
             {
+                //DebugTAC_AI.Log(KickStart.ModID + ": Patched Tank OnPool(TankAIHelper & TimeTank)");
                 t.GetHelperInsured();
             }
         }
@@ -146,8 +150,11 @@ namespace TAC_AI
         internal static class ManNetworkPatches
         {
             internal static Type target = typeof(ManNetwork);
+            // Multi-Player
+            //WarnJoiningPlayersOfScaryAI
             private static void AddPlayer_Postfix(ManNetwork __instance)
             {
+                // Setup aircraft if Population Injector is N/A
                 try
                 {
                     if (ManNetwork.IsHost && KickStart.EnableBetterAI)

@@ -15,9 +15,11 @@ namespace TAC_AI.World
     {
         [SSManagerInst]
         public static ManWorldRTS inst;
-        public static int MaxCommandDistance = 9001;
+        public static int MaxCommandDistance = 9001;//500;
         public static int MaxAllowedSizeForHighlight = 3;
+        /// <summary> Converted Photo Mode </summary>
         public static bool PlayerIsInRTS = false;
+        /// <summary> The controlling Tech command hotkey </summary>
         public static bool PlayerRTSOverlay = false;
         public static bool RTSControl => PlayerIsInRTS || PlayerRTSOverlay;
         public static bool QueuedRelease = false;
@@ -111,6 +113,12 @@ namespace TAC_AI.World
                 Subject = null;
                 TypeSwitch = (AIType)AIType.Null;
             }
+            /// <summary>
+            /// Note: setting "type" to null will
+            /// </summary>
+            /// <param name="helper"></param>
+            /// <param name="subject"></param>
+            /// <param name="type"></param>
             public CommandLink(TankAIHelper helper, Visible subject, AIType type)
             {
                 if (subject == null)
@@ -125,7 +133,7 @@ namespace TAC_AI.World
                 helper.RTSDestination = GetScenePosition(helper);
                 switch (TypeSwitch)
                 {
-                    case AIType.Null:
+                    case AIType.Null:   // Movement command
                         if (Subject?.tank != null)
                         {
                             helper.SetRTSState(false);
@@ -1615,7 +1623,7 @@ namespace TAC_AI.World
         private void UpdateLines()
         {
             if (AIGlobals.ShowDebugFeedBack)
-            {
+            {   // Show ALL current targets of ALL AI
                 foreach (TankAIHelper helper in AIECore.IterateAllHelpers(x => x.MovingAndOrHasTarget))
                 {
                     if (!UpdatePathfindingRouteVisualIfAny(helper))
@@ -1634,21 +1642,21 @@ namespace TAC_AI.World
                 }
             }
             if (PlayerHovered && PlayerHovered.MovingAndOrHasTarget && !LocalPlayerTechsControlled.Contains(PlayerHovered))
-            {
+            {   // Show player-owned and hovered current target
                 Vector3 targLoc = PlayerHovered.DriveTargetLocation;
                 targLoc.y += PlayerHovered.lastTechExtents;
                 DrawDirection(PlayerHovered, targLoc, (PlayerHovered == Leading) ? colorLeading : color);
                 UpdatePathfindingRouteVisualIfAny(PlayerHovered);
             }
             if (OtherHovered && OtherHovered.MovingAndOrHasTarget)
-            {
+            {   // Show non-player-owned and hovered current target
                 Vector3 targLoc = OtherHovered.DriveTargetLocation;
                 targLoc.y += OtherHovered.lastTechExtents;
                 DrawDirection(OtherHovered, targLoc, color);
                 UpdatePathfindingRouteVisualIfAny(OtherHovered);
             }
             if (ManNetwork.IsNetworked || !AIGlobals.PlayerClientFireCommand())
-            {
+            {   // Show all selected player-owned current targets
                 foreach (TankAIHelper helper in LocalPlayerTechsControlled)
                 {
                     if (helper != null && helper.MovingAndOrHasTarget)
@@ -1661,6 +1669,7 @@ namespace TAC_AI.World
                     }
                 }
             }
+            // Create and update all shown unit target paths in the world
             foreach (var extended in TechMovementQueue)
             {
                 TrackedVisible TV = ManVisible.inst.GetTrackedVisible(extended.Key);
@@ -1780,14 +1789,14 @@ namespace TAC_AI.World
                                 if (!LocalPlayerTechsControlled.Any() ||
                                     (GroupSelecting && !isAlreadySelected))
                                 {
-                                    cursorState = RTSCursorState.Select;
+                                    cursorState = RTSCursorState.Select; // Show Select Cursor
                                 }
                                 else
                                 {
                                     if (GroupSelecting)
-                                        cursorState = RTSCursorState.Moving;
+                                        cursorState = RTSCursorState.Moving; // Show Select Cursor
                                     else
-                                    {
+                                    {   // Show Protect Cursor
                                         if (helper.tank.IsAnchored)
                                             cursorState = RTSCursorState.Scout;
                                         else
@@ -1796,15 +1805,15 @@ namespace TAC_AI.World
                                 }
                             }
                             else
-                            {
+                            {   // Player IS NOT hovering over a valid target
                                 if (PlayerHovered)
                                 {
                                     SetPlayerHovered(null);
                                 }
                                 if (GroupSelecting)
-                                    cursorState = RTSCursorState.Moving;
+                                    cursorState = RTSCursorState.Moving; // Show Select Cursor
                                 else
-                                {
+                                {   // Show Protect Cursor
                                     if (vis.block.tank.IsAnchored)
                                         cursorState = RTSCursorState.Scout;
                                     else
@@ -1820,7 +1829,7 @@ namespace TAC_AI.World
                             return;
                         }
                         else if (vis.block.tank.Team != ManPlayer.inst.PlayerTeam)
-                        {
+                        {   // Show Attack Cursor
                             if (!ManBaseTeams.IsUnattackable(vis.block.tank.Team, ManPlayer.inst.PlayerTeam))
                                 cursorState = RTSCursorState.Attack;
                             else
@@ -1854,43 +1863,43 @@ namespace TAC_AI.World
                             }
                             return;
                         }
-                        cursorState = RTSCursorState.Empty;
+                        cursorState = RTSCursorState.Empty; // Show Default Cursor
                     }
                     else
                     {
                         if (GroupSelecting)
-                            cursorState = RTSCursorState.Moving;
+                            cursorState = RTSCursorState.Moving; // Show Select Cursor
                         else
                         {
                             if (Leading)
                                 cursorState = RTSCursorState.Fetch;
                             else
-                                cursorState = RTSCursorState.Moving;
+                                cursorState = RTSCursorState.Moving; // Show Default Cursor
                         }
                     }
                 }
                 else if (vis?.resdisp)
                 {
                     if (GroupSelecting)
-                        cursorState = RTSCursorState.Moving;
+                        cursorState = RTSCursorState.Moving; // Show Select Cursor
                     else
                     {
                         if (Leading && !vis.resdisp.GetComponent<Damageable>().Invulnerable)
                             cursorState = RTSCursorState.Mine;
                         else
-                            cursorState = RTSCursorState.Moving;
+                            cursorState = RTSCursorState.Moving; // Show Default Cursor
                     }
                 }
                 else
                 {
                     if (Leading && hit.collider.GetComponent<TerrainCollider>())
-                        cursorState = RTSCursorState.Moving;
+                        cursorState = RTSCursorState.Moving; // Show Move Cursor
                     else
-                        cursorState = RTSCursorState.Empty;
+                        cursorState = RTSCursorState.Empty; // Show Default Cursor
                 }
             }
             else
-                cursorState = RTSCursorState.Empty;
+                cursorState = RTSCursorState.Empty; // Show Default Cursor
             if (PlayerHovered)
             {
                 SetPlayerHovered(null);
@@ -2039,8 +2048,8 @@ namespace TAC_AI.World
             Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.Back);
         }
 
-        private Color color = new Color(1f, 0.75f, 0.25f, 0.8f);
-        private Color colorLeading = new Color(1f, 0.75f, 0.75f, 0.65f);
+        private Color color = new Color(1f, 0.75f, 0.25f, 0.8f);//Color(0.25f, 1f, 0.25f, 0.75f);
+        private Color colorLeading = new Color(1f, 0.75f, 0.75f, 0.65f);//Color(0.25f, 1f, 0.25f, 0.75f);
         private Color colorAttacking = new Color(1f, 0.3f, 0.3f, 0.65f);
         private Color colorAlly = new Color(0.25f, 0.25f, 1f, 0.65f);
         private Color colorCollecting = new Color(1f, 1f, 0.3f, 0.65f);
@@ -2159,7 +2168,7 @@ namespace TAC_AI.World
         }
 
         private static GameObject SelectWindow;
-        private static Rect BaxWindow = new Rect(0, 0, 200, 240);
+        private static Rect BaxWindow = new Rect(0, 0, 200, 240);   // the "window"
         private static GUIStyle modifStyle;
         private static GUIStyleState modifStyleState;
         private const int AIBoxSelectID = 8006;
@@ -2253,6 +2262,7 @@ namespace TAC_AI.World
             }
         }
 
+        // Player autopilot
         private static GameObject autoWindow;
         private const int PlayerAutopilotID = 8009;
         internal class GUIRectAuto : MonoBehaviour
@@ -2286,9 +2296,9 @@ namespace TAC_AI.World
         }
         internal static DebugCameraLock DevCamLock = DebugCameraLock.None;
 #if DEBUG
-        private static Rect autopilotMenu = new Rect(0, 0, 160, 110);
+        private static Rect autopilotMenu = new Rect(0, 0, 160, 110);   // the "window"
 #else
-        private static Rect autopilotMenu = new Rect(0, 0, 160, 80);
+        private static Rect autopilotMenu = new Rect(0, 0, 160, 80);   // the "window"
 #endif
 
         private static void GUIHandlerPlayerAutopilot(int ID)
@@ -2314,7 +2324,7 @@ namespace TAC_AI.World
                 }
                 lastCameraPos = WorldPosition.FromScenePosition(Singleton.cameraTrans.position);
             }
-#if DEBUG
+#if DEBUG   // dev side ONLY
             if (GUI.Button(new Rect(10, 70, 140, 30), DevCamLock == DebugCameraLock.LockTechToCam ? "<b>LOCKED TO CAM</b>" : "Lock to Cam"))
             {
                 if (DevCamLock == DebugCameraLock.LockTechToCam)

@@ -23,6 +23,16 @@ namespace TAC_AI
         internal static void InsureAllValidAIs()
         {
             AllValidAIs.Clear();
+            /*
+            AllValidAIs.Add(BlockTypes.GSOAIGuardController_111);
+            AllValidAIs.Add(BlockTypes.GSOAnchorAI_121);
+            AllValidAIs.Add(BlockTypes.GCAIModuleGuard_222);
+            AllValidAIs.Add(BlockTypes.BF_AIModule_Guard_212);
+            AllValidAIs.Add(BlockTypes.HE_AIModule_Guard_112);
+            AllValidAIs.Add(BlockTypes.HE_AITurret_112);
+            AllValidAIs.Add(BlockTypes.SJ_Cab_AI_122);
+            AllValidAIs.Add(BlockTypes.VENAIGuardModule_111);
+            */
             foreach (var item in ManSpawn.inst.GetLoadedTankBlockNames())
             {
                 var prefab = ManSpawn.inst.GetBlockPrefab(item);
@@ -38,6 +48,13 @@ namespace TAC_AI
             }
             DebugTAC_AI.Log("Advanced AI: Found [" + AllValidAIs.Count + "] blocks with ModuleAIExtension in [" +
                  ManSpawn.inst.GetLoadedTankBlockNames().Length + "] blocks");
+            /*
+            foreach (var item in ManMods.inst.IterateModdedBlocks())
+            {
+                var prefab = ManSpawn.inst.GetBlockPrefab(item);
+                if (prefab && prefab.GetComponent<ModuleAIExtension>())
+                    AllValidAIs.Add(item);
+            }*/
         }
 
         internal static void InitWiki()
@@ -117,6 +134,9 @@ namespace TAC_AI
             GUILayout.EndVertical();
         }
 
+        /// <summary>
+        /// INCOMPLETE
+        /// </summary>
         private static void PageEnemies()
         {
             AltUI.Sprite(RawTechExporter.aiIconsEnemy[AI.Enemy.EnemySmarts.IntAIligent], AltUI.TextfieldBorderedBlue, GUILayout.Height(128), GUILayout.Width(128));
@@ -331,8 +351,13 @@ namespace TAC_AI
             GUILayout.EndHorizontal();
 
             GUILayout.EndVertical();
+            //GUILayout.Label("Go Here", AltUI.LabelBlackTitle);
+            //PageRTSGoHere();
         }
 
+        /// <summary>
+        /// INCOMPLETE
+        /// </summary>
         private static void PageBases()
         {
             GUILayout.Label("AKA: Founders, Siegers", AltUI.LabelBlackTitle);
@@ -881,6 +906,7 @@ namespace TAC_AI
             "You can also open the AI Controls by pressing " +
             AltUI.HighlightString(KickStart.ModeSelect.ToString()));
 
+        // Others
         internal static ExtUsageHint.UsageHint hintUpgrades = new ExtUsageHint.UsageHint(KickStart.ModID, "AIGlobals.hintUpgrades",
             new LocExtStringMod("Your A.I. can also be mouse-controlled through " + AltUI.ObjectiveString("RTS Mode") + " by toggling key " +
             AltUI.HighlightString(KickStart.CommandHotkey.ToString()) + " or through Camera Mode.  To command, press " +

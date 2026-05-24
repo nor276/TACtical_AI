@@ -11,6 +11,15 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 {
     internal static class RChopper
     {
+        // ENEMY CONTROLLERS
+        /*
+            Circle,     // Orbit while firing the target, and randomly switch directions every now and then
+            Grudge,     // Chase whoever hit this Chopper last
+            Coward,     // Avoid danger, and fly high
+            Bully,      // Attack other aircraft over ground structures.  If inverted, prioritize ground structures over aircraft
+            Pesterer,   // Randomly switch targets on 5 second intervals
+            Spyper,     // OPPOSITE!!!  Bombs the enemy from high above instead!
+        */
         public static void AttackShwa(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             BGeneral.ResetValues(helper, ref direct);
@@ -29,6 +38,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             RGeneral.Engadge(helper, tank, mind);
 
             float enemyExt = helper.lastEnemyGet.GetCheapBounds();
+            //float prevDist = helper.lastOperatorRange;
             float dist = helper.GetDistanceFromTask(helper.lastDestinationCore);
             bool needsToSlowDown = helper.IsOrbiting();
             float range;
@@ -86,7 +96,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     break;
                 case EAttackMode.Ranged:
                     if (mind.LikelyMelee)
-                    {
+                    {// Bomber
                         range = AIGlobals.BomberDropZoneTolerance;
                         helper.AISetSettings.ObjectiveRange = spacing + range;
                         helper.AISetSettings.SideToThreat = false;
@@ -154,7 +164,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
 
                     break;
-                default:
+                default:    // Others
                     range = AIGlobals.SpacingRangeHoverer;
                     helper.AISetSettings.ObjectiveRange = spacing + range;
                     helper.AISetSettings.SideToThreat = false;

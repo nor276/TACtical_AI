@@ -8,8 +8,11 @@ namespace TAC_AI.AI.Enemy
 {
     public static class RMission
     {
+        /// <summary>
+        /// N/A until MissionManager exists
+        /// </summary>
         public class OnRailsActions : MonoBehaviour
-        {
+        {   // Will sit on standby for MissionManager
             public Tank Tank;
             public TankAIHelper AIControl;
             public int MissionAIID = 0;
@@ -40,22 +43,22 @@ namespace TAC_AI.AI.Enemy
             {
             }
             public static void OnHit(Tank tank, OnRailsActions mAIState)
-            {
+            {   // compile relivant information here and deliver it to the MissionManager
                 MissionAIStatus.Send(tank, mAIState);
             }
             public static void ArrivalAtDest(Tank tank, OnRailsActions mAIState)
-            {
+            {   // compile relivant information here and deliver it to the MissionManager
                 MissionAIStatus.Send(tank, mAIState);
             }
         }
 
         internal static bool SpecificNameCases(TankAIHelper helper, Tank tank, EnemyMind mind)
-        {
+        {   // Handle specific enemy names to tailor the AI into working order
             int name = tank.name.GetHashCode();
             bool DidFire = false;
 
             if (name == "Missile Defense".GetHashCode())
-            {
+            {   // The GSO Missile Turret
                 mind.AllowRepairsOnFly = true;
                 mind.EvilCommander = EnemyHandling.Stationary;
                 mind.CommanderAttack = EAttackMode.Strong;
@@ -64,7 +67,7 @@ namespace TAC_AI.AI.Enemy
                 DidFire = true;
             }
             else if (name == "Wing-nut".GetHashCode())
-            {
+            {   // Wing-nut mission
                 mind.AllowRepairsOnFly = true;
                 mind.InvertBullyPriority = true;
                 mind.EvilCommander = EnemyHandling.Stationary;
@@ -74,7 +77,7 @@ namespace TAC_AI.AI.Enemy
                 DidFire = true;
             }
             else if (name == "Spider King".GetHashCode())
-            {
+            {   // Spider King mission
                 mind.AllowRepairsOnFly = true;
                 mind.InvertBullyPriority = true;
                 mind.EvilCommander = EnemyHandling.Stationary;
@@ -84,7 +87,7 @@ namespace TAC_AI.AI.Enemy
                 DidFire = true;
             }
             else if (name == "Fly".GetHashCode())
-            {
+            {   // Spider King mission
                 mind.AllowRepairsOnFly = true;
                 mind.InvertBullyPriority = true;
                 mind.EvilCommander = EnemyHandling.Starship;
@@ -94,7 +97,7 @@ namespace TAC_AI.AI.Enemy
                 DidFire = true;
             }
             else if (name == "Enemy HQ".GetHashCode())
-            {
+            {   //Base where enemies spawn from
                 mind.AllowInvBlocks = true;
                 mind.AllowRepairsOnFly = true;
                 mind.InvertBullyPriority = true;
@@ -117,7 +120,7 @@ namespace TAC_AI.AI.Enemy
                 DidFire = true;
             }
             else if (name == "DPS Target".GetHashCode())
-            {
+            {   // R&D Target
                 mind.AIControl.RunState = AIRunState.Default;
                 mind.StartedAnchored = true;
                 mind.EvilCommander = EnemyHandling.Stationary;
@@ -134,6 +137,7 @@ namespace TAC_AI.AI.Enemy
         internal static MissionSetupResult SetupBaseOrMissionAI(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             string name = tank.name;
+            // Don't worry the bases are sorted based on if they are valid or not
             MissionSetupResult result = RLoadedBases.SetupBaseAI(helper, tank, mind)
                 ? MissionSetupResult.FullyConfigured
                 : MissionSetupResult.None;
@@ -145,12 +149,12 @@ namespace TAC_AI.AI.Enemy
             if (result == MissionSetupResult.None)
             {
                 if (name.Contains('Ω'))
-                {
+                {   // Base host NPC
                     mind.CommanderMind = EnemyAttitude.NPCBaseHost;
                     result = MissionSetupResult.PartialMind;
                 }
                 else if (name.Contains('⦲'))
-                {
+                {   // Boss
                     mind.CommanderMind = EnemyAttitude.Boss;
                     result = MissionSetupResult.PartialMind;
                 }
@@ -163,7 +167,7 @@ namespace TAC_AI.AI.Enemy
                     if (tank.AI.TryGetCurrentAIType(out AITreeType.AITypes tree))
                     {
                         if (tree == AITreeType.AITypes.Flee)
-                        {
+                        {   // setup for runner
                             mind.AllowRepairsOnFly = true;
                             mind.EvilCommander = EnemyHandling.Wheeled;
                             mind.CommanderAttack = EAttackMode.Safety;
@@ -172,7 +176,7 @@ namespace TAC_AI.AI.Enemy
                             result = MissionSetupResult.FullyConfigured;
                         }
                         else if (tree == AITreeType.AITypes.ChargeAtSKU)
-                        {
+                        {   // setup for Sumo
                             mind.AllowRepairsOnFly = false;
                             mind.EvilCommander = EnemyHandling.Wheeled;
                             mind.CommanderAttack = EAttackMode.Chase;
@@ -181,10 +185,11 @@ namespace TAC_AI.AI.Enemy
                             result = MissionSetupResult.FullyConfigured;
                         }
                         else if (tree == AITreeType.AITypes.Invader)
-                        {
+                        {   // setup for Invaders
+                            //   Who needs a timer anyways?  Let's just attack when the player gets close.
                             mind.AllowRepairsOnFly = false;
                             RCore.GetOrCalculateEnemyHandling(tank, mind);
-                            if (KickStart.Difficulty > 100)
+                            if (KickStart.Difficulty > 100)// in Soviet GSO, Invader come to you
                             {
                                 mind.CommanderAttack = EAttackMode.Ranged;
                                 mind.CommanderMind = EnemyAttitude.Invader;
@@ -198,7 +203,7 @@ namespace TAC_AI.AI.Enemy
                             result = MissionSetupResult.FullyConfigured;
                         }
                         else if (tree == AITreeType.AITypes.Specific || tree == AITreeType.AITypes.FacePlayer)
-                        {
+                        {   // setup for idk
                             helper.RunState = AIRunState.Default;
                             result = MissionSetupResult.PartialMind;
                         }
@@ -207,7 +212,7 @@ namespace TAC_AI.AI.Enemy
             }
 
             if (name.Contains('⟰'))
-            {
+            {   // Spawned as a Tech Fragment
                 mind.BuildAssist = true;
             }
             if (result != MissionSetupResult.None && mind.CommanderMind == EnemyAttitude.OnRails)
@@ -220,7 +225,7 @@ namespace TAC_AI.AI.Enemy
                 }
                 rails.Reset();
             }
-            else
+            else   // remove uneeded module
             {
                 var rails = tank.GetComponent<OnRailsActions>();
                 if (rails.IsNotNull())

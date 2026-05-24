@@ -13,6 +13,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     {
         public static void MotivateDefend(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            //The Handler that tells the Tank (Defender) what to do movement-wise
             helper.foundGoal = false;
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = mind.EvilCommander == EnemyHandling.Starship || mind.EvilCommander == EnemyHandling.Airplane || mind.EvilCommander == EnemyHandling.Chopper;
@@ -37,7 +38,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             float AllyExt = helper.theResource.GetCheapBounds();
 
             if ((bool)helper.lastEnemyGet && !helper.Retreat && helper.lastOperatorRange <= helper.MaxCombatRange)
-            {
+            {   // combat pilot will take care of the rest
+                //OBSTRUCTION MANAGEMENT
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                 {
                     helper.TryHandleObstruction(hasMessaged, dist, true, true, ref direct);
@@ -69,7 +71,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                 }
                 else
-                {
+                {   //Else we are holding off because someone is trying to dock.
                     AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Waiting for other tech to finish their actions...");
                     helper.AvoidStuff = true;
                     helper.SettleDown();
@@ -87,6 +89,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             }
             else if (dist < range + AllyExt && dist > (range * 0.75f) + AllyExt)
             {
+                // Time to go!
                 AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Departing!");
                 direct.DriveDest = EDriveDest.ToLastDestination;
                 helper.DelayedAnchorClock = 0;
@@ -107,6 +110,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 helper.DelayedAnchorClock = 0;
                 direct.DriveDest = EDriveDest.ToLastDestination;
 
+
+                //DISTANCE WARNINGS
                 if (dist > range * 2)
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Oh Crafty they are too far!");
@@ -119,20 +124,24 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 if (helper.UrgencyOverload > 50)
                 {
+                    //Are we just randomly angry for too long? let's fix that
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Overloaded urgency!  ReCalcing top speed!");
                     helper.EstTopSped = 1;
                     helper.AvoidStuff = true;
                     helper.UrgencyOverload = 0;
                 }
+                //URGENCY REACTION
                 if (helper.Urgency > 20)
                 {
+                    //FARRR behind! BOOSTERS NOW!
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": I AM SUPER FAR BEHIND!");
                     helper.AvoidStuff = false;
-                    helper.FullBoost = true;
+                    helper.FullBoost = true; // WE ARE SOO FAR BEHIND
                     helper.UrgencyOverload += KickStart.AIClockPeriod / 5f;
                 }
                 else if (helper.Urgency > 2)
                 {
+                    //Behind and we must catch up
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Wait for meeeeeeeeeee!");
                     helper.AvoidStuff = false;
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -142,6 +151,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 else if (helper.Urgency > 1 && helper.recentSpeed < 10)
                 {
+                    //bloody tree moment
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": GET OUT OF THE WAY NUMBNUT!");
                     helper.AvoidStuff = false;
                     helper.FIRE_ALL = true;
@@ -149,12 +159,14 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     helper.DriveVar = 0.5f;
                     helper.UrgencyOverload += KickStart.AIClockPeriod / 5f;
                 }
+                //OBSTRUCTION MANAGEMENT
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                 {
                     helper.TryHandleObstruction(hasMessaged, dist, true, true, ref direct);
                 }
                 else if (!helper.IsTechMovingAbs(helper.EstTopSped / 2))
                 {
+                    // Moving a bit too slow for what we can do
                     AIECore.AIMessage(tank, ref hasMessaged, tank.name + ": Trying to catch up!");
                     helper.Urgency += KickStart.AIClockPeriod / 5f;
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
@@ -162,12 +174,14 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 }
                 else
                 {
+                    //Things are going smoothly
                     helper.AvoidStuff = true;
                     helper.SettleDown();
                 }
             }
             else if (dist < (range / 2) + AllyExt)
             {
+                //Likely stationary
                 AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Settling");
                 helper.AvoidStuff = true;
                 helper.SettleDown();
@@ -184,6 +198,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             }
             else
             {
+                //Likely idle
                 AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  in resting state");
 
                 helper.AvoidStuff = true;

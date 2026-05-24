@@ -80,8 +80,8 @@ namespace TAC_AI.World
                 enemyTeamInvolved.GlobalMobileTechCount() + " vs " + (KickStart.EnemyTeamTechLimit / 2f) + "]");
             if (!InProgress && (RaidCooldown <= 0 || AIGlobals.TurboAICheat))
             {
-                if (enemyTeamInvolved.GlobalMobileTechCount() > KickStart.EnemyTeamTechLimit)
-                {
+                if (enemyTeamInvolved.GlobalMobileTechCount() > KickStart.EnemyTeamTechLimit)//(enemyTeamInvolved.GlobalMobileTechCount() + 3 > KickStart.EnemyTeamTechLimit)
+                {   // the siege only begins IF the AI's team is at a certain threshold
                     inst.EP = enemyTeamInvolved;
                     targetTank = offender;
                     WarnPlayers();
@@ -110,8 +110,9 @@ namespace TAC_AI.World
             {
                 if (ManNetwork.IsHost)
                 {
+                    // Sieges are "All In" for the AI.  They should not retreat since a siege is a long distance attack.
                     if (inst.EP == null || !Singleton.playerTank)
-                        return;
+                        return; // Cannot run while no targetable player Tech is present
                     inst.CallAllRaidersToPlayerTile();
                     inst.TryRefocusIdleOrDistractedRaidersOnPlayer();
                     inst.WakeOrScrapFrozenRaiders();
@@ -173,19 +174,21 @@ namespace TAC_AI.World
                 {
                     WorldPosition WP = WorldPosition.FromScenePosition(tech.visible.centrePosition);
                     if (tech.rbody && AIGlobals.CanPlaceSafelyInTile(WP.TileCoord, ManWorld.inst.TileManager.GetTileOverlapDirection(WP, tech.GetCheapBounds())))
-                    {
+                    {   // It's loadable
                         if (tech.rbody.IsSleeping())
                             tech.rbody.WakeUp();
                         step++;
                     }
                     else
-                    {
+                    {   // It's VERY stuck
+                        //UnloadedBases.RecycleLoadedTechToTeam(tech);
+                        //SpecialAISpawner.Purge(tech);
                         techsFringe.RemoveAt(step);
                         countManaged--;
                     }
                 }
                 else
-                {
+                {   // Unloaded - It will move back into the warzone.
                     techsFringe.RemoveAt(step);
                     countManaged--;
                 }
@@ -199,12 +202,15 @@ namespace TAC_AI.World
                 {
                     WorldPosition WP = WorldPosition.FromScenePosition(tech.visible.centrePosition);
                     if (tech.rbody && AIGlobals.CanPlaceSafelyInTile(WP.TileCoord, ManWorld.inst.TileManager.GetTileOverlapDirection(WP, tech.GetCheapBounds())))
-                    {
+                    {   // It's loadable
                         techsFringe.Add(tech);
                         tech.rbody.WakeUp();
                     }
                     else
-                    {
+                    {   // It's VERY stuck.  Over the edge of the loaded WorldTiles yet not loaded out of the world yet.
+                        //   Scrap to prevent issues
+                        //UnloadedBases.RecycleLoadedTechToTeam(tech);
+                        //SpecialAISpawner.Purge(tech);
                     }
                 }
             }
@@ -310,6 +316,7 @@ namespace TAC_AI.World
             UIBlockLimit UIBL = (UIBlockLimit)Singleton.Manager<ManHUD>.inst.GetHudElement(ManHUD.HUDElementType.BlockLimit);
             if (!UIBL)
                 return;
+            //raidingTeam
             Text tex = (Text)attackName.GetValue(UIBL);
             displayName = LOC_Health.ToString();
             tex.text = displayName + LOC_EnRoute.ToString();
@@ -323,9 +330,35 @@ namespace TAC_AI.World
             warningBanner.Message1.UpdateText("");
         }
 
+         /*
+        public static void BigF5broningWarning(string Text)
+        {
+            if (!Singleton.Manager<ManHUD>.inst.GetHudElement(ManHUD.HUDElementType.Multiplayer))
+            {
+                DebugTAC_AI.Log(KickStart.ModID + ": ManEnemySiege - init warningBanner");
+                Singleton.Manager<ManHUD>.inst.InitialiseHudElement(ManHUD.HUDElementType.Multiplayer);
+            }
+            Singleton.Manager<ManHUD>.inst.ShowHudElement(ManHUD.HUDElementType.Multiplayer);
+            if (!inst.warningBanner)
+                inst.warningBanner = (UIMultiplayerHUD)Singleton.Manager<ManHUD>.inst.GetHudElement(ManHUD.HUDElementType.Multiplayer);
+            if (!inst.warningBanner)
+            {
+                DebugTAC_AI.Assert(KickStart.ModID + ": ManEnemySiege - warningBanner IS NULL");
+                return;
+            }
+            if (inst.warningBanner.Message.NullOrEmpty())
+                ManSFX.inst.PlayMiscLoopingSFX(ManSFX.MiscSfxType.PayloadIncoming);
+            else
+                inst.CancelInvoke("RemoveWarning");
+            inst.warningBanner.Message = Text;
+            inst.Invoke("RemoveWarning", 4f);
+        }*/
 
         float delay = 0;
         private readonly List<Tank> techsFrozen = new List<Tank>();
+        /// <summary>
+        /// Techs that may fall out of the world and thus should be monitored
+        /// </summary>
         private readonly List<Tank> techsFringe = new List<Tank>();
         private void CheckShouldRun()
         {
@@ -372,6 +405,10 @@ namespace TAC_AI.World
             }
         }
 
+        // Blue is 0
+        // Red is -1
+        // Green is 1
+        // Yellow is 2
         const int dispVal = 100;
         public void UpdatePercentBar(int combinedEnemyHealth)
         {
@@ -386,13 +423,16 @@ namespace TAC_AI.World
                 m_TechCategory = ManBlockLimiter.TechCategory.Player,
                 m_TeamColour = 5
             };
+            //DebugTAC_AI.Log(KickStart.ModID + ": ManEnemySiege - Color case " + teamC);
             ManBlockLimiter.inst.CostChangedEvent.Send(CCI);
             UIBlockLimit UIBL = (UIBlockLimit)Singleton.Manager<ManHUD>.inst.GetHudElement(ManHUD.HUDElementType.BlockLimit);
             if (!UIBL)
                 return;
+            //raidingTeam
             Text tex = (Text)attackName.GetValue(UIBL);
             tex.text = displayName + combinedEnemyHealth + "/" + TotalHP;
             attackName.SetValue(UIBL, tex);
+            //teamC++;
         }
 
         public static void GUIGetTotalManaged()

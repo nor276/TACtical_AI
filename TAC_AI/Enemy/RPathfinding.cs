@@ -10,8 +10,16 @@ namespace TAC_AI.AI.Enemy
 {
     public static class RPathfinding
     {
+        /// <summary>
+        /// Airborne Avoidence
+        /// </summary>
+        /// <param name="tank"></param>
+        /// <param name="targetIn"></param>
+        /// <param name="thisInst"></param>
+        /// <param name="mind"></param>
+        /// <returns></returns>
         public static Vector3 AvoidAssistEnemy(Tank tank, Vector3 targetIn, Vector3 predictionOffset, AIECore.TankAIHelper thisInst, EnemyMind mind)
-        {
+        {   //WIP
             if (!thisInst.AvoidStuff || tank.IsAnchored)
                 return targetIn;
             HashSet<Tank> Allies = AIEPathing.AllyList(tank);
@@ -52,6 +60,7 @@ namespace TAC_AI.AI.Enemy
                 lastCloseAlly = ClosestAllyE(predictionOffset, out lastAllyDist, Allies);
                 if (lastCloseAlly == null)
                 {
+                    //DebugTAC_AI.Log("TACtical_AI: ALLY IS NULL");
                     Vector3 ProccessedVal = AIEPathing.ObstDodgeOffset(tank, thisInst, true, out obst, mind.CommanderSmarts >= EnemySmarts.Meh);
                     if (obst)
                         return (targetIn + ProccessedVal) / 2;
@@ -84,6 +93,7 @@ namespace TAC_AI.AI.Enemy
 
         public static Tank ClosestAllyE(Vector3 tankPos, out float bestValue, HashSet<Tank> Allies)
         {
+            // Finds the closest ally and outputs their respective distance as well as their being
             bestValue = 500;
             int bestStep = 0;
             Tank closestTank = null;
@@ -100,14 +110,17 @@ namespace TAC_AI.AI.Enemy
                 }
                 bestValue = (Allies.ElementAt(bestStep).boundsCentreWorldNoCheck - tankPos).magnitude;
                 closestTank = Allies.ElementAt(bestStep);
+                //DebugTAC_AI.Log("TACtical_AI:ClosestAllyProcess " + closestTank.name);
             }
-            catch
+            catch //(Exception e)
             {
+                //DebugTAC_AI.Log("TACtical_AI: Crash on ClosestAllyProcess " + e);
             }
             return closestTank;
         }
         public static Tank SecondClosestAllyE(Vector3 tankPos, out Tank secondTank, out float bestValue, out float auxBestValue, HashSet<Tank> Allies)
         {
+            // Finds the two closest allies and outputs their respective distances as well as their beings
             bestValue = 500;
             auxBestValue = 500;
             int bestStep = 0;
@@ -135,10 +148,12 @@ namespace TAC_AI.AI.Enemy
                 closestTank = Allies.ElementAt(bestStep);
                 auxBestValue = (Allies.ElementAt(auxStep).boundsCentreWorldNoCheck - tankPos).magnitude;
                 bestValue = (Allies.ElementAt(bestStep).boundsCentreWorldNoCheck - tankPos).magnitude;
+                //DebugTAC_AI.Log("TACtical_AI: ClosestAllyProcess " + closestTank.name);
                 return closestTank;
             }
-            catch
+            catch //(Exception e)
             {
+                //DebugTAC_AI.Log("TACtical_AI: Crash on SecondClosestAllyProcess " + e);
             }
             DebugTAC_AI.Log("TACtical_AI: SecondClosestAllyE - COULD NOT FETCH TANK");
             secondTank = null;

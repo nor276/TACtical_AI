@@ -55,6 +55,13 @@ namespace TAC_AI.AI.Movement.AICores
             }
         }
 
+        /// <summary>
+        /// Drives the Tech to the desired location (AIControllerAir.AirborneDest) in world space
+        /// </summary>
+        /// <param name="thisControl"></param>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
+        /// <returns></returns>
         public virtual bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
             if (pilot.Grounded)
@@ -281,6 +288,13 @@ namespace TAC_AI.AI.Movement.AICores
             }
         }
 
+        /// <summary>
+        /// A very limited version of the VehicleAICore DriveMaintainer for downed aircraft
+        /// </summary>
+        /// <param name="thisControl"></param>
+        /// <param name="helper"></param>
+        /// <param name="tank"></param>
+        /// <returns></returns>
         public bool DriveMaintainerEmergLand(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
             TankControl.ControlState control3D = (TankControl.ControlState)VehicleUtils.controlGet.GetValue(tank.control);
@@ -289,6 +303,7 @@ namespace TAC_AI.AI.Movement.AICores
             control3D.m_State.m_InputMovement = Vector3.zero;
             VehicleUtils.controlGet.SetValue(tank.control, control3D);
             Vector3 destDirect = helper.lastDestinationCore - tank.boundsCentreWorldNoCheck;
+            // DEBUG FOR DRIVE ERRORS
             if (AIGlobals.ShowDebugFeedBack)
                 DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, destDirect, new Color(0, 1, 1));
 
@@ -296,35 +311,39 @@ namespace TAC_AI.AI.Movement.AICores
             if (helper.DoSteerCore)
             {
                 if (helper.AdviseAwayCore)
-                {
-                    if (core.DriveDir == EDriveFacing.Backwards)
-                    {
+                {   //Move from target
+                    if (core.DriveDir == EDriveFacing.Backwards)//EDriveType.Backwards
+                    {   // Face back TOWARDS target
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
                         helper.DriveControl = 1f;
                     }
                     else if (core.DriveDir == EDriveFacing.Perpendicular)
-                    {
+                    {   //Drive to target driving sideways, but obey distance
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
+                        //DebugTAC_AI.Log("Orbiting away");
                         helper.DriveControl = 1f;
                     }
                     else
-                    {
+                    {   // Face front TOWARDS target
                         VehicleUtils.Turner(helper, destDirect, 0, ref core);
                         helper.DriveControl = -1f;
                     }
                 }
                 else if (core.DriveDir == EDriveFacing.Perpendicular)
-                {
+                {   //Drive to target driving sideways, but obey distance
+                    //int range = (int)(destDirect).magnitude;
                     float range = helper.lastOperatorRange;
                     if (range < helper.AutoSpacing + 2)
                     {
                         VehicleUtils.Turner(helper, -destDirect, 0, ref core);
+                        //DebugTAC_AI.Log("Orbiting out " + helper.MinimumRad + " | " + destDirect);
                     }
                     else if (range > helper.AutoSpacing + 22)
                     {
                         VehicleUtils.Turner(helper, destDirect, 0, ref core);
+                        //DebugTAC_AI.Log("Orbiting in " + helper.MinimumRad);
                     }
-                    else
+                    else  //ORBIT!
                     {
                         Vector3 aimDirect;
                         if (Vector3.Dot(destDirect.normalized, tank.rootBlockTrans.right) < 0)
@@ -332,14 +351,18 @@ namespace TAC_AI.AI.Movement.AICores
                         else
                             aimDirect = Vector3.Cross(destDirect.normalized, Vector3.up);
                         VehicleUtils.Turner(helper, aimDirect, 0, ref core);
+                        //DebugTAC_AI.Log("Orbiting hold " + helper.MinimumRad);
                     }
                     helper.DriveControl = 1f;
                 }
                 else
                 {
-                    VehicleUtils.Turner(helper, destDirect, 0, ref core);
+                    VehicleUtils.Turner(helper, destDirect, 0, ref core);//Face the music
+                                                                                    //DebugTAC_AI.Log(KickStart.ModID + ": AI " + tank.name + ":  driving to " + helper.lastDestination);
                     if (helper.AutoSpacing > 0)
                     {
+                        //if (helper.DriveDir == EDriveType.Perpendicular)
+                        //    helper.DriveControl = 1f;
                         float range = helper.lastOperatorRange;
                         if (core.DriveDir <= EDriveFacing.Neutral)
                             helper.DriveControl = 0f;
@@ -368,17 +391,19 @@ namespace TAC_AI.AI.Movement.AICores
             else
                 helper.DriveControl = 0;
 
+            // Overrides to translational drive
             if (core.DriveDir == EDriveFacing.Stop)
             {
                 helper.DriveControl = 0f;
                 return true;
             }
             if (core.DriveDir == EDriveFacing.Neutral)
-            {
+            {   // become brakeless
                 helper.DriveControl = 0.001f;
                 return true;
             }
 
+            // Operate normally
             switch (helper.ThrottleState)
             {
                 case AIThrottleState.PivotOnly:
@@ -393,7 +418,7 @@ namespace TAC_AI.AI.Movement.AICores
                             helper.DriveControl = -1f;
                     }
                     else
-                    {
+                    {   // works with forwards
                         if (helper.recentSpeed > 10)
                             helper.DriveControl = -0.2f;
                         else
@@ -405,6 +430,7 @@ namespace TAC_AI.AI.Movement.AICores
                     break;
                 case AIThrottleState.ForceSpeed:
                     helper.DriveControl = helper.DriveVar;
+                    // Downed Aircraft can't boost as their engines are damaged
                     if (helper.FullBoost || helper.LightBoost)
                         helper.DriveControl = 1;
                     break;
@@ -414,12 +440,17 @@ namespace TAC_AI.AI.Movement.AICores
             return true;
         }
 
+        /// <summary>
+        /// Player automatic AI version (player following)
+        /// Declares 3D points in WORLD space (AirborneDest)
+        /// </summary>
+        /// <returns>Execution was successful</returns>
         public bool DriveDirector(ref EControlCoreSet core)
         {
             pilot.AdvisedThrottle = -1;
             Helper.AutoSpacing = AIGlobals.AircraftDestSuccessRadius + Helper.lastTechExtents;
             if (Helper.IsMultiTech)
-            {
+            {   //Override and disable most driving abilities
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(Helper, pilot.Tank, ref core);
                 return true;
             }
@@ -601,21 +632,26 @@ namespace TAC_AI.AI.Movement.AICores
             return true;
         }
 
+        /// <summary>
+        /// Player click-based AI version (player RTS line following)
+        /// Declares 3D points in WORLD space (AirborneDest)
+        /// </summary>
+        /// <returns>Execution was successful</returns>
         public bool DriveDirectorRTS(ref EControlCoreSet core)
         {
             pilot.AdvisedThrottle = -1;
             Helper.AutoSpacing = AIGlobals.AircraftDestSuccessRadius + Helper.lastTechExtents;
 
             if (Helper.IsMultiTech)
-            {
+            {   //Override and disable most driving abilities
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(Helper, pilot.Tank, ref core);
                 return true;
             }
 
             pilot.LowerEngines = true;
             if (!Helper.IsGoingToPositionalRTSDest)
-            {
-                if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core))
+            {   // We are pursuing
+                if (!TryAdjustForCombat(false, ref pilot.PathPointSet, ref core)) // When set to chase then chase
                 {
                     if ((Helper.lastDestinationOp - pilot.Tank.boundsCentreWorldNoCheck).magnitude < pilot.DestSuccessRad)
                     {
@@ -680,7 +716,7 @@ namespace TAC_AI.AI.Movement.AICores
             Helper.AutoSpacing = AIGlobals.AircraftDestSuccessRadius + Helper.lastTechExtents;
 
             if (Helper.IsMultiTech)
-            {
+            {   //Override and disable most driving abilities
                 pilot.PathPointSet = MultiTechUtils.HandleMultiTech(Helper, pilot.Tank, ref core);
                 return true;
             }
@@ -688,7 +724,7 @@ namespace TAC_AI.AI.Movement.AICores
             pilot.LowerEngines = true;
             if (!Helper.IsGoingToPositionalRTSDest)
             {
-                if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core))
+                if (!TryAdjustForCombatEnemy(mind, ref pilot.PathPointSet, ref core)) // When set to chase then chase
                 {
                     if ((Helper.lastDestinationOp - pilot.Tank.boundsCentreWorldNoCheck).magnitude < pilot.DestSuccessRad)
                     {
@@ -748,17 +784,23 @@ namespace TAC_AI.AI.Movement.AICores
             return true;
         }
 
+        /// <summary>
+        /// Non-Player automatic AI version
+        /// Declares 3D points in WORLD space (AirborneDest)
+        /// </summary>
+        /// <returns>Execution was successful</returns>
         public bool DriveDirectorEnemy(EnemyMind mind, ref EControlCoreSet core)
         {
             pilot.AdvisedThrottle = -1;
             pilot.ForcePitchUp = false;
             Helper.AutoSpacing = AIGlobals.AircraftDestSuccessRadius + Helper.lastTechExtents;
             if (pilot.Grounded)
-            {
+            {   //Become a ground vehicle for now
                 if (!AIEPathing.AboveHeightFromGroundTech(Helper, Helper.lastTechExtents * 2))
                 {
                     return false;
                 }
+                //Try fighting the controls to land safely
 
                 return true;
             }
@@ -853,6 +895,10 @@ namespace TAC_AI.AI.Movement.AICores
             return true;
         }
 
+        /// <summary>
+        /// Tells the Player AI where to go (in lastDestination) to handle a moving target
+        /// </summary>
+        /// <returns>True if the AI can perform combat navigation</returns>
         public bool TryAdjustForCombat(bool between, ref Vector3 pos, ref EControlCoreSet core)
         {
             bool output = false;
@@ -870,7 +916,7 @@ namespace TAC_AI.AI.Movement.AICores
                 if (Helper.SideToThreat)
                 {
                     if (Helper.FullMelee)
-                    {
+                    {   //orbit WHILE at enemy!
                         core.DriveDir = EDriveFacing.Perpendicular;
                         pos = targPos;
 
@@ -933,6 +979,10 @@ namespace TAC_AI.AI.Movement.AICores
             return output;
         }
 
+        /// <summary>
+        /// Tells the Non-Player AI where to go (in lastDestination) to handle a moving target
+        /// </summary>
+        /// <returns>True if the AI can perform combat navigation</returns>
         public bool TryAdjustForCombatEnemy(EnemyMind mind, ref Vector3 pos, ref EControlCoreSet core)
         {
             bool output = false;
@@ -947,7 +997,7 @@ namespace TAC_AI.AI.Movement.AICores
                 if (Helper.SideToThreat)
                 {
                     if (Helper.FullMelee)
-                    {
+                    {   //orbit WHILE at enemy!
                         core.DriveDir = EDriveFacing.Perpendicular;
                         pos = Helper.RoughPredictTarget(Helper.lastEnemyGet.tank);
 
@@ -1015,8 +1065,15 @@ namespace TAC_AI.AI.Movement.AICores
 
         private float Responsiveness => (AIGlobals.AerofoilSluggishnessBaseValue * 2) / pilot.AerofoilSluggishness;
 
+        /// <summary>
+        /// An airborne version of the Player AI pathfinding which handles obstructions
+        /// </summary>
+        /// <param name="targetIn"></param>
+        /// <param name="predictionOffset"></param>
+        /// <returns></returns>
         public Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset)
         {
+            //The method to determine if we should avoid an ally nearby while navigating to the target
             TankAIHelper helper = Helper;
             Tank tank = pilot.Tank;
 
@@ -1026,7 +1083,7 @@ namespace TAC_AI.AI.Movement.AICores
                 float lastAllyDist;
                 float moveSpace = (predictionOffset - pilot.Tank.boundsCentreWorldNoCheck).magnitude;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
-                if (helper.SecondAvoidence && AlliesAlt.Count > 1)
+                if (helper.SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
                 {
                     lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, predictionOffset,
                         out Tank lastCloseAlly2, out lastAllyDist, out float lastAuxVal, pilot.Helper);
@@ -1045,6 +1102,7 @@ namespace TAC_AI.AI.Movement.AICores
                 lastCloseAlly = AIEPathing.ClosestAllyPrecision(AlliesAlt, predictionOffset, out lastAllyDist, pilot.Helper);
                 if (lastCloseAlly == null)
                 {
+                    // DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
                     return targetIn;
                 }
                 if (lastAllyDist < helper.lastTechExtents + lastCloseAlly.GetCheapBounds() + AIGlobals.PathfindingExtraSpace + moveSpace)
@@ -1061,6 +1119,7 @@ namespace TAC_AI.AI.Movement.AICores
             if (targetIn.IsNaN())
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssistAir IS NaN!!");
+                //TankAIManager.FetchAllAllies();
             }
             return targetIn;
         }
@@ -1073,6 +1132,7 @@ namespace TAC_AI.AI.Movement.AICores
             else
                 lFlat = pilot.Tank.rootBlockTrans.right + (pilot.Tank.rootBlockTrans.forward * 2);
             lFlat.y = -0.1f;
+            //DebugTAC_AI.Log(KickStart.ModID + ": GetOrbitFlight");
             return lFlat * 126;
         }
         public Vector3 Between(Vector3 Target, Vector3 other)
@@ -1080,6 +1140,7 @@ namespace TAC_AI.AI.Movement.AICores
             return (Target + other) / 2;
         }
 
+        // Utilities
         private const float UprightBankNudgeMultiplierFighter = 0.5f;
         private const float UprightBankNudgeMultiplierSlow = 0.75f;
 
@@ -1088,7 +1149,7 @@ namespace TAC_AI.AI.Movement.AICores
             pilot.MainThrottle = 1;
             pilot.UpdateThrottle(helper);
             if (helper.LocalSafeVelocity.z < AIGlobals.AirStallSpeed)
-            {
+            {   //ABORT!!!
                 if (DoPlayerAutopilotAirLogging)
                     DebugTAC_AI.LogSpecific(tank, KickStart.ModID + ": Tech " + tank.name + "  Aborted U-Turn with velocity " + helper.LocalSafeVelocity.z);
                 PerformUTurn = -1;
@@ -1097,7 +1158,7 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " has failed to U-Turn/Immelmann over 3 times and will no longer try");
             }
             else if (Vector3.Dot(Vector3.down, helper.SafeVelocity.normalized) > 0.6f)
-            {
+            {   //ABORT!!!
                 if (DoPlayerAutopilotAirLogging)
                     DebugTAC_AI.LogSpecific(tank, KickStart.ModID + ": Tech " + tank.name + "  Aborted U-Turn as too much movement to the ground");
                 PerformUTurn = -1;
@@ -1106,7 +1167,7 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.LogSpecific(tank, KickStart.ModID + ": Tech " + tank.name + " has failed to U-Turn/Immelmann over 3 times and will no longer try");
             }
             if (PerformUTurn == 1)
-            {
+            {   // Accelerate
                 if (DoPlayerAutopilotAirLogging)
                     DebugTAC_AI.LogSpecific(tank, KickStart.ModID + ": Tech " + tank.name + " Executing U-Turn[1]...");
                 AngleTowards(helper, tank, pilot, tank.boundsCentreWorldNoCheck +
@@ -1115,7 +1176,7 @@ namespace TAC_AI.AI.Movement.AICores
                     PerformUTurn = 2;
             }
             else if (PerformUTurn == 2)
-            {
+            {   // Pitch Up
                 if (DoPlayerAutopilotAirLogging)
                     DebugTAC_AI.LogSpecific(tank, KickStart.ModID + ": Tech " + tank.name + " Executing U-Turn[2]...");
                 AngleTowards(helper, tank, pilot, tank.boundsCentreWorldNoCheck + (tank.rootBlockTrans.forward.SetY(1.75f).normalized * 100));
@@ -1123,7 +1184,7 @@ namespace TAC_AI.AI.Movement.AICores
                     PerformUTurn = 3;
             }
             else if (PerformUTurn == 3)
-            {
+            {   // Aim back at target
                 if (DoPlayerAutopilotAirLogging)
                     DebugTAC_AI.LogSpecific(tank, KickStart.ModID + ": Tech " + tank.name + " Executing U-Turn[3]...");
                 AngleTowards(helper, tank, pilot, pilot.PathPointSet.SetY(tank.boundsCentreWorldNoCheck.y));
@@ -1146,6 +1207,7 @@ namespace TAC_AI.AI.Movement.AICores
         }
         public Vector3 DetermineRollUpright(Tank tank, AIControllerAir pilot, Vector3 Navi3DDirect, bool forceUp, out float nudgeTargPosUp)
         {
+            //Vector3 turnValUp = AIGlobals.LookRot(tank.rootBlockTrans.forward, tank.rootBlockTrans.InverseTransformDirection(Vector3.up)).eulerAngles;
             nudgeTargPosUp = 0;
 
             if (forceUp)
@@ -1157,6 +1219,7 @@ namespace TAC_AI.AI.Movement.AICores
             Vector3 upright = Vector3.up;
             if (PerformUTurn == 3)
             {
+                //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  Stage 3 Immelmann");
                 upright = Vector3.down;
             }
             else if (PerformUTurn == 4)
@@ -1164,34 +1227,42 @@ namespace TAC_AI.AI.Movement.AICores
                 upright = Vector3.up;
             }
             else if (tank.rootBlockTrans.up.y < -0.4f)
-            {
+            {   // handle invalid request to go upside down
+                //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  IS UPSIDE DOWN AND IS TRYING TO GET UPRIGHT");
+                // Stay upright
             }
             else if ((PerformUTurn > 0 && !pilot.LargeAircraft && !BankOnly) || pilot.ForcePitchUp)
             {
+                // Stay upright
             }
             else if (fwdHeading < -0.325f && Heading.y < 0.6f && targetLevelElevation && PerformUTurn == 0 &&
                 AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
-            {
-                if (pilot.ErrorsInUTurn > 3)
+            {   // Check we are not facing target, not pointing up, target is level elevation,
+                //  are within interactive height limit, and we aren't already doing UTurn
+                //DebugTAC_AI.Log("directed is " + Navi3DDirect);
+                if (pilot.ErrorsInUTurn > 3)    // Aircraft failed Immelmann over 3 times in a row
                     PerformUTurn = -1;
-                else if (pilot.LargeAircraft || BankOnly)
+                else if (pilot.LargeAircraft || BankOnly)   // Large aircraft cannot do the Immelmann
                     PerformUTurn = -1;
-                else
+                else                            // Perform the Immelmann turn, or better known as the "U-Turn"
                     PerformUTurn = 1;
             }
             else if (pilot.LargeAircraft || BankOnly)
             {
+                // Because we likely yaw slower, we should bank as much as possible
                 if (targetLevelElevation && fwdHeading < 0.925f - (0.2f / pilot.RollStrength))
                 {
                     if (Heading.x > 0f)
-                    {
+                    { // We roll to aim at target
+                      //DebugTAC_AI.Log(KickStart.ModID + ": (HVY) Tech " + tank.name + "  Roll turn Right");
                         Vector3 rFlat = GetExactRightAlignedWorld(tank, false);
                         rFlat.y = -pilot.RollStrength / 2;
                         upright = Vector3.Cross(tank.rootBlockTrans.forward, rFlat.normalized).normalized;
                         nudgeTargPosUp = UprightBankNudgeMultiplierSlow;
                     }
                     else if (Heading.x < 0f)
-                    {
+                    { // We roll to aim at target
+                      //DebugTAC_AI.Log(KickStart.ModID + ": (HVY) Tech " + tank.name + "  Roll turn Left");
                         Vector3 rFlat = GetExactRightAlignedWorld(tank, false);
                         rFlat.y = pilot.RollStrength / 2;
                         upright = Vector3.Cross(tank.rootBlockTrans.forward, rFlat.normalized).normalized;
@@ -1204,14 +1275,16 @@ namespace TAC_AI.AI.Movement.AICores
                 if (targetLevelElevation && fwdHeading < 0.85f - (0.2f / pilot.RollStrength))
                 {
                     if (Heading.x > 0f)
-                    {
+                    { // We roll to aim at target
+                      //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  Roll turn Right");
                         Vector3 rFlat = GetExactRightAlignedWorld(tank, true);
                         rFlat.y = -pilot.RollStrength;
                         upright = Vector3.Cross(tank.rootBlockTrans.forward, rFlat.normalized).normalized;
                         nudgeTargPosUp = UprightBankNudgeMultiplierFighter;
                     }
                     else if (Heading.x < 0f)
-                    {
+                    { // We roll to aim at target
+                      //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  Roll turn Left");
                         Vector3 rFlat = GetExactRightAlignedWorld(tank, true);
                         rFlat.y = pilot.RollStrength;
                         upright = Vector3.Cross(tank.rootBlockTrans.forward, rFlat.normalized).normalized;
@@ -1219,12 +1292,14 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                 }
             }
+            //DebugTAC_AI.Log(KickStart.ModID + ": upwards direction " + tank.name + "  is " + direct.y);
 
-            return upright;
+            return upright; // IS IN WORLD SPACE
         }
         public void AngleTowards(TankAIHelper helper, Tank tank,
             AIControllerAir pilot, Vector3 destPos, bool EmergencyUp = false)
         {
+            //AI Steering Rotational
             Transform root = tank.rootBlockTrans;
 
             if (pilot.LargeAircraft)
@@ -1239,8 +1314,9 @@ namespace TAC_AI.AI.Movement.AICores
                 EmergencyUp = true;
             }
             Vector3 noseDirect = (destPos - tank.boundsCentreWorldNoCheck).normalized;
-            if (EmergencyUp)
-            {
+            if (EmergencyUp)// || root.forward.y < -AIGlobals.AircraftDangerDive)
+            {   // CRASH LIKELY, PULL UP!
+                //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " is trying to break from a crash-dive " + root.forward.y);
                 noseDirect = new Vector3(0, 1.45f, 0) + root.forward.SetY(0).normalized;
             }
             else if (noseDirect.y < -AIGlobals.AircraftMaxDive)
@@ -1249,6 +1325,7 @@ namespace TAC_AI.AI.Movement.AICores
             }
             else if (Vector3.Dot(noseDirect, root.forward) < 0 && !pilot.ForcePitchUp && PerformUTurn == 0)
             {
+                // Try deal with turns well exceeding 90 degrees
                 Vector3 clamped = root.InverseTransformVector(noseDirect);
                 if (clamped.z < 0)
                 {
@@ -1256,6 +1333,7 @@ namespace TAC_AI.AI.Movement.AICores
                     clamped.z = 0;
                 }
                 noseDirect = root.TransformVector(clamped);
+                // Level when turning far
                 noseDirect = noseDirect.SetY(0).normalized;
                 noseDirect.y = 0.1f;
             }
@@ -1272,12 +1350,20 @@ namespace TAC_AI.AI.Movement.AICores
             Vector3 turnVal = AIGlobals.LookRot(ForwardsLocal, Vector3.up).eulerAngles;
             Vector3 UpLocal = root.InverseTransformDirection(helper.Navi3DUp);
             Vector3 turnValUp = AIGlobals.LookRot(Vector3.forward, UpLocal).eulerAngles;
+            //Vector3 forwardFlat = tank.rootBlockTrans.forward;
+            //forwardFlat.y = 0;
 
+            //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " steering RAW" + turnVal);
 
+            //Convert turnVal to runnable format
+            // PITCH
             turnVal.x = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.x) / pilot.FlyingChillFactor.x), -1, 1);
+            // YAW
             turnVal.y = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnVal.y) / pilot.FlyingChillFactor.y), -1, 1);
+            // ROLL
             turnValUp.z = Mathf.Clamp(-(AIGlobals.AngleUnsignedToSigned(turnValUp.z) / pilot.FlyingChillFactor.z), -1, 1);
 
+            // Control oversteer since there's no proper control limiter for overyaw
             if (BankOnly)
             {
                 turnVal.y = Mathf.Clamp(turnVal.y, -AIGlobals.AirMaxYawBankOnly, AIGlobals.AirMaxYawBankOnly);
@@ -1287,6 +1373,7 @@ namespace TAC_AI.AI.Movement.AICores
                 turnVal.y = Mathf.Clamp(turnVal.y, -AIGlobals.AirMaxYaw, AIGlobals.AirMaxYaw);
             }
 
+            //Stop Wobble
             if (Mathf.Abs(turnVal.x) < 0.01f)
                 turnVal.x = 0;
             if (Mathf.Abs(turnVal.y) < 0.01f)
@@ -1294,6 +1381,7 @@ namespace TAC_AI.AI.Movement.AICores
             if (Mathf.Abs(turnValUp.z) < 0.01f)
                 turnValUp.z = 0;
 
+            //Lock yaw AND limit roll when pitch operation is OUTSTANDING
             if (Mathf.Abs(turnVal.x) > 0.9f && EmergencyUp)
             {
                 turnVal.y = 0;
@@ -1301,27 +1389,38 @@ namespace TAC_AI.AI.Movement.AICores
             }
 
 
-            if (tank.rootBlockTrans.up.y < 0)
-            {
+            //helper.Navi3DDirect = (position - tank.boundsCentreWorldNoCheck).normalized;
 
+            if (tank.rootBlockTrans.up.y < 0)
+            {   // upside down due to a unfindable oversight in code - just override the bloody thing when it happens
+                //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + "  IS UPSIDE DOWN AND IS TRYING TO GET UPRIGHT");
+
+                //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " steering" + turnVal);
+                //turnVal.z = -Mathf.Clamp(turnVal.z * 10, -1, 1);
             }
 
+            //Turn our work in to process
             turnVal.z = turnValUp.z;
             Vector3 TurnVal = turnVal.Clamp01Box();
 
+            // DRIVE
             Vector3 DriveVar = Vector3.forward * pilot.CurrentThrottle;
 
+            //Turn our work in to processing
+            //DebugTAC_AI.Log(KickStart.ModID + ": Tech " + tank.name + " steering" + turnVal);
             Vector3 DriveVal = DriveVar.Clamp01Box();
 
+            // Blue is the target destination, Red is up
 
-
+            // DEBUG FOR DRIVE ERRORS
 
             if (AIGlobals.ShowDebugFeedBack)
             {
-                DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, destPos - tank.boundsCentreWorldNoCheck, new Color(0, 1, 1));
-                DebugExtUtilities.DrawDirIndicator(tank.gameObject, 1, helper.Navi3DDirect * pilot.Helper.lastTechExtents * 3, new Color(0, 0, 1));
-                DebugExtUtilities.DrawDirIndicator(tank.gameObject, 2, helper.Navi3DUp * pilot.Helper.lastTechExtents * 3, new Color(1, 0, 0));
+                DebugExtUtilities.DrawDirIndicator(tank.gameObject, 0, destPos - tank.boundsCentreWorldNoCheck, new Color(0, 1, 1)); //TEAL
+                DebugExtUtilities.DrawDirIndicator(tank.gameObject, 1, helper.Navi3DDirect * pilot.Helper.lastTechExtents * 3, new Color(0, 0, 1));//BLUE
+                DebugExtUtilities.DrawDirIndicator(tank.gameObject, 2, helper.Navi3DUp * pilot.Helper.lastTechExtents * 3, new Color(1, 0, 0));//RED
             }
+            // We never drive backwards, so we do not need to correct that
             helper.ProcessControl(DriveVal, TurnVal, Vector3.zero, false, false);
             return;
         }
@@ -1345,7 +1444,7 @@ namespace TAC_AI.AI.Movement.AICores
                         pilot.AdvisedThrottle = Mathf.Clamp(throttleToSet, 0, 1);
 
                         if (!pilot.LowerEngines)
-                        {
+                        {   // Save fuel for chasing the enemy
                             if (pilot.NoProps)
                             {
                                 if (!pilot.ForcePitchUp && foreTarg > Extremes && helper.SafeVelocity.y > -10 && Vector3.Dot((target - tank.boundsCentreWorldNoCheck).normalized, tank.rootBlockTrans.forward) > 0.6)
@@ -1414,11 +1513,14 @@ namespace TAC_AI.AI.Movement.AICores
 
         public void PreventCollisionWithGround(AIControllerAir pilot, float groundOffset, bool unresponsiveAir)
         {
-            float groundOffsetF = groundOffset;
+            float groundOffsetF = groundOffset; //pilot.AerofoilSluggishness
             if (unresponsiveAir)
             {
                 if (!AIEPathing.AboveHeightFromGround(pilot.Helper.DodgeSphereCenter, groundOffsetF + pilot.Helper.lastTechExtents))
                 {
+                    //DebugTAC_AI.Assert(!AIEPathing.IsUnderMaxAltPlayer(deltaAim), "PreventCollisionWithGround called while height is too high");
+                    //DebugTAC_AI.Log(pilot.Helper.tank.name + " -  deltaMovementClock = " + pilot.deltaMovementClock + " | slugishness = " + pilot.AerofoilSluggishness + " | deltaAim y " + deltaAim.y + " | vs " + groundOffsetF);
+                    //DebugTAC_AI.Log(pilot.Helper.tank.name + " - GOING UP (HVY)");
                     pilot.ForcePitchUp = true;
                     pilot.PathPointSet.y = pilot.Helper.tank.boundsCentreWorldNoCheck.y;
                     pilot.PathPointSet += Vector3.up * (pilot.PathPointSet - pilot.Helper.tank.boundsCentreWorldNoCheck).ToVector2XZ().magnitude * 4;
@@ -1428,7 +1530,11 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 if (!AIEPathing.AboveHeightFromGround(pilot.Helper.DodgeSphereCenter, groundOffsetF))
                 {
+                    //DebugTAC_AI.Assert(!AIEPathing.IsUnderMaxAltPlayer(deltaAim), "PreventCollisionWithGround called while height is too high");
                     pilot.PathPointSet = AIEPathing.ModerateMaxAlt(pilot.PathPointSet, pilot.Helper);
+                    //DebugTAC_AI.Log(pilot.Helper.tank.name + " -  deltaMovementClock = " + pilot.deltaMovementClock.y + " | slugishness = " + pilot.AerofoilSluggishness + " | deltaAim y " + deltaAim.y + " | vs " + groundOffsetF +
+                    //    " | tech: " + pilot.Helper.tank.trans.position);
+                    //DebugTAC_AI.Log(pilot.Helper.tank.name + " - GOING UP");
                     pilot.ForcePitchUp = true;
                     pilot.PathPointSet.y = pilot.Helper.tank.boundsCentreWorldNoCheck.y;
                     pilot.PathPointSet += Vector3.up * (pilot.PathPointSet - pilot.Helper.tank.boundsCentreWorldNoCheck).ToVector2XZ().magnitude * 4;
@@ -1440,6 +1546,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             if (useLegacy)
             {
+                //return GetExactRightAlignedWorldLegacy(tank);
             }
 
             Vector3 right;

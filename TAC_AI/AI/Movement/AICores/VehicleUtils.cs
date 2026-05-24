@@ -20,6 +20,9 @@ namespace TAC_AI.AI.Movement.AICores
         private const float MinLookAngleToTurnFineSideways = 0.65f;
         private const float MaxThrottleToTurnFull = 0.75f;
         private const float MaxThrottleToTurnAccurate = 0.5f;
+        /// <summary>
+        /// Controls how hard the Tech should turn when pursuing a target vector
+        /// </summary>
         public static bool Turner(TankAIHelper helper, Vector3 destVec, float drive, ref EControlCoreSet core)
         {
             float turnVal;
@@ -123,6 +126,9 @@ namespace TAC_AI.AI.Movement.AICores
         private const float ignoreSteeringAboveAngleAir = 0.95f;
         private const float forwardsLowerSteeringAboveAngleAir = 0.5f;
         private const float MinLookAngleToTurnFineSidewaysAir = 0.65f;
+        /// <summary>
+        /// Controls how hard the Tech should turn when pursuing a target vector
+        /// </summary>
         public static void TurnerHovership(TankControl thisControl, TankAIHelper helper, Vector3 destVec, ref EControlCoreSet core)
         {
             Transform rootBlock = helper.tank.rootBlockTrans;
@@ -193,7 +199,7 @@ namespace TAC_AI.AI.Movement.AICores
 
             if (timeCurToReach > 1f)
                 driveVal += deltaThrottle;
-            else
+            else // throttleShiftDelay >= timeCurToReach
                 driveVal += deltaThrottle * timeCurToReach;
         }
 
@@ -207,7 +213,7 @@ namespace TAC_AI.AI.Movement.AICores
                 helper.AutoSpacing = 0.5f;
                 core.DriveDir = EDriveFacing.Forwards;
                 if (helper.IsMultiTech)
-                {
+                {   //Override and disable most driving abilities
                     core.DrivePathing = EDrivePathing.IgnoreAll;
 
                     pos = MultiTechUtils.HandleMultiTech(helper, tank, ref core);
@@ -217,7 +223,7 @@ namespace TAC_AI.AI.Movement.AICores
                     core.DriveDir = EDriveFacing.Forwards;
                     bool Combat = false;
                     if (!helper.IsGoingToPositionalRTSDest)
-                        Combat = controller.AICore.TryAdjustForCombat(true, ref pos, ref core);
+                        Combat = controller.AICore.TryAdjustForCombat(true, ref pos, ref core); //If we are set to chase then chase with proper AI
                     if (Combat)
                         core.DrivePathing = EDrivePathing.OnlyImmedeate;
                     else
@@ -308,7 +314,7 @@ namespace TAC_AI.AI.Movement.AICores
                 helper.AutoSpacing = 0.5f;
                 core.DriveDir = EDriveFacing.Forwards;
                 if (helper.IsMultiTech)
-                {
+                {   //Override and disable most driving abilities
                     core.DrivePathing = EDrivePathing.IgnoreAll;
 
                     pos = MultiTechUtils.HandleMultiTech(helper, tank, ref core);
@@ -318,7 +324,7 @@ namespace TAC_AI.AI.Movement.AICores
                     core.DriveDir = EDriveFacing.Forwards;
                     bool Combat = false;
                     if (!helper.IsGoingToPositionalRTSDest)
-                        Combat = controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core);
+                        Combat = controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core); //If we are set to chase then chase with proper AI
                     if (Combat)
                         core.DrivePathing = EDrivePathing.OnlyImmedeate;
                     else
@@ -403,7 +409,7 @@ namespace TAC_AI.AI.Movement.AICores
             try
             {
                 if (helper.IsMultiTech)
-                {
+                {   //Override and disable most driving abilities
                     core.DrivePathing = EDrivePathing.IgnoreAll;
                     pos = MultiTechUtils.HandleMultiTech(helper, tank, ref core);
                 }
@@ -520,7 +526,7 @@ namespace TAC_AI.AI.Movement.AICores
                             {
                                 core.DriveDir = EDriveFacing.Forwards;
                                 core.DriveDest = EDriveDest.FromLastDestination;
-                                helper.AutoSpacing = 0;
+                                helper.AutoSpacing = 0;//0.5f;
 
                                 pos = helper.theResource.tank.boundsCentreWorldNoCheck;
                             }
@@ -567,7 +573,7 @@ namespace TAC_AI.AI.Movement.AICores
                             {
                                 core.DriveDir = EDriveFacing.Forwards;
                                 core.DriveDest = EDriveDest.FromLastDestination;
-                                helper.AutoSpacing = 0.01f;
+                                helper.AutoSpacing = 0.01f;//0.5f;
 
                                 pos = helper.lastPlayer.tank.boundsCentreWorldNoCheck;
                             }
@@ -709,7 +715,7 @@ namespace TAC_AI.AI.Movement.AICores
                             {
                                 core.DriveDir = EDriveFacing.Forwards;
                                 core.DriveDest = EDriveDest.FromLastDestination;
-                                helper.AutoSpacing = 0;
+                                helper.AutoSpacing = 0;//0.5f;
 
                                 pos = helper.theResource.tank.boundsCentreWorldNoCheck;
                             }

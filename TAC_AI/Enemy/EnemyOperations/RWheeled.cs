@@ -12,7 +12,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     internal static class RWheeled
     {
         private static void MoveSideways(TankAIHelper helper, float dist, ref EControlOperatorSet direct)
-        {
+        {   // Continuous circle
             if (dist < 0f) dist = 0f;
             helper.AISetSettings.SideToThreat = true;
             if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend)
@@ -53,7 +53,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 
             float spacer = helper.lastTechExtents + enemyExt;
             if (mind.MainFaction == FactionSubTypes.GC && mind.CommanderAttack != EAttackMode.Safety)
-                spacer = AIGlobals.GCRamSpacer;
+                spacer = AIGlobals.GCRamSpacer;// ram no matter what, or get close for snipers
 
             switch (mind.CommanderAttack)
             {
@@ -205,7 +205,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                         RGeneral.MarkAdvancing(helper);
                     }
                     break;
-                default:
+                default:    // Others
                     range = AIGlobals.MinCombatRangeDefault;
                     helper.AISetSettings.ObjectiveRange = spacer + range;
                     helper.AISetSettings.SideToThreat = false;
@@ -213,7 +213,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
                     float holdEdge = spacer + (range * (helper.WasRetreatingInCombat ? 1.25f : 1f));
                     if (dist < spacer)
-                    {
+                    {   // too close?
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend) && !mind.LikelyMelee)
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, false, true, ref direct);
                         else

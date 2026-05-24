@@ -12,6 +12,10 @@ namespace TAC_AI
 {
     internal class GUIAIManager : MonoBehaviour
     {
+        //Handles the display that's triggered on AI change
+        //  Circle hud wheel when the player assigns a new AI state
+        //  TODO - add the hook needed to get the UI to pop up on Guard selection
+        // NOTE: HANDLES RTS SELECTED AIS AS WELL
         private static GUIAIManager inst;
         public static Vector3 PlayerLoc = Vector3.zero;
         public static bool isCurrentlyOpen = false;
@@ -20,13 +24,16 @@ namespace TAC_AI
         private static AIType changeAI = AIType.Escort;
         internal static TankAIHelper lastTank;
 
+
+        // Mode - Setting
         private static GameObject GUIWindow;
-        private static Rect HotWindow = new Rect(0, 0, 200, 380);
+        private static Rect HotWindow = new Rect(0, 0, 200, 380);   // the "window"
         private static float xMenu = 0;
         private static float yMenu = 0;
         private static int SelfDestruct = 5;
         private static bool AdvancedToggles = false;
 
+        // Tech Tracker
         private static float windowTimer = 0;
         private const int AIManagerID = 8001;
 
@@ -86,6 +93,7 @@ namespace TAC_AI
                     try
                     {
                         var title = AltUI.UIAlphaText + (!lastTank.name.NullOrEmpty() ? lastTank.name == "recycled tech" ? "None Selected" : lastTank.name : "NO NAME") + "</color>";
+                        //"AI Mode Select"
                         HotWindow = GUI.Window(AIManagerID, HotWindow, GUIHandler, title, AltUI.MenuLeft);
                         if (UIHelpersExt.MouseIsOverGUIMenu(HotWindow))
                             ManModGUI.IsMouseOverAnyModGUI = 2;
@@ -141,6 +149,12 @@ namespace TAC_AI
                 bool CantPerformActions;
                 GUI.tooltip = lastTank.GetActionStatus(out CantPerformActions);
 
+                /*
+                 * Legacy colored text:
+                 * <color=#f23d3dff> - Active Color
+                 * (none) - Selectable
+                 * <color=#808080ff> - Inactive
+                 */
 
                 bool stuckAnchored = lastTank.tank.IsAnchored && !lastTank.PlayerAllowAutoAnchoring;
 
@@ -167,12 +181,15 @@ namespace TAC_AI
             else
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": SELECTED TANK IS NULL!");
+                //lastTank = Singleton.Manager<ManPointer>.inst.targetVisible.transform.root.gameObject.GetComponent<AI.AIEnhancedCore.TankAIHelper>();
                 CloseSubMenuClickable();
             }
+            //GUI.DragWindow();
         }
 
         private static void GUIMainDisplay(bool stuckAnchored, bool CantPerformActions)
         {
+            //GUI.Label(new Rect(6, 90, 188, 25), AltUI.UIAlphaText + (!lastTank.name.NullOrEmpty() ? lastTank.name == "recycled tech" ? "None Selected" : lastTank.name : "NO NAME") + "</color>");
 
             if (stuckAnchored)
             {
@@ -185,6 +202,8 @@ namespace TAC_AI
             }
             else
             {
+                //GUIMobileLegacy(CantPerformActions);
+                //GUIAnchorButton();
                 GUIMobile(CantPerformActions);
                 GUIAnchorButtonLayout();
             }
@@ -414,6 +433,8 @@ namespace TAC_AI
                 ManSFX.inst.PlayUISFX(ManSFX.UISfxType.AnchorFailed);
             }
 
+            // Tasks
+            // top - Escort
             string textEscort = "<color=#ffffffff>Escort</color>";
             if (GUI.Button(new Rect(20, 115, 80, 30), fetchAI == AIType.Escort ? new GUIContent(textEscort, "ACTIVE") : new GUIContent(textEscort, "Follows player"),
                 fetchAI == AIType.Escort ? AltUI.ButtonBlueActive : AltUI.ButtonBlue))
@@ -456,6 +477,8 @@ namespace TAC_AI
                 ManSFX.inst.PlayUISFX(ManSFX.UISfxType.AnchorFailed);
             }
 
+
+            // upper right - MT
             string textStation = "<color=#ffffffff>Static</color>";
             if (GUI.Button(new Rect(100, 145, 80, 30), CantPerformActions ? !lastTank.AllMT ? new GUIContent(textStation, "Player not in range") : new GUIContent(textStation, "Ally not in range") :
                 fetchAI == AIType.MTStatic ? new GUIContent(textStation, "ACTIVE") : new GUIContent(textStation, "Mobile Tech Hardpoint"),
@@ -481,6 +504,8 @@ namespace TAC_AI
                 clicked = true;
             }
 
+
+            // upper left, bottom - Aux modes
             string textMiner = "<color=#ffffffff>Miner</color>";
             if (isProspectorAvail)
             {
@@ -646,15 +671,15 @@ namespace TAC_AI
             }
 
             DriverButton("Pilot", AIDriverType.Pilot, AIType.Aviator, isAviatorAvail,
-                LOC_Air_desc, LOC_FindTheAI, ref clickedDriver);
+                LOC_Air_desc, LOC_FindTheAI, ref clickedDriver);//"Need HE or VEN AI"
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal(GLH);
             DriverButton("Ship", AIDriverType.Sailor, AIType.Buccaneer, isBuccaneerAvail && KickStart.isWaterModPresent,
-                LOC_Water_desc, KickStart.isWaterModPresent ? LOC_FindTheAI : LOC_Water_req, ref clickedDriver);
+                LOC_Water_desc, KickStart.isWaterModPresent ? LOC_FindTheAI : LOC_Water_req, ref clickedDriver);//"Need GSO or VEN AI"
 
             DriverButton("Space", AIDriverType.Astronaut, AIType.Astrotech, isAstrotechAvail, LOC_Space_desc,
-                LOC_FindTheAI, ref clickedDriver);
+                LOC_FindTheAI, ref clickedDriver);//"Need BF or HE AI"
             GUILayout.EndHorizontal();
             GUILayout.Box("", GUILayout.Height(10));
         }
@@ -704,6 +729,7 @@ namespace TAC_AI
         private static void GUIRTSButton(bool CantPerformActions, GUILayoutOption GLO, GUILayoutOption GLH)
         {
             Texture textRTS = ManWorldRTS.GetLineMat().mainTexture;
+            //string textRTS = "<color=#ffffffff>Order</color>";
             if (KickStart.AllowPlayerRTSHUD)
             {
                 if (GUILayout.Button(lastTank.RTSControlled ? new GUIContent(textRTS, LOC_Active) : new GUIContent(textRTS, LOC_GoTo),
@@ -880,6 +906,8 @@ namespace TAC_AI
 
             GUIDriverSetter(CantPerformActions, GLO, GLH, ref clickedDriver);
 
+            // Tasks
+            // top - Escort
             GUILayout.BeginHorizontal(GLH);
             if (GUILayout.Button(fetchAI == AIType.Escort ?
                 new GUIContent(RawTechExporter.GuardAIIcon.texture, LOC_Active) :
@@ -893,16 +921,18 @@ namespace TAC_AI
 
             GUILayout.EndHorizontal();
 
+            // upper right - MT
             GUILayout.BeginHorizontal(GLH);
+            // upper left, bottom - Aux modes
             AuxButton("Miner", AIType.Prospector, isProspectorAvail, LOC_Miner_req,
                 LOC_Miner_desc.ToString().Replace("#", (lastTank.JobSearchRange + AIGlobals.FindItemScanRangeExtension).ToString()),
-                LOC_FindTheAI, ref CantPerformActions, ref clicked);
+                LOC_FindTheAI, ref CantPerformActions, ref clicked);//"Need GSO or GC AI"
             GUIMTButton("Static", AIType.MTStatic, LOC_Static_desc, CantPerformActions, GLO, GLH, ref clicked);
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal(GLH);
             AuxButton("Scout", AIType.Assault, isAssassinAvail, LOC_Battery_req,  LOC_Scout_desc,
-                 LOC_FindTheAI, ref CantPerformActions, ref clicked);
+                 LOC_FindTheAI, ref CantPerformActions, ref clicked);//"Need HE AI"
 
             GUIMTButton("Turret", AIType.MTTurret, LOC_Turret_desc, CantPerformActions, GLO, GLH, ref clicked);
             GUILayout.EndHorizontal();
@@ -911,18 +941,18 @@ namespace TAC_AI
             AuxButton("Protect", AIType.Aegis, isAegisAvail,
                 LOC_Protect_req.ToString().Replace("#", (lastTank.JobSearchRange + AIGlobals.FindItemScanRangeExtension).ToString())
                 , LOC_Protect_desc,
-                 LOC_FindTheAI, ref CantPerformActions, ref clicked);
+                 LOC_FindTheAI, ref CantPerformActions, ref clicked);//"Need GSO AI"
 
             GUIMTButton("Mimic", AIType.MTMimic, LOC_Mimic_desc, CantPerformActions, GLO, GLH, ref clicked);
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal(GLH);
             AuxButton("Charger", AIType.Energizer, isEnergizerAvail, LOC_Battery_req,  LOC_Charger_desc,
-                 LOC_FindTheAI, ref CantPerformActions, ref clicked);
+                 LOC_FindTheAI, ref CantPerformActions, ref clicked);//"Need GC AI"
 
             AuxButton("Fetch", AIType.Scrapper, isScrapperAvail, LOC_Collect_req,
                 LOC_Collect_desc.ToString().Replace("#", (lastTank.JobSearchRange + AIGlobals.FindItemScanRangeExtension).ToString()),
-                 LOC_FindTheAI, ref CantPerformActions, ref clicked);
+                 LOC_FindTheAI, ref CantPerformActions, ref clicked);//"Need GC AI"
             GUILayout.EndHorizontal();
 
             if (clickedDriver)
@@ -1014,7 +1044,7 @@ namespace TAC_AI
         });
         private static void GUIAnchorButton()
         {
-            if (!lastTank.tank.IsAnchored)
+            if (!lastTank.tank.IsAnchored)//(lastTank.PlayerAllowAutoAnchoring)
             {
                 if (lastTank.tank.Anchors.NumPossibleAnchors < 1)
                     GUI.Button(new Rect(20, 265, 160, 30), new GUIContent(LOC_AnchorNone, LOC_AnchorNone_desc), AltUI.ButtonGrey);
@@ -1105,6 +1135,8 @@ namespace TAC_AI
         static bool releasedOnce = false;
         static bool handoffControl = false;
         static Vector2 selectedOncePos = default;
+        //private static FieldInfo delay = typeof(ManHUD).GetField("m_RadialShowDelay", BindingFlags.NonPublic | BindingFlags.Instance);
+        //private static float delaySelect = (float)delay.GetValue(ManHUD.inst);
         private static string SelectedFieldControlName = string.Empty;
         private static string SelectedFieldControlValue = string.Empty;
         const int defaultState = -1;
@@ -1123,6 +1155,12 @@ namespace TAC_AI
                 {
                     handoffControl = false;
                     GUI.FocusControl(SelectedFieldControlName);
+                    /*
+                    if (GUI.GetNameOfFocusedControl() != SelectedFieldControlName)
+                    {
+                        DebugTAC_AI.Assert("gues ill die");
+                        throw new InvalidOperationException("gues ill die");
+                    }*/
                 }
 
                 if (GUI.GetNameOfFocusedControl() != SelectedFieldControlName && selectedUIDisplayTime <= 0)
@@ -1168,10 +1206,13 @@ namespace TAC_AI
                 {
                     selectedOnceTime = Globals.inst.doubleTapDelay;
                     selectedOncePos = Input.mousePosition * ManModGUI.GUIScaleInv;
+                    //ManSFX.inst.PlayUISFX(ManSFX.UISfxType.Select);
+                    //DebugTAC_AI.Log("SL - FocusedControlName: " + GUI.GetNameOfFocusedControl());
                     windowTimer = InteractTimeSet;
                 }
                 else
                 {
+                    //DebugTAC_AI.Log("FocusedControlName: " + GUI.GetNameOfFocusedControl());
                 }
             }
             if (setValInt == defaultState)
@@ -1216,6 +1257,9 @@ namespace TAC_AI
             { LocalisationEnums.Languages.Japanese,
                 "アイドル時にアンカー"},
         });
+        /// <summary>
+        /// Pending - allow toggling of AI special operations
+        /// </summary>
         private static void GUIOptionsDisplay(bool stuckAnchored, bool CantPerformActions)
         {
             bool delta = false;
@@ -1238,9 +1282,9 @@ namespace TAC_AI
             }
 
             StatusLabelButton(new Rect(20, 115, 80, 30), "Aware", lastTank.SecondAvoidence,
-                LOC_SecondAvoidence_desc, LOC_FindTheAI, ref delta);
+                LOC_SecondAvoidence_desc, LOC_FindTheAI, ref delta);//"Need Non-Anchor AI"
             StatusLabelButton(new Rect(100, 115, 80, 30), "Crafty", lastTank.AutoAnchor,
-                LOC_AutoAnchor_desc, LOC_FindTheAI, ref delta);
+                LOC_AutoAnchor_desc, LOC_FindTheAI, ref delta);//"Need GC AI"
 
             set.GUIDisplay(lim, ref delta);
 
@@ -1430,6 +1474,7 @@ namespace TAC_AI
                             break;
                     }
                 }
+                //Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AIFollow);
             }
             catch { }
         }
@@ -1462,6 +1507,12 @@ namespace TAC_AI
             if (helper.IsMultiTech && !allowSetMultiTech)
                 return;
             bool guess = driver == AIDriverType.AutoSet;
+            /*
+            if (guess)
+                DebugTAC_AI.Info(KickStart.ModID + ": Given " + lastTank.name + " set to driver " + driver);
+            else
+                DebugTAC_AI.Assert(KickStart.ModID + ": Set " + lastTank.name + " to driver " + driver);
+            */
             AIDriverType locDediAI = AIDriverType.Tank;
             switch (driver)
             {
@@ -1525,11 +1576,19 @@ namespace TAC_AI
                 else
                     helper.SetDriverType(driver);
                 helper.WakeAIForChange();
+                /*
+                //DebugTAC_AI.Log(KickStart.ModID + ": 1");
+                helper.ForceAllAIsToEscort(true, true);
+                //DebugTAC_AI.Log(KickStart.ModID + ": 2");
+                helper.ForceRebuildAlignment();
+                //DebugTAC_AI.Log(KickStart.ModID + ": 3");
+                */
                 if (helper.DriverType != driver)
                 {
                     WorldPosition worPos = Singleton.Manager<ManOverlay>.inst.WorldPositionForFloatingText(helper.tank.visible);
                     AIGlobals.PopupPlayerInfo(driver.ToString(), worPos);
                 }
+                //DebugTAC_AI.Log(KickStart.ModID + ": 41");
             }
             if (guess)
                 DebugTAC_AI.Assert(KickStart.ModID + ": Set " + lastTank.name + " to driver " + driver);
@@ -1623,6 +1682,8 @@ namespace TAC_AI
                         break;
                 }
             }
+            //Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.AIFollow);
+            //CloseSubMenuClickable();
         }
         private void TrySetAITypeAllRTSControlled(AIType dediAI)
         {
@@ -1712,7 +1773,7 @@ namespace TAC_AI
             }
 
             if (locDediAI == AIType.Null)
-                return;
+                return; // DO NOT CHANGE on conflict
 
             if (ManNetwork.IsNetworked)
             {
@@ -1751,12 +1812,12 @@ namespace TAC_AI
             Singleton.Manager<ManSFX>.inst.PlayUISFX(ManSFX.UISfxType.Enter);
         }
 
-        private static bool isAssassinAvail = false;
-        private static bool isAegisAvail = false;
+        private static bool isAssassinAvail = false;    //Is there an Assassin-enabled AI on this tech?
+        private static bool isAegisAvail = false;       //Is there an Aegis-enabled AI on this tech?
 
-        private static bool isProspectorAvail = false;
-        private static bool isScrapperAvail = false;
-        private static bool isEnergizerAvail = false;
+        private static bool isProspectorAvail = false;  //Is there a Prospector-enabled AI on this tech?
+        private static bool isScrapperAvail = false;    //Is there a Scrapper-enabled AI on this tech?
+        private static bool isEnergizerAvail = false;   //Is there a Energizer-enabled AI on this tech?
 
         private static bool isAviatorAvail = false;
         private static bool isAstrotechAvail = false;
@@ -1782,6 +1843,7 @@ namespace TAC_AI
             if (helper.isAssassinAvail)
                 isAssassinAvail = true;
 
+            // Collectors
             if (helper.isProspectorAvail)
                 isProspectorAvail = true;
             if (helper.isScrapperAvail)
@@ -1789,6 +1851,7 @@ namespace TAC_AI
             if (helper.isEnergizerAvail)
                 isEnergizerAvail = true;
 
+            // Pilots
             if (helper.isAviatorAvail)
                 isAviatorAvail = true;
             if (helper.isBuccaneerAvail)

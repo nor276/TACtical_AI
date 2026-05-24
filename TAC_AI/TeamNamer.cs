@@ -22,6 +22,8 @@ namespace TAC_AI
 
         public static string GetTeamName(int Team)
         {
+            //if (KickStart.isAnimeAIPresent)
+            //    return AnimeAI.Dialect.ManDialogDetail.TeamName(Team);
             build.Clear();
             int teamNameDetermine = Mathf.Abs(Team) % 10000;
             if (Team == AIGlobals.LonerEnemyTeam)
@@ -69,6 +71,7 @@ namespace TAC_AI
                 build.Append(AdjectiveAlt.ElementAt(mod1));
                 build.Append(" ");
                 build.Append(NounAlt.ElementAt(mod2));
+                // DebugTAC_AI.Log("got val " + teamNameDetermine + " and name " + build.ToString() + " from mods [" + mod1 + ", " + mod2 + "]");
             }
 
             return build.ToString();
@@ -77,6 +80,8 @@ namespace TAC_AI
         {
             try
             {
+                //if (KickStart.isAnimeAIPresent)
+                //    return AnimeAI.Dialect.ManDialogDetail.EnemyTeamName(mind);
                 if (mind.AIControl.tank.Team == AIGlobals.LonerEnemyTeam)
                 {
                     build.Append(lonely);
@@ -105,6 +110,7 @@ namespace TAC_AI
                         build.Append(AdjectiveAlt.ElementAt(mod1));
                         build.Append(" ");
                         build.Append(NounAlt.ElementAt(mod2));
+                        // DebugTAC_AI.Log("got val " + teamNameDetermine + " and name " + build.ToString() + " from mods [" + mod1 + ", " + mod2 + "]");
                     }
                 }
 
@@ -116,12 +122,23 @@ namespace TAC_AI
             }
         }
 
+        // team name generator
         private static List<string> Adjective
         {
             get
             {
                 return new List<string>
-                {
+                {   // must be even
+                    /* // LEGACY
+            {   "Furious"
+            },{ "Crimson"
+            },{ "Grand"
+            },{ "Scarlet"
+            },{ "Unrelenting"
+            },{ "Philosphical"
+            },{ "Conflictive"
+            },{ "Overseeing"
+            },*/
             {   "Old"
             },{ "Group"
             },{ "Grand"
@@ -141,7 +158,24 @@ namespace TAC_AI
             get
             {
                 return new List<string>
-        {
+        {   // must be odd
+                    /*// LEGACY
+            {   "Prospectors"
+            },{ "Shield"
+            },{ "Halberd"
+            },{ "Enclave"
+            },{ "Avengers"
+            },{ "Ravagers"
+            },{ "Maulers"
+            },{ "Infidor"
+            },{ "Off-World"
+            },{ "Cubes"
+            },{ "Cult"
+            },{ "Gourd"
+            },{ "Griters"
+            },{ "Beings"
+            },{ "Entities"
+            },*/
             {   "Prospectors"
             },{ "Organization"
             },{ "Chunks"
@@ -166,7 +200,17 @@ namespace TAC_AI
             get
             {
                 return new List<string>
-        {
+        {   // must be even
+                    /* // LEGACY
+            {   "Agents of"
+            },{ "Foes of"
+            },{ "People of"
+            },{ "Wanderers of"
+            },{ "The Gathering of"
+            },{ "Followers of"
+            },{ "Laberors of"
+            },{ "Techs of"
+            },*/
             {   "Miners of"
             },{ "Diggers of"
             },{ "Robots of"
@@ -184,7 +228,20 @@ namespace TAC_AI
             get
             {
                 return new List<string>
-        {
+        {   // must be odd
+                    /*// LEGACY
+            {   "The Shield"
+            },{ "The Halberd"
+            },{ "The Earth Federation Forces"
+            },{ "The Enclave"
+            },{ "The Avengers"
+            },{ "The Infidor"
+            },{ "The Off-World"
+            },{ "The Cube"
+            },{ "The Gourd"
+            },{ "The Grit"
+            },{ "The Planet"
+            },*/
             {   "Sacred Rock"
             },{ "Chrome"
             },{ "Rubble"
