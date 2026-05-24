@@ -118,6 +118,22 @@ namespace TAC_AI
             }
             UnityEngine.Debug.Log(KickStart.ModID + ": " + message + e);
         }
+        private static readonly HashSet<string> fileWarnedKeys = new HashSet<string>();
+        /// <summary>
+        /// Like <see cref="LogWarnPlayerOncePerKey"/> but writes ONLY to the log file (Player.log) and
+        /// NEVER raises the ManModGUI popup. For routine, expected-under-load diagnostics (stale
+        /// ControlOperator, transient null MovementController, slow / failed tile loads) that should
+        /// not interrupt the player but are worth recording. Tagged [AIWARN] so they are easy to grep
+        /// out of the log. De-duped per key (once per session) so a struggling tech can't spam either.
+        /// </summary>
+        internal static void LogWarnFileOnly(string key, string message, Exception e = null)
+        {
+            if (!ShouldLog)
+                return;
+            if (!fileWarnedKeys.Add(key))
+                return;
+            UnityEngine.Debug.Log(KickStart.ModID + " [AIWARN]: " + message + (e != null ? "\n" + e : ""));
+        }
         internal static void LogLoad(string message)
         {
             if (!ShouldLog || !DoLogLoading)

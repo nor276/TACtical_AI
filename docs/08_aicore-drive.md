@@ -59,7 +59,6 @@ graph TD
     LAND_DM[LandAICore.DriveMaintainer]
     SEA_DM[SeaAICore.DriveMaintainer]
     SPACE_DM[SpaceAICore.DriveMaintainer]
-    VEH_DM[VehicleAICore.DriveMaintainer Land or 3D path]
     AIR_DM[AirplaneAICore.DriveMaintainer]
     HELI_DM[HelicopterAICore.DriveMaintainer]
     VTOL_DM[VtolAICore.DriveMaintainer]
@@ -94,7 +93,6 @@ graph TD
     COREDM -->|LandAICore| LAND_DM
     COREDM -->|SeaAICore| SEA_DM
     COREDM -->|SpaceAICore| SPACE_DM
-    COREDM -->|VehicleAICore| VEH_DM
     COREDM -->|AirplaneAICore| AIR_DM
     COREDM -->|HelicopterAICore| HELI_DM
     COREDM -->|VtolAICore| VTOL_DM
@@ -102,7 +100,6 @@ graph TD
     LAND_DM --> EXIT
     SEA_DM --> EXIT
     SPACE_DM --> EXIT
-    VEH_DM --> EXIT
     AIR_DM --> EXIT
     HELI_DM --> EXIT
     VTOL_DM --> EXIT
@@ -245,8 +242,8 @@ LandAICore ([LandAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TA
 | `ImmedeatePathingEnemy` | :199 | Same as `ImmedeatePathing` but writes `DebugTAC_AI.LogPathing` with enemy tag. |
 | `DriveDirectorEnemy` | :229 | Calls `VehicleUtils.GetPathingTargetEnemy`, applies offsets, gates `PlanningPathing` on `!helper.Attempt3DNavi` (:245), falls back to `ImmedeatePathingEnemy`. Throws `NullReferenceException` if target lookup returns false (:233). |
 | `DriveMaintainer` | :251 | The main per-frame routine - see detailed sequence below. |
-| `TryAdjustForCombat` | :514 | Reads `helper.ChaseThreat`, `IsDirectedMoving`, `Retreat`, `lastEnemyGet`; computes `targPos = helper.InterceptTargetDriving(helper.lastEnemyGet)`; branches on `helper.SideToThreat` / `BlockedLineOfSight` / `FullMelee` / `driveDyna` to set `core.DriveDir`, `core.DriveDest`, `helper.AutoSpacing`, and `pos` (with `helper.AvoidAssist` applied). |
-| `TryAdjustForCombatEnemy` | :601 | Enemy variant; reads `mind.CommanderAttack`, `mind.CommanderMind`, `mind.MinCombatRange`, `mind.LikelyMelee`. |
+| `TryAdjustForCombat` | :526 | Reads `helper.ChaseThreat`, `Retreat`, `lastEnemyGet`; computes `targPos = helper.InterceptTargetDriving(helper.lastEnemyGet)`; branches on `FullMelee` / `driveDyna` to set `core.DriveDir`, `core.DriveDest`, `helper.AutoSpacing`, and `pos`. **Circle-vs-face gate (:545)** is `(helper.SideToThreat && helper.CombatWantsCircleNow()) \|\| (BlockedLineOfSight && AdvancedAI)` — the turret-fraction duty cycle, so the broadside (`Perpendicular`) branch only runs during the circle phase; otherwise the FACE (`Forwards`) branch runs and front-fixed weapons bear. |
+| `TryAdjustForCombatEnemy` | :619 | Enemy variant; reads `mind.CommanderAttack`, `mind.CommanderMind`, `mind.MinCombatRange`, `mind.LikelyMelee`. The `driveDyna<0` too-close branch uses `core.DriveAwayFacingTowards()` (FACE-ENEMY fix — backs off while keeping the front on target). Enemy duty-cycle facing lives in `RWheeled` (Operations), not here. |
 
 `LandAICore.DriveMaintainer` per-frame sequence (lines 251-512):
 
@@ -255,11 +252,11 @@ LandAICore ([LandAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TA
 3. `range = helper.lastOperatorRange` (or `lastCombatRange` if `helper.lastEnemyGet`) (:260-262).
 4. Switch on `core.DriveDir` (:264): `Stop` -> `DriveControl = 0` and return (:267); `Neutral` -> `DriveControl = 0.001` and return (:270); `Forwards` / `Perpendicular` / `Backwards` apply `AutoSpacing` gating to compute tentative `DriveControl` of `-1`, `0`, or `1` (:273-329).
 5. Switch on `helper.ThrottleState` (:335): `PivotOnly` forces 0 (:338); `Yield` clamps magnitude against `AIGlobals.YieldSpeed` based on `recentSpeed`/`recentSpeedSigned` (:340-355); `FullSpeed` invokes `controller.TryBoost(forwardLocal)` with `LightBoostFeatheringClock` gating (:356-388); `ForceSpeed` overrides `DriveControl = helper.DriveVar` then runs the same boost logic (:389-422).
-6. If `helper.DoSteerCore` (:426), switch again on `core.DriveDir` to call `VehicleUtils.Turner(helper, destDirect, DriveControl, ref core)` (or `-destDirect` for Backwards / Perpendicular branches, with orbit-aim via `Quaternion.AngleAxis` for Perpendicular when in mid-range) (:428-489).
+6. If `helper.DoSteerCore` (:435), switch again on `core.DriveDir` to call `VehicleUtils.Turner(helper, destDirect, DriveControl, ref core)`. **FACE-ENEMY fix (:449-453):** the `Perpendicular` orbit branch now steers toward `destDirect` (front on the enemy) at/inside the orbit radius rather than `-destDirect` (which pointed the rear at the enemy and made circling techs drive rear-first); only the mid-range orbit-hold band uses the sideways cross-product (`Quaternion.AngleAxis`). `Backwards` still uses `-destDirect` (:435-501).
 7. `helper.ProcessControl(new Vector3(0, 0, DriveControl), Vector3.zero, Vector3.zero, helper.FirePROPS, false)` (:508) -> forwards to `tank.control.CollectMovementInput`.
 8. `lastDrive = DriveControl` (:510) - the field `IMovementAIController.GetDrive` returns.
 
-### VehicleUtils helpers (shared by Land/Sea/Space/Vehicle)
+### VehicleUtils helpers (shared by Land/Sea/Space)
 
 | Symbol | File:Line | Role |
 |--------|-----------|------|
@@ -268,7 +265,7 @@ LandAICore ([LandAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TA
 | `VehicleUtils.GetPathingTargetRTS` | [VehicleUtils.cs:211](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/VehicleUtils.cs) | RTS variant for allied (uses `helper.RTSDestination`). |
 | `VehicleUtils.GetPathingTargetRTSEnemy` | [VehicleUtils.cs:311](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/VehicleUtils.cs) | RTS variant for enemy. |
 | `VehicleUtils.Turner` | [VehicleUtils.cs:23](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/VehicleUtils.cs) | Steering kernel. Computes `forwards = dot(destVec.XZ, tank.rootBlockTrans.forward.XZ)`. Switch on `core.TurningStrictness`: `Strict` (:31-65) enforces `ignoreSteeringAboveAngle=0.925`, writes `helper.DriveControl` and calls `helper.SteerControl`; `MaxSteering` (:66-82) stops drive below `maxSteeringStopDriveBelowAngle=0.875`, otherwise full turn + steer; `Lazy/default` (:83-130) only sets `turnVal` + calls `SteerControl` (does NOT write `helper.DriveControl`). All branches call `helper.FixControlReversal` to detect reverse-drive and flip `destVec`. |
-| `VehicleUtils.TurnerHovership` | [VehicleUtils.cs:137](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/VehicleUtils.cs) | Hovership-variant steering (SeaAICore / VehicleAICore 3D paths). |
+| `VehicleUtils.TurnerHovership` | [VehicleUtils.cs:137](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/VehicleUtils.cs) | Hovership-variant steering (SeaAICore 3D path). |
 
 ### TankAIHelper sinks / helpers (consumed by Maintainer)
 
@@ -290,12 +287,11 @@ LandAICore ([LandAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TA
 | Core | File | Key lines | Notes |
 |------|------|-----------|-------|
 | `SeaAICore` | [SeaAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/SeaAICore.cs) | `Initiate :17` (sets `WaterPathing.StayInWater`); `DriveDirectorRTS :41`; `PlanningPathing :84`; `ImmedeatePathing :143`; `DriveDirector :175`; `ImmedeatePathingEnemy :197`; `DriveDirectorEnemy :226`; `DriveMaintainer :247` (uses `TurnerHovership` + Navi3D logic); `TryAdjustForCombat :628`. | Uses `OffsetToSea` / `OffsetFromGroundH` adjustments. |
-| `SpaceAICore` | [SpaceAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/SpaceAICore.cs) | `Initiate :17` (sets `WaterPathing.AllowWater`); `PlanningPathing :41`; `DriveDirectorRTS :108`; `DriveDirector :139`; `ImmedeatePathing :154`; `DriveDirectorEnemy :184`; `ImmedeatePathingEnemy :199`; `DriveMaintainer :228`; `TryAdjustForCombat :622`. | |
-| `VehicleAICore` | [VehicleAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/VehicleAICore.cs) | `DriveDirector :188`; `DriveDirectorEnemy :323`; `DriveMaintainer :353` branches on `helper.Attempt3DNavi` (true => `SpaceMaintainer`; false => land path using `Turner` + reflection-based control reset via `controlGet`). `GetDrive => 0`. | Generic combined driver. |
+| `SpaceAICore` | [SpaceAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/SpaceAICore.cs) | `Initiate :17` (sets `WaterPathing.AllowWater`); `PlanningPathing :41`; `DriveDirectorRTS :108`; `DriveDirector :139`; `ImmedeatePathing :154`; `DriveDirectorEnemy :184`; `ImmedeatePathingEnemy :199`; `DriveMaintainer :228`; `TryAdjustForCombat :622`. **NO-YAW fix (~:382-387):** the no-enemy Forwards branch feeds `helper.Navi3DDirect = PathPoint - pos` (it had been commented out, leaving thruster hover/space craft translating but never yawing). | |
 | `AirplaneAICore` | [AirplaneAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/AirplaneAICore.cs) | `DiveState` FSM :23 (deferred to pipeline 10); `Initiate :35`; `DriveMaintainer :51` (Grounded / beam / normal flight via `AngleTowards` + `pilot.UpdateThrottle`); `DriveDirector :427`; `DriveDirectorEnemy :793`; `TryAdjustForCombat :905`; `AvoidAssist :1067` (real implementation using `pilot.Helper.DodgeSphereCenter`). | |
 | `VtolAICore` | [VtolAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/VtolAICore.cs) | Inherits much of AirplaneAICore's flow; selected when `0.3 < bias.y <= 0.6`. | Not expanded - pipeline 10. |
 | `HelicopterAICore` | [HelicopterAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/HelicopterAICore.cs) | `Initiate :19` (sets `FlyStyle.Helicopter`, `FlyingChillFactor` per axis, computes `GroundOffsetHeight` from rotor envelope); `DriveMaintainer :43` (Grounded / beam / takeoff / normal-flight branches, writing `pilot.MainThrottle` then calling `HelicopterUtils.UpdateThrottleCopter` + `AngleTowardsUp`); `DriveDirector :289`; `DriveDirectorEnemy :518`; `AvoidAssist :567`; `TryAdjustForCombat :616`. | |
-| `StaticAICore` | [StaticAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/StaticAICore.cs) | `Initiate :16`; `AvoidAssist :24` (throws); `DriveDirector :29` (forces `ThrottleState = PivotOnly`, sets `HoldHeight` and `AimTarget`); `DriveDirectorEnemy :87`; `DriveMaintainer :111` (no thrust - turret only); `GetDrive => 0`. | |
+| `StaticAICore` | [StaticAICore.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/StaticAICore.cs) | `Initiate :16`; `AvoidAssist :24` (throws); `DriveDirector :29` (forces `ThrottleState = PivotOnly`, sets `HoldHeight` and `AimTarget`); `DriveDirectorEnemy :87`; `DriveMaintainer :111` (no thrust - turret only); `GetDrive => 0`. **Turret-aim fix:** chassis rotation uses the purpose-built `StaticTurner` (decays to 0 at alignment) with a `StaticAimDeadband` (~2°) instead of the mobile `Turner`; the land path also zeroes `InputLineVal.z` and wraps `SteerControl` in `FixControlReversal` so recoil / anchor jitter can't flip the aim (the intermittent "tracks backwards" bug). Idle turrets hold their mounted `RestFacing`. | |
 
 ### `PathPoint` flow
 
@@ -344,7 +340,7 @@ What writes inputs to `tank.control` (the terminal sinks of this pipeline).
 | `tank.control.DriveControl = value` (setter) | [TankAIHelper.cs:3500-3503](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) | Terminal throttle sink. Written from `VehicleUtils.Turner` (Strict :56, MaxSteering :70/:75) - **not** written by `Turner` Lazy/default branch. |
 | `tank.control.CollectMovementInput(DriveVal, TurnVal, Throttle, props, jets)` | [TankAIHelper.cs:3517](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) (via `ProcessControl :3515`) | Per-frame stick / throttle / props / jets snapshot. Called from `LandAICore.DriveMaintainer :508` (and Sea/Space equivalents). |
 | `tank.control.m_Movement.FaceDirection(tank, direction, throttle)` | [TankAIHelper.cs:3521](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) (via `SteerControl :3519`) | Steering output. Called from `VehicleUtils.Turner` (`:62`, `:64`, `:79`, `:81`, `:127`, `:129`) and `TurnerHovership` (`:167`, `:169`). |
-| `tank.control.m_Movement.m_USE_AVOIDANCE = AvoidStuff` | [TankAIHelper.cs:3506](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) (via `UpdateVanillaAvoidence`) | Toggles vanilla collision avoidance per-tick. Called from `LandAICore.cs:253`, `SeaAICore.cs:249`, `VehicleAICore.cs:362`, etc. |
+| `tank.control.m_Movement.m_USE_AVOIDANCE = AvoidStuff` | [TankAIHelper.cs:3506](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) (via `UpdateVanillaAvoidence`) | Toggles vanilla collision avoidance per-tick. Called from `LandAICore.cs:259`, `SeaAICore.cs:249`, etc. |
 | `pilot.MainThrottle = ...` / `HelicopterUtils.UpdateThrottleCopter(pilot)` | [HelicopterAICore.cs:62, :87, :104](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/HelicopterAICore.cs) | Helicopter terminal sink. `pilot.MainThrottle` / `pilot.CurrentThrottle` flow into `tank.control` through `AIControllerAir` housekeeping. |
 | `pilot.UpdateThrottle(helper)` / `AngleTowards(...)` | [AirplaneAICore.cs:72](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/AirplaneAICore.cs) etc. | Airplane terminal sink. |
 | `controller.AimTarget = ...` | [StaticAICore.cs:46, :104](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/StaticAICore.cs) | Static turret-only sink (no thrust written, only aim). |
@@ -364,7 +360,7 @@ Beyond `tank.control`, the next consumer is the vanilla `TankControl.Update` -> 
 - **Sibling pipeline 10 (dive / U-turn / mayday FSMs)**: lives inside `AirplaneAICore.DiveState` ([AirplaneAICore.cs:23](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/Movement/AICores/AirplaneAICore.cs)) and `AIControllerAir.TestForMayday`; consumes the same `EControlCoreSet` but adds altitude / dive state.
 - **Sibling pipeline 11 (movement controller selection)**: `TankAIHelper.RecalibrateMovementAIController` selects between `AIControllerDefault`, `AIControllerAir`, `AIControllerStatic`. Once selected, this pipeline runs as described. Not expanded here.
 - **Downstream into vanilla physics**: the terminal sinks (`tank.control.DriveControl`, `CollectMovementInput`, `FaceDirection`, `m_USE_AVOIDANCE`) feed `TankControl.Update` -> Unity Rigidbody forces.
-- **HUD / diagnostics consumer**: `IMovementAIController.GetDrive` is read by HUD overlays and audio cues; it returns `lastDrive` (set only at `LandAICore.DriveMaintainer :510` and Sea/Space equivalents) - so VehicleAICore- and StaticAICore-driven techs always report 0.
+- **HUD / diagnostics consumer**: `IMovementAIController.GetDrive` is read by HUD overlays and audio cues; it returns `lastDrive` (set at `LandAICore.DriveMaintainer :522` and Sea/Space equivalents) - so StaticAICore-driven techs always report 0.
 
 ---
 

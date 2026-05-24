@@ -2939,7 +2939,7 @@ namespace TAC_AI.AI
                     consecutiveNullMovementControllerTicks++;
                     string tankKey = tank ? tank.name : "<recycled>";
                     if (consecutiveNullMovementControllerTicks == 1)
-                        DebugTAC_AI.LogWarnPlayerOncePerKey(
+                        DebugTAC_AI.LogWarnFileOnly(
                             "NullMovementController:" + tankKey,
                             "AI " + tankKey + ": MovementController null after recalibrate - tank will not drive this tick.", null);
                     else if (consecutiveNullMovementControllerTicks == 30)
@@ -2954,9 +2954,10 @@ namespace TAC_AI.AI
 
             // T3: surface dangerously-stale ControlOperator so over-budget AI populations
             // (helpersActive.Count >> AIClockPeriod) become observable instead of silently
-            // producing torn movement decisions.
+            // producing torn movement decisions. Routed to the log file (no popup) - this is routine
+            // under heavy load / slow tile loads and shouldn't interrupt the player every time.
             if (IsControlOperatorStale)
-                DebugTAC_AI.LogWarnPlayerOncePerKey(
+                DebugTAC_AI.LogWarnFileOnly(
                     "ControlOperatorStale:" + (tank ? tank.name : "<recycled>"),
                     "AI " + (tank ? tank.name : "<recycled>") + ": ControlOperator stale by " +
                     ControlOperatorAgeFrames + " frames (>" + (KickStart.AIClockPeriod * 3) + ").", null);

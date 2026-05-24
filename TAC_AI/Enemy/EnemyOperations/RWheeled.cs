@@ -109,13 +109,26 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     helper.AutoSpacing = range;
                     direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
-                    if (helper.BlockedLineOfSight || KickStart.ShouldForceContinuousStrafe())
-                    {   // Continuous circle
+                    if (dist > spacer + range)
+                    {   // APPROACH: still closing the gap — drive STRAIGHT at the enemy rather than
+                        // strafing/weaving in. The circle/face engagement only starts once at stand-off,
+                        // so a Circle tech beelines to its target then engages "when there".
+                        helper.AISetSettings.SideToThreat = false;
+                        if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
+                            helper.TryHandleObstruction(!AIECore.Feedback, dist, false, true, ref direct);
+                        else
+                        {
+                            helper.SettleDown(false);
+                            direct.DriveToFacingTowards();
+                        }
+                    }
+                    else if (helper.BlockedLineOfSight || KickStart.ShouldForceContinuousStrafe())
+                    {   // In range, no clear shot (or forced): continuous circle to find an angle
                         MoveSideways(helper, dist, ref direct);
                     }
                     else
-                    {   // Turret-fraction duty cycle: circle (broadside) for ~TurretFraction of the time so
-                        // wide-gimbal turrets keep their arcs, then face so front-fixed weapons get their shots in.
+                    {   // In range: turret-fraction duty cycle — circle (broadside) for ~TurretFraction of the
+                        // time so wide-gimbal turrets keep their arcs, then face so front-fixed weapons fire.
                         if (helper.CombatWantsCircleNow())
                         {   // Circle phase
                             if (!helper.IsTechMovingAbs(helper.EstTopSped / (AIGlobals.EnemyAISpeedPanicDividend * 2))

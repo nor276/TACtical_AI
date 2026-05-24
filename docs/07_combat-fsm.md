@@ -97,12 +97,10 @@ graph TD
         CIRCLE[range=12, SideToThreat=true, AutoSpacing=range]
         CIRCLE --> C_LOS{BlockedLOS or TweakTech or WeaponAimMod?}
         C_LOS -->|Yes| C_SIDE[MoveSideways]
-        C_LOS -->|No| C_PAUSE{ActionPause gt 120?}
-        C_PAUSE -->|Yes, not moving| C_HANDLE[TryHandleObstruction]
-        C_PAUSE -->|Yes, moving| C_PERP[SettleDown + DriveToFacingPerp]
-        C_PAUSE -->|No| C_STOP[SideToThreat=false, SettleDown, DriveToFacingTowards]
-        C_STOP --> C_HURT{Hurt?}
-        C_HURT -->|Yes| C_RND[actionPause = Random 160-420]
+        C_LOS -->|No| C_PAUSE{CombatWantsCircleNow? turret-fraction duty cycle}
+        C_PAUSE -->|Circle phase, not moving| C_HANDLE[TryHandleObstruction]
+        C_PAUSE -->|Circle phase, moving| C_PERP[SettleDown + DriveToFacingPerp]
+        C_PAUSE -->|Face phase| C_STOP[SideToThreat=false, SettleDown, DriveToFacingTowards]
     end
 
     subgraph Ranged [Ranged EAttackMode.Ranged]
@@ -286,7 +284,7 @@ graph TD
 | ~~Single re-acquire~~ (REMOVED P06) | RWheeled.cs:59-61 (B7 comment marker only) | Previously per-FSM `TryRefreshEnemyEnemy`/hold-position logic; hoisted to `RGeneral.DispatchNoTargetIdle` (controller-side). Each R* file now carries a `// B7: null-target case centralized` comment at the same offset. |
 | GC ram special | [RWheeled.cs:72-73](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs) | `spacer = -32` when MainFaction==GC and Attack != Safety |
 | Safety bucket | [RWheeled.cs:77-105](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs) | Two boundaries: `range`, `range*2`. Always `Retreat=true`, `DriveAwayFacingAway` |
-| Circle bucket | [RWheeled.cs:106-139](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs) | `ActionPause > 120` gate; if Hurt, randomizes pause 160-420 ticks |
+| Circle bucket | [RWheeled.cs:105-138](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs) | Turret-fraction **duty cycle** (`helper.CombatWantsCircleNow()`, [RWheeled.cs:119](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs#L119)): circle phase → `SettleDown` + `DriveToFacingPerp`; face phase → `SideToThreat=false` + `DriveToFacingTowards` (so front-fixed guns get firing windows). Circles ~`TurretFraction` of each `CombatFacingCyclePeriod`. **Replaced** the old `ActionPause > 120` stop-and-shoot. |
 | Ranged bucket | [RWheeled.cs:140-217](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs) | `range=60`. 6 boundaries: 0.65x, 1x, advanceEdge(1.25/1.4x), 1.5x, 1.75x, else |
 | `advanceEdge` hysteresis | [RWheeled.cs:150](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs) | `range * (WasRetreatingInCombat ? 1.4f : 1.25f)` |
 | Default bucket | [RWheeled.cs:218-269](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs) | 4 boundaries: spacer, range, 1.25x, else. `LikelyMelee` flips reverse to forward at close range |
@@ -326,6 +324,7 @@ graph TD
 | `CombatRangeRetentionMult` | [AIGlobals.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AIGlobals.cs) | 1.5 | Symmetric range-retention hysteresis |
 | `RTSLockMaxRangeMultiplier` (P06) | [AIGlobals.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AIGlobals.cs) | 2.5 | Hard outer cap for `PreserveEnemyTarget` retention |
 | `LOSLostGraceTime` (P06) | [AIGlobals.cs](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AIGlobals.cs) | 3.0s | `UpdateTargetCombatFocus` LOS grace before EndPursuit |
+| `CombatFacingCyclePeriod` (live setting) | [KickStart.cs:157](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/KickStart.cs#L157) | 4.0s | One full circle+face cycle for the turret-fraction duty cycle; player-tunable in mod options (bound at [KickStartExtras.cs:92](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/KickStartExtras.cs#L92)). |
 
 ## Key data / state
 
@@ -337,7 +336,9 @@ graph TD
 | `_losBlockedStreak` debounce | [TankAIHelper.cs:277](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) | Private counter; requires `AIGlobals.LosBlockedStreakThreshold` (=2) consecutive blocked checks (set at [TankAIHelper.cs:4540-4552](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs)) |
 | `BlockedLineOfSight` per-tick reset | [TankAIHelper.cs:1145](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) | Cleared at tick start |
 | `BlockedLineOfSight` aim consumers | [TankAIHelper.cs:2409, 2417, 2425](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) | Other call sites in aim FSM |
-| `actionPause` auto-property / `ActionPause` property | [TankAIHelper.cs:422-426](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) | Both are properties sharing generated backing storage. `actionPause` is `internal int { get; set; }`; `ActionPause` wraps with `private set`. Writes to either (e.g. `RWheeled.cs:136`) land in the same field. |
+| `actionPause` auto-property / `ActionPause` property | [TankAIHelper.cs:422-426](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs) | Both are properties sharing generated backing storage. `actionPause` is `internal int { get; set; }`; `ActionPause` wraps with `private set`. Still decremented each tick and paces `RGeneral.DefaultIdle`; **no longer gates the Circle bucket** — that moved to the turret-fraction duty cycle (`CombatWantsCircleNow`). |
+| `TurretFraction` | [TankAIHelper.cs:81](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs#L81) | Per-tech turret share, set in `RWeapSetup.GetAttackStrat` ([:331](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/RWeapSetup.cs#L331)) / `EWeapSetup.GetAttackStrat` ([:378](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/EWeapSetup.cs#L378)) as `circleWeaps / count`. 0 = all front-fixed (always faces), 1 = all wide-gimbal turrets (always circles). |
+| `CombatWantsCircleNow()` | [TankAIHelper.cs:191](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/AI/TankAIHelper.cs#L191) | `Time.time`-based duty-cycle oscillator: true (circle) for ~`TurretFraction` of each `CombatFacingCyclePeriod`, with a per-tech phase offset so neighbours desync. Read by the RWheeled Circle bucket and allied `LandAICore.TryAdjustForCombat`; sampled at Operations/Director cadence. |
 | `mind.MinCombatRange` writeback | [RWheeled.cs:270](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RWheeled.cs), [RStarship.cs:176](../Modified/TACtical_AI-master/TACtical_AI-master/TAC_AI/Enemy/EnemyOperations/RStarship.cs) | Per-tick writes selected `range` back to mind for downstream weapon checks. **Asymmetric:** RChopper/RAircraft/RNaval/RCrashMissile/RStation do NOT write — see B-NEW1. |
 | `helper.AISetSettings.ObjectiveRange` writeback | RWheeled.cs (4 sites), RChopper.cs (4 sites), RStarship.cs (4 sites) | Per-bucket parallel writeback for movement/spacing. **Asymmetric:** RAircraft and RNaval do NOT write at all — see B-NEW2. |
 
