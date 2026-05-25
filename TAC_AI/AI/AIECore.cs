@@ -291,7 +291,7 @@ namespace TAC_AI.AI
         }
         public static bool FetchLowestChargeAlly(Vector3 tankPos, TankAIHelper helper, out Visible toCharge)
         {
-            // Finds the closest ally and outputs their respective distance as well as their being
+            // Finds the closest ally and outputs their respective distance as well as their being REVISED: finds the closest in-range ally that has capacity and needs charge, output via toCharge; no distance is output here.
             float Range = 62500;
             Tank bestStep = null;
             toCharge = null;
@@ -637,7 +637,7 @@ namespace TAC_AI.AI
 
         /// <summary>
         /// This one is more expensive.  If you know if the Helper is player-controlled or not, use
-        ///  RequestFocusFirePlayer for players or RLoadedBases.RequestFocusFireNPT for Non-Player Techs
+        ///  RequestFocusFirePlayer for players or RLoadedBases.RequestFocusFireNPTs for Non-Player Techs
         /// </summary>
         /// <param name="tank"></param>
         /// <param name="target"></param>

@@ -24,6 +24,7 @@ namespace TerraTechETCUtil
 
         /// <summary>
         /// Searches Block Injector for the block based on root GameObject name.
+        /// REVISED: searches the entire game (Enum.TryParse, then mismatch-name table, then Block Injector, then modded blocks), not Block Injector alone.
         /// </summary>
         /// <param name="mem">The name of the block's root GameObject.  This is also set in the Official Mod Tool by the Name ID (filename of the .json), not the name you give it.</param>
         /// <returns>The Block Type to use if it found it, otherwise returns BlockTypes.GSOCockpit_111</returns>
@@ -185,6 +186,7 @@ namespace TerraTechETCUtil
 
         /// <summary>
         /// Delay this until AFTER Block Injector to setup the lookups
+        /// REVISED: PrepareModdedBlocksSearch runs immediately (no delay); it grabs ManMods' m_BlockIDReverseLookup into ModdedBlocksGrabbed.
         /// </summary>
         /// <summary>
         /// Call at least once to hook up to modding

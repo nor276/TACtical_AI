@@ -409,6 +409,7 @@ namespace TAC_AI.World
         // Red is -1
         // Green is 1
         // Yellow is 2
+        // REVISED: these are color-index notes; UpdatePercentBar currently hardcodes m_TeamColour = 5.
         const int dispVal = 100;
         public void UpdatePercentBar(int combinedEnemyHealth)
         {

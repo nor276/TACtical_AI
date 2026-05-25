@@ -281,6 +281,7 @@ namespace TAC_AI.AI
 
         /// <summary>
         /// 0 is off, 1 is enemy, 2 is obsticle
+        /// REVISED: AIWeaponState now reads Normal(0), Enemy(1), HoldFire(2), Obsticle(3), Mimic(4).
         /// </summary>
         public AIWeaponState ActiveAimState = AIWeaponState.Normal;
         public AIWeaponType WeaponAimType = AIWeaponType.Unknown;
@@ -296,9 +297,9 @@ namespace TAC_AI.AI
         public bool WasRetreatingInCombat = false;
         internal bool beEvilRegenAttempted = false;
 
-        public AIAlignment AIAlign = AIAlignment.Static;             // 0 is static, 1 is ally, 2 is enemy
-        public AIWeaponState WeaponState = AIWeaponState.Normal;    // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic
-        public bool UpdateDirectorsAndPathing = false;       // Collision avoidence active this FixedUpdate frame?
+        public AIAlignment AIAlign = AIAlignment.Static;             // 0 is static, 1 is ally, 2 is enemy REVISED: AIAlignment now reads Static(0), PlayerNoAI(1), Player(2), NonPlayer(3), Neutral(4).
+        public AIWeaponState WeaponState = AIWeaponState.Normal;    // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic REVISED: AIWeaponState now reads Normal(0), Enemy(1), HoldFire(2), Obsticle(3), Mimic(4).
+        public bool UpdateDirectorsAndPathing = false;       // Collision avoidence active this FixedUpdate frame? REVISED: gates whether the director + pathing pass (WeaponDirector / DriveDirector) runs this FixedUpdate frame.
         public bool UsingAirControls = false; // Use the not-VehicleAICore cores. REVISED: VehicleAICore (the old combined driver) was removed; this now means the per-type cores - Land/Sea/Space/Static plus the Air cores.
         internal int FrustrationMeter = 0;  // tardiness buildup before we use our guns to remove obsticles
         internal float Urgency = 0;         // tardiness buildup before we just ignore obstructions
@@ -718,7 +719,7 @@ namespace TAC_AI.AI
         /// </summary>
         public Func<TankAIHelper, ExtControlStatus, bool> AIControlOverride = null;
         public bool PlayerAllowAutoAnchoring = false;   // Allow auto-anchor
-        /// <summary> Set the AI back to Escort next update </summary>
+        /// <summary> Set the AI back to Escort next update REVISED: flags that an anchor/unanchor changed the Tech so RunPostOps calls WakeAIForChange next update. </summary>
         public bool ExpectAITampering = false;
 
 

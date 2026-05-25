@@ -53,7 +53,7 @@ namespace TAC_AI.World
         //  ETU = EnemyTechUnit = Unloaded, mobile enemy Tech
         //  EBU = EnemyBaseUnloaded = Unloaded, stationary enemy Base
         internal const int OperatorTickDelay = 4;             // How many seconds the AI will perform base actions - default 4
-        internal const int OperatorTicksKeepTarget = 4;             // How many seconds the AI will perform base actions - default 4
+        internal const int OperatorTicksKeepTarget = 4;             // How many seconds the AI will perform base actions - default 4 REVISED: this is the number of operator ticks a team keeps its current target.
         public const int UnitSightRadius = 2;         // How far an enemy Tech Unit can see other enemies. IN TILES
         public const int BaseSightRadius = 4;         // How far an enemy Base Unit can see other enemies. IN TILES
         public const int EnemyRaidProvokeExtents = 4;// How far the can the enemy bases issue raids on the player. IN TILES
@@ -80,7 +80,7 @@ namespace TAC_AI.World
         //units
         public const float MobileHealthMulti = 0.05f;  // Health multiplier for out-of-play combat
         public const float MobileAccuraccy = 50f;       // Damage multiplier vs evasion
-        public const float MobileSpeedAccuraccyReduction = 0.25f;  // Damage multiplier vs evasion
+        public const float MobileSpeedAccuraccyReduction = 0.25f;  // Damage multiplier vs evasion REVISED: accuracy lost per unit of attacker speed (subtracted from MobileAccuraccy).
         public const float MobileSpeedToEvasion = 1f; // Damage reducer
         public const WorldTile.LoadStep LevelToAttemptTechEntry = WorldTile.LoadStep.Loaded;
 
@@ -88,8 +88,8 @@ namespace TAC_AI.World
         public const int HealthRepairCost = 60;       // How much BB the AI should spend to repair unloaded damage
         public const int HealthRepairRate = 15;       // How much the enemy should repair every turn
         public const float BatteryToHealthConversionRate = 0.5f; // Battery to health effectiveness
-        public const float RadiusBonus = 5;       // How much the enemy should repair every turn
-        public const float sphereForm = (4 / 3) * Mathf.PI * RadiusBonus;       // How much the enemy should repair every turn
+        public const float RadiusBonus = 5;       // How much the enemy should repair every turn REVISED: extra radius added when sizing a shield's health coverage.
+        public const float sphereForm = (4 / 3) * Mathf.PI * RadiusBonus;       // How much the enemy should repair every turn REVISED: sphere-volume coefficient (4/3 * PI * RadiusBonus) used by GetShieldRadiusHealthCoverage.
         public static int GetShieldRadiusHealthCoverage(float ShieldRadius)
         { // How much health a shield radius would account for
             return Mathf.CeilToInt(sphereForm * Mathf.Pow(ShieldRadius, 3));

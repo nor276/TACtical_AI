@@ -29,7 +29,7 @@ namespace TAC_AI
         Indirect,
     }
     public enum AIWeaponState
-    { // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic
+    { // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic REVISED: 0 is Normal, 1 is Enemy, 2 is HoldFire, 3 is Obsticle, 4 is Mimic
         Normal,
         Enemy,
         HoldFire,

@@ -83,7 +83,7 @@ namespace TAC_AI.AI.Enemy
         {
             get => AIControl.FullMelee;
             set { AIControl.AISetSettings.FullMelee = value; }
-        }// The way the Enemy acts if there's a threat.
+        }// The way the Enemy acts if there's a threat. REVISED: LikelyMelee proxies AIControl.FullMelee (whether the Tech melees).
 
         public bool SolarsAvail { get; internal set; } = false;        // Do we currently have solar panels
         public bool Hurt { get; internal set; } = false;               // Are we damaged?

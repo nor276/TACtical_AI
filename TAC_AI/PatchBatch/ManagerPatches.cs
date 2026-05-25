@@ -154,7 +154,7 @@ namespace TAC_AI
             //WarnJoiningPlayersOfScaryAI
             private static void AddPlayer_Postfix(ManNetwork __instance)
             {
-                // Setup aircraft if Population Injector is N/A
+                // Setup aircraft if Population Injector is N/A   REVISED: this postfix instead schedules TankAIManager.WarnPlayers (a chat warning to joining players about Advanced AI), per the WarnJoiningPlayersOfScaryAI header.
                 try
                 {
                     if (ManNetwork.IsHost && KickStart.EnableBetterAI)

@@ -79,6 +79,7 @@ namespace TAC_AI.Templates
         // Main initiation function
         /// <summary>
         /// Returns 0 if failed, otherwise the BB cost of the spawned Tech
+        /// REVISED: returns a bool (true if the base spawned, false if it failed); the BB cost is stored on the team via AddBuildBucks.
         /// </summary>
         internal static bool TryStartBase(Tank tank, TankAIHelper helper, BasePurpose purpose = BasePurpose.Harvesting)
         {

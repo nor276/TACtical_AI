@@ -13,7 +13,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     {
         public static void MineYerOwnBusiness(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the Tank (Prospector) what to do movement-wise
+            //The Handler that tells the Tank (Prospector) what to do movement-wise. REVISED: this is the enemy Miner handler (MineYerOwnBusiness); "(Prospector)" label was a copy-paste from the shared handler template.
             int errorCode = 0;
             try
             {

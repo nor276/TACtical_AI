@@ -56,7 +56,8 @@ namespace TAC_AI.AI.Movement.AICores
         }
 
         /// <summary>
-        /// Drives the Tech to the desired location (AIControllerAir.AirborneDest) in world space
+        /// Drives the Tech to the desired location (AIControllerAir.PathPointSet) in world space
+        /// REVISED: destination field is now AIControllerAir.PathPointSet, changed from AirborneDest.
         /// </summary>
         /// <param name="thisControl"></param>
         /// <param name="helper"></param>
@@ -443,7 +444,8 @@ namespace TAC_AI.AI.Movement.AICores
 
         /// <summary>
         /// Player automatic AI version (player following)
-        /// Declares 3D points in WORLD space (AirborneDest)
+        /// Declares 3D points in WORLD space (PathPointSet)
+        /// REVISED: destination field is now PathPointSet, changed from AirborneDest.
         /// </summary>
         /// <returns>Execution was successful</returns>
         public bool DriveDirector(ref EControlCoreSet core)
@@ -635,7 +637,8 @@ namespace TAC_AI.AI.Movement.AICores
 
         /// <summary>
         /// Player click-based AI version (player RTS line following)
-        /// Declares 3D points in WORLD space (AirborneDest)
+        /// Declares 3D points in WORLD space (PathPointSet)
+        /// REVISED: destination field is now PathPointSet, changed from AirborneDest.
         /// </summary>
         /// <returns>Execution was successful</returns>
         public bool DriveDirectorRTS(ref EControlCoreSet core)
@@ -787,7 +790,8 @@ namespace TAC_AI.AI.Movement.AICores
 
         /// <summary>
         /// Non-Player automatic AI version
-        /// Declares 3D points in WORLD space (AirborneDest)
+        /// Declares 3D points in WORLD space (PathPointSet)
+        /// REVISED: destination field is now PathPointSet, changed from AirborneDest.
         /// </summary>
         /// <returns>Execution was successful</returns>
         public bool DriveDirectorEnemy(EnemyMind mind, ref EControlCoreSet core)

@@ -1407,7 +1407,7 @@ namespace TAC_AI
         /// Remove a Tech from existance
         /// </summary>
         /// <param name="tech"></param>
-        /// <param name="player"></param>
+        /// <param name="removeFromJSONToo"></param>
         internal static void Purge(ManSaveGame.StoredTech tech, bool removeFromJSONToo)
         {   //
             if (ManNetwork.IsNetworked)
@@ -1422,7 +1422,7 @@ namespace TAC_AI
         /// Remove a Tech from existance
         /// </summary>
         /// <param name="tech"></param>
-        /// <param name="player"></param>
+        /// <param name="player"></param> REVISED: this overload only takes the tech parameter; there is no player parameter
         internal static void Purge(Tank tech)
         {   //
             if (ManNetwork.IsNetworked)
@@ -1441,8 +1441,8 @@ namespace TAC_AI
         /// <summary>
         /// Remove a Tech from existance
         /// </summary>
-        /// <param name="tech"></param>
-        /// <param name="player"></param>
+        /// <param name="HostVisibleID"></param>
+        /// <param name="name"></param>
         internal static bool PurgeHost(int HostVisibleID, string name)
         {   //
             if (!ManNetwork.IsHost)
@@ -1539,7 +1539,7 @@ namespace TAC_AI
         /// Remove a Tech from existance the cool way
         /// </summary>
         /// <param name="tech"></param>
-        /// <param name="player"></param>
+        /// <param name="player"></param> REVISED: this method only takes the tech parameter; there is no player parameter
         internal static void Eradicate(Tank tech)
         {   //
             if (ManNetwork.IsNetworked)

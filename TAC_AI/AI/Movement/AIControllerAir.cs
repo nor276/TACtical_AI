@@ -389,10 +389,8 @@ namespace TAC_AI.AI
         /// <summary>
         /// Returns true if the craft is likely never going to recover
         /// </summary>
-        /// <param name="thisControl"></param>
         /// <param name="helper"></param>
         /// <param name="tank"></param>
-        /// <param name="pilot"></param>
         private bool TestForMayday(TankAIHelper helper, Tank tank)
         {
             if (helper.PendingDamageCheck)

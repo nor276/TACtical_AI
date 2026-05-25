@@ -497,7 +497,6 @@ namespace TAC_AI.World
         /// <summary>
         ///
         /// </summary>
-        /// <param name="eventTile"></param>
         /// <returns>True if a tech is moving</returns>
         private bool MoveAllETUs()
         {
@@ -725,6 +724,7 @@ namespace TAC_AI.World
 
     /// <summary>
     /// The enemy base in world-relations
+    /// REVISED: this is the automatic per-team fleet controller (founder/troll handling on top of NP_Presence), not a single base.
     /// </summary>
     public class NP_Presence_Automatic : NP_Presence
     {

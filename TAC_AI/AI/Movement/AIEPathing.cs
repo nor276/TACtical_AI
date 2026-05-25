@@ -554,7 +554,7 @@ namespace TAC_AI.AI.Movement
                 InputLineVal.y += throttleY;
             }
             if (tankToCopy.control.GetThrottle(2, out float throttleZ))
-            {   // X
+            {   // Z
                 InputLineVal.z += throttleZ;
             }
             InputLineVal = InputLineVal.Clamp01Box();
@@ -616,7 +616,7 @@ namespace TAC_AI.AI.Movement
                 InputLineVal.y += throttleY;
             }
             if (tankToCopy.control.GetThrottle(2, out float throttleZ))
-            {   // X
+            {   // Z
                 InputLineVal.z += throttleZ;
             }
             InputLineVal = InputLineVal.Clamp01Box();

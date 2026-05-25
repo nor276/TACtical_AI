@@ -18,6 +18,7 @@ namespace TAC_AI.AI.Movement
     /// Evaluates world tiles (in smaller tiles) to figure out how path-findable they are.
     ///   It's a heightmap of the terrain accounting for obsticles.
     ///   Hosted in TankAIManager.
+    ///   REVISED: self-instantiates on its own "PathMapper" GameObject (RegisterTile); TankAIManager only drives its lifecycle via ResetAll.
     /// </summary>
     public class AIEPathMapper : MonoBehaviour
     {

@@ -8,7 +8,7 @@ namespace TAC_AI.AI.AlliedOperations
         //Same as Airship but levels out with the sea and avoids terrain
         public static void MotivateBote(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the naval ship (Escort) what to do movement-wise
+            //The Handler that tells the naval ship (Buccaneer) what to do movement-wise. REVISED: "(Escort)" label was a copy-paste from the shared handler template.
             helper.lastPlayer = helper.GetPlayerTech();
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = true;

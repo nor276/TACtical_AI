@@ -1794,7 +1794,7 @@ namespace TAC_AI.World
                                 else
                                 {
                                     if (GroupSelecting)
-                                        cursorState = RTSCursorState.Moving; // Show Select Cursor
+                                        cursorState = RTSCursorState.Moving; // Show Move Cursor
                                     else
                                     {   // Show Protect Cursor
                                         if (helper.tank.IsAnchored)
@@ -1811,7 +1811,7 @@ namespace TAC_AI.World
                                     SetPlayerHovered(null);
                                 }
                                 if (GroupSelecting)
-                                    cursorState = RTSCursorState.Moving; // Show Select Cursor
+                                    cursorState = RTSCursorState.Moving; // Show Move Cursor
                                 else
                                 {   // Show Protect Cursor
                                     if (vis.block.tank.IsAnchored)
@@ -1868,26 +1868,26 @@ namespace TAC_AI.World
                     else
                     {
                         if (GroupSelecting)
-                            cursorState = RTSCursorState.Moving; // Show Select Cursor
+                            cursorState = RTSCursorState.Moving; // Show Move Cursor
                         else
                         {
                             if (Leading)
                                 cursorState = RTSCursorState.Fetch;
                             else
-                                cursorState = RTSCursorState.Moving; // Show Default Cursor
+                                cursorState = RTSCursorState.Moving; // Show Move Cursor
                         }
                     }
                 }
                 else if (vis?.resdisp)
                 {
                     if (GroupSelecting)
-                        cursorState = RTSCursorState.Moving; // Show Select Cursor
+                        cursorState = RTSCursorState.Moving; // Show Move Cursor
                     else
                     {
                         if (Leading && !vis.resdisp.GetComponent<Damageable>().Invulnerable)
                             cursorState = RTSCursorState.Mine;
                         else
-                            cursorState = RTSCursorState.Moving; // Show Default Cursor
+                            cursorState = RTSCursorState.Moving; // Show Move Cursor
                     }
                 }
                 else

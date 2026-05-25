@@ -10,7 +10,7 @@ namespace TAC_AI.AI.AlliedOperations
         internal const int reverseFromBaseTime = AIGlobals.ReverseDelay;
         public static void MotivateFind(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the Tank (Prospector) what to do movement-wise
+            //The Handler that tells the Tank (Scrapper) what to do movement-wise
             helper.IsMultiTech = false;
             helper.Attempt3DNavi = (helper.DriverType == AIDriverType.Pilot || helper.DriverType == AIDriverType.Astronaut);
             float dist = helper.GetDistanceFromTask(helper.lastDestinationCore);

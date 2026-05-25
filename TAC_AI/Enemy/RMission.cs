@@ -87,7 +87,7 @@ namespace TAC_AI.AI.Enemy
                 DidFire = true;
             }
             else if (name == "Fly".GetHashCode())
-            {   // Spider King mission
+            {   // Spider King mission REVISED: Fly mission
                 mind.AllowRepairsOnFly = true;
                 mind.InvertBullyPriority = true;
                 mind.EvilCommander = EnemyHandling.Starship;
