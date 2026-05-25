@@ -4051,7 +4051,7 @@ namespace TAC_AI.AI
             }
             return false;
         }
-        // REVISED: unjam FSM reworked - clears IsTryingToUnjam below UnjamUpdateStart; bails immediately on a Stop facing; soft-decays FrustrationMeter when the tech is actually making linear/angular progress; the UnjamUpdateEnd ceiling now calls SettleDown()+return (full reset) instead of pinning FrustrationMeter=45; the old `45 <` literal gate is now AIGlobals.UnjamUpdateFire.
+        // REVISED: unjam FSM reworked - clears IsTryingToUnjam below UnjamUpdateStart; bails immediately on a Stop facing; soft-decays FrustrationMeter when the tech is actually making linear/angular progress; the UnjamUpdateEnd ceiling calls SettleDown(false)+return (full reset, but no hard core-Stop, so the hand-off keeps momentum) instead of pinning FrustrationMeter=45; the old `45 <` literal gate is now AIGlobals.UnjamUpdateFire. The build-beam phase (120-240) only sets ForceSetBeam when AIEBeam.IsTechTippedOver - upright-but-stuck techs stay in the throttle/fire phase instead of flickering the beam.
         public void TryHandleObstruction(bool hasMessaged, float dist, bool useRush, bool useGun, ref EControlOperatorSet direct)
         {
             if (!hasMessaged)
@@ -4097,8 +4097,9 @@ namespace TAC_AI.AI
                     IsTryingToUnjam = true;
                     FrustrationMeter += KickStart.AIClockPeriod;
                     if (AIGlobals.UnjamUpdateEnd < FrustrationMeter)
-                    {
-                        SettleDown();
+                    {   // REVISED: ceiling reset no longer hard-stops the core (SettleDown(false)) so the hand-off
+                        // back to the standard AI keeps momentum instead of dead-stopping in place each cycle.
+                        SettleDown(false);
                         return;
                     }
                     else if (AIGlobals.UnjamUpdateDrop < FrustrationMeter)
@@ -4113,7 +4114,9 @@ namespace TAC_AI.AI
                         ControlCore.DriveToFacingTowards();
                         ThrottleState = AIThrottleState.ForceSpeed;
                         DriveVar = 1;
-                        ForceSetBeam = true;
+                        // REVISED: only force the build-beam when actually tipped over - the beam is for righting a
+                        // flipped tech, not freeing an upright-but-stuck one (which only flickered beam up/drop).
+                        ForceSetBeam = AIEBeam.IsTechTippedOver(tank, this);
                     }
                 }
                 else if (AIGlobals.UnjamUpdateFire < FrustrationMeter)
@@ -4160,8 +4163,9 @@ namespace TAC_AI.AI
                     IsTryingToUnjam = true;
                     FrustrationMeter += KickStart.AIClockPeriod;
                     if (AIGlobals.UnjamUpdateEnd < FrustrationMeter)
-                    {
-                        SettleDown();
+                    {   // REVISED: ceiling reset no longer hard-stops the core (SettleDown(false)) so the hand-off
+                        // back to the standard AI keeps momentum instead of dead-stopping in place each cycle.
+                        SettleDown(false);
                         return;
                     }
                     else if (AIGlobals.UnjamUpdateDrop < FrustrationMeter)
@@ -4176,7 +4180,8 @@ namespace TAC_AI.AI
                         ControlCore.DriveAwayFacingTowards();
                         ThrottleState = AIThrottleState.ForceSpeed;
                         DriveVar = -1;
-                        ForceSetBeam = true;
+                        // REVISED: only force the build-beam when actually tipped over (see backwards branch).
+                        ForceSetBeam = AIEBeam.IsTechTippedOver(tank, this);
                     }
                 }
                 else if (AIGlobals.UnjamUpdateFire < FrustrationMeter)
@@ -4222,7 +4227,10 @@ namespace TAC_AI.AI
             }
             return ObstList.ElementAt(bestStep).trans;
         }
-        // REVISED: now also re-fetches the obstruction when the cached Obst has drifted out of 1.5x searchRad (was only re-fetched when null); the unconditional `FIRE_ALL = true` was removed.
+        // REVISED: re-fetches the obstruction when the cached Obst has drifted out of 1.5x searchRad (was only
+        // re-fetched when null). Restored the unconditional FIRE_ALL = true: the fire phase needs it to actually
+        // shoot the obstacle clear - without it a tech stuck on destructible scenery could never blast free and
+        // looped the beam-recovery. The Obsticle weapon state aims at Obst, so the fire is directed at the obstacle.
         public void RemoveObstruction(float searchRad = 12)
         {
             float staleRadSqr = (searchRad * 1.5f) * (searchRad * 1.5f);
@@ -4233,6 +4241,7 @@ namespace TAC_AI.AI
                 Obst = GetObstruction(searchRad);
                 Urgency += KickStart.AIClockPeriod / 5f;
             }
+            FIRE_ALL = true;
         }
         // REVISED: SettleDown now does a full unjam reset - clears IsTryingToUnjam, ForceSetBeam, BeamTimeoutClock, FIRE_ALL, the Obsticle weapon state, and (unless stopCore=false) issues a Stop via SetCoreControlStop.
         public void SettleDown(bool stopCore = true)

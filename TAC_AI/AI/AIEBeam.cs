@@ -121,7 +121,9 @@ namespace TAC_AI.AI
             { DebugTAC_AI.Log(KickStart.ModID + ": Error in AIEBeam - " + e); }
         }
 
-        private static bool IsTechTippedOver(Tank tank, TankAIHelper helper)
+        // REVISED: exposed internal so TryHandleObstruction can gate the build-beam phase on actual tip-over
+        // (the unjam FSM was force-beaming upright-but-stuck techs, causing a pointless beam up/drop loop).
+        internal static bool IsTechTippedOver(Tank tank, TankAIHelper helper)
         {   // It's more crude than the built-in but should take less to process.
             if (tank.rootBlockTrans.up.y < 0)
             {   // the Tech is literally sideways
