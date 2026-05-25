@@ -23,6 +23,9 @@ namespace TAC_AI
         public AIDriverType SavedAIDriver;
         [SSaveField]
         public AIType SavedAI;
+        // Step 5b/7: per-tank composable AI-profile override id (null = auto-assign by AI-type = preserved behavior).
+        [SSaveField]
+        public string SavedAIProfileID = null;
         [SSaveField]
         public EAttackMode AttackMode;
         [SSaveField]
@@ -387,7 +390,11 @@ namespace TAC_AI
                 if (SerializeWorldSave(false))
                 {
                     var helper = block.tank.GetHelperInsured();
-                    if (helper.DediAI != SavedAI || helper.DriverType != SavedAIDriver)
+                    // REVISED (Step 5b/7): role-change and profile-change are tracked separately; a same-role
+                    // profile change still triggers the rebuild that installs it (profileChanged term).
+                    bool roleChanged = helper.DediAI != SavedAI || helper.DriverType != SavedAIDriver;
+                    bool profileChanged = helper.SelectedAIProfileId != SavedAIProfileID;
+                    if (roleChanged)
                     {
                         if (KickStart.TransferLegacyIfNeeded(SavedAI, out AIType newtype, out AIDriverType driver))
                         {
@@ -397,10 +404,14 @@ namespace TAC_AI
                         helper.SetDriverType(SavedAIDriver);
                         helper.DediAI = SavedAI;
                         DebugTAC_AI.Info("AI State was saved as " + SavedAIDriver + " | " + SavedAI);
-                        helper.dirtyAI = TankAIHelper.AIDirtyState.Dirty;
                         if (WasMobileAnchor)
                         {
                         }
+                    }
+                    if (roleChanged || profileChanged)
+                    {
+                        helper.SelectedAIProfileId = SavedAIProfileID;
+                        helper.dirtyAI = TankAIHelper.AIDirtyState.Dirty;
                     }
                     if (RTSActive)
                     {
@@ -445,6 +456,7 @@ namespace TAC_AI
                         var Helper = block.tank.GetHelperInsured();
                         SavedAIDriver = Helper.DriverType;
                         SavedAI = Helper.DediAI;
+                        SavedAIProfileID = Helper.SelectedAIProfileId;
                         AttackMode = Helper.AttackMode;
                         WasMobileAnchor = Helper.PlayerAllowAutoAnchoring;
                         lastSetRangeMin = Helper.MinCombatRange;

@@ -955,6 +955,20 @@ namespace TAC_AI
                  LOC_FindTheAI, ref CantPerformActions, ref clicked);//"Need GC AI"
             GUILayout.EndHorizontal();
 
+            // Step 7: composable AI-profile override. Cycles [Auto] + registered profiles for this allied tech;
+            // Auto = the default behavior derived from the AI-type above (preserved). Sets SelectedAIProfileId.
+            GUILayout.BeginHorizontal(GLH);
+            string curProf = lastTank.SelectedAIProfileId;
+            string profLabel = "Auto (by AI-type)";
+            if (!string.IsNullOrEmpty(curProf))
+                profLabel = TAC_AI.AI.Engine.Profiles.ProfileStore.TryGet(curProf, out var pSel) ? pSel.DisplayName : curProf;
+            if (GUILayout.Button(new GUIContent("Profile: " + profLabel,
+                "Override this tech's AI behavior profile. Auto = the default for its AI-type."), AltUI.ButtonBlue, GLO, GLH))
+            {
+                SetAIProfile(lastTank, NextProfileId(curProf));
+            }
+            GUILayout.EndHorizontal();
+
             if (clickedDriver)
             {
                 SetDriver(AIDriver);
@@ -963,6 +977,31 @@ namespace TAC_AI
             {
                 SetAIType(changeAI);
             }
+        }
+
+        // Step 7: apply a composable AI-profile override to an allied tech (mirrors SetAIType's
+        // OnSwitchAI -> WakeAIForChange sequence; broadcasts in MP). null id = Auto (default by AI-type).
+        public static void SetAIProfile(TankAIHelper tank, string profileId)
+        {
+            if (tank.IsNull())
+                return;
+            tank.OnSwitchAI(true);
+            tank.SelectedAIProfileId = profileId;
+            tank.WakeAIForChange(true);
+            if (ManNetwork.IsNetworked && tank.tank != null && tank.tank.netTech != null)
+            {
+                try { NetworkHandler.TryBroadcastNewAIProfile(tank.tank.netTech.netId.Value, profileId); }
+                catch (Exception e) { DebugTAC_AI.Log(KickStart.ModID + ": Error broadcasting AI profile change\n" + e); }
+            }
+        }
+        private static string NextProfileId(string current)
+        {
+            var ids = new System.Collections.Generic.List<string> { null };   // null = Auto
+            foreach (var p in TAC_AI.AI.Engine.Profiles.ProfileStore.All)
+                ids.Add(p.Id);
+            int idx = ids.IndexOf(current);
+            if (idx < 0) idx = 0;
+            return ids[(idx + 1) % ids.Count];
         }
 
         internal static LocExtStringMod LOC_AnchorNone = new LocExtStringMod(new Dictionary<LocalisationEnums.Languages, string>()

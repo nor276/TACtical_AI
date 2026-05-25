@@ -29,7 +29,29 @@ namespace TAC_AI
         const TTMsgType AIRTSAttack = (TTMsgType)4321;
         const TTMsgType AIEnemyType = (TTMsgType)4322;
         const TTMsgType AIEnemySiege = (TTMsgType)4323;
+        const TTMsgType AIProfileChange = (TTMsgType)4324;   // Step 7: allied composable-profile selection
 
+        public class AIProfileChangeMessage : MessageBase
+        {
+            public AIProfileChangeMessage() { }
+            public AIProfileChangeMessage(uint netTechID, string profileId)
+            {
+                this.netTechID = netTechID;
+                this.profileId = profileId ?? "";
+            }
+            public override void Deserialize(NetworkReader reader)
+            {
+                netTechID = reader.ReadUInt32();
+                profileId = reader.ReadString();
+            }
+            public override void Serialize(NetworkWriter writer)
+            {
+                writer.Write(netTechID);
+                writer.Write(profileId ?? "");
+            }
+            public uint netTechID;
+            public string profileId;
+        }
         public class AITypeChangeMessage : MessageBase
         {
             public AITypeChangeMessage() { }
@@ -434,6 +456,46 @@ namespace TAC_AI
             }
         }
 
+        // AIProfileChangeMessage (allied composable-profile selection) - mirrors AITypeChangeMessage flow.
+        public static void TryBroadcastNewAIProfile(uint netTechID, string profileId)
+        {
+            if (!ManNetwork.IsNetworked) return;
+            try
+            {
+                var msg = new AIProfileChangeMessage(netTechID, profileId);
+                if (ManNetwork.IsHost)
+                    Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(localConnectionID, AIProfileChange, msg, Host);
+                else
+                    Singleton.Manager<ManNetwork>.inst.SendToServer(AIProfileChange, msg);
+            }
+            catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send AI profile update"); }
+        }
+        public static void OnClientSetNewAIProfile(NetworkMessage netMsg)
+        {
+            var reader = new AIProfileChangeMessage();
+            netMsg.ReadMessage(reader);
+            try
+            {
+                NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
+                var helper = find.tech.GetHelperInsured();
+                helper.TrySetAIProfileRemote(netMsg.GetSender(), reader.profileId);
+            }
+            catch { DebugTAC_AI.Assert(true, KickStart.ModID + ": OnClientSetNewAIProfile - Receive failiure!"); }
+        }
+        public static void OnServerSetNewAIProfile(NetworkMessage netMsg)
+        {
+            var reader = new AIProfileChangeMessage();
+            netMsg.ReadMessage(reader);
+            try
+            {
+                NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
+                var helper = find.tech.GetHelperInsured();
+                helper.TrySetAIProfileRemote(netMsg.GetSender(), reader.profileId);
+                Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIProfileChange, reader, Host);
+            }
+            catch { DebugTAC_AI.Assert(true, KickStart.ModID + ": OnServerSetNewAIProfile - Receive failiure!"); }
+        }
+
         // AIRetreatMessage
         /// <summary>
         /// sent from both clients and server
@@ -572,6 +634,7 @@ namespace TAC_AI
                     // Standard
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIRetreatRequest, new ManNetwork.MessageHandler(OnClientSetRetreatState));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIADVTypeChange, new ManNetwork.MessageHandler(OnClientSetNewAIState));
+                    Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIProfileChange, new ManNetwork.MessageHandler(OnClientSetNewAIProfile));
                     Singleton.Manager<ManNetwork>.inst.SubscribeToClientMessage(__instance.netId, AIEnemyType, new ManNetwork.MessageHandler(OnClientEnemyAISetup));
 
                     // RTS
@@ -594,6 +657,7 @@ namespace TAC_AI
                         // Standard
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIRetreatRequest, new ManNetwork.MessageHandler(OnServerSetRetreatState));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIADVTypeChange, new ManNetwork.MessageHandler(OnServerSetNewAIState));
+                        Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIProfileChange, new ManNetwork.MessageHandler(OnServerSetNewAIProfile));
                         Singleton.Manager<ManNetwork>.inst.SubscribeToServerMessage(__instance.netId, AIEnemyType, new ManNetwork.MessageHandler(OnServerEnemyAISetup));
 
                         // RTS

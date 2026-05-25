@@ -88,6 +88,7 @@ namespace TAC_AI
                 AltUI.HintString("Best suited for prospecting veterans looking for a new challenge.")));
             }
             thisModConfig.BindConfig<KickStart>(null, "EnableBetterAI");
+            thisModConfig.BindConfig<KickStart>(null, "AIFormSelected");
             thisModConfig.BindConfig<KickStart>(null, "RetreatHotkeySav");
             thisModConfig.BindConfig<KickStart>(null, "AIDodgeCheapness");
             thisModConfig.BindConfig<KickStart>(null, "AIClockPeriodSet");
@@ -643,6 +644,10 @@ namespace TAC_AI
                 SpecialAISpawner.AirSpawnInterval = 60 / KickStart.AirEnemiesSpawnRate;
                 KickStart.AllowAirEnemiesToSpawn = true;
             }
+
+            // Step 7: auto-generate the AI tunable-registry option menus (one slider/toggle per visible tunable,
+            // grouped by category). Self-ensures the registry is populated. Runs in all init paths via this method.
+            TAC_AI.AI.Tunables.TunableOptionsPublisher.Publish();
         }
 
         internal static void PushExtModOptionsHandling(ModHelper.ModConfig thisModConfig)

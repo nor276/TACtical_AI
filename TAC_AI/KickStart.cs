@@ -131,6 +131,9 @@ namespace TAC_AI
 #else
         public static bool EnableBetterAI = true;
 #endif
+        // Selected global AI form/mode id (Vanilla / Basic / Modified / future). Persisted via config; applied to
+        // AIFormRegistry.SetActive after forms are discovered. Default = the full Modified behavior.
+        public static string AIFormSelected = "Modified";
         internal static bool AutopilotPlayer => AutopilotPlayerMain;
         internal static bool AutopilotPlayerMain {
             get => _AutopilotPlayerMain;
@@ -912,6 +915,8 @@ namespace TAC_AI
 
             // DE-INIT ALL
             // REVISED: teardown order changed — GUINPTInteraction now torn down first and ManBaseTeams last; the AIEPathMapper.DepoolUnusedTiles call was dropped.
+            // Step 7: tear down the modular-AI registry (run host-only tunable restores, drop behavior/profile registrations).
+            TAC_AI.AI.Engine.AIModuleBootstrap.DeInitAIModules();
             GUINPTInteraction.DeInit();
             SpecialAISpawner.DeInit();
             ManEnemyWorld.DeInit();

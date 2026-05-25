@@ -1,13 +1,11 @@
-using System;
-using UnityEngine;
-using TAC_AI.AI.Movement;
-using TAC_AI.AI.Movement.AICores;
+using TAC_AI.AI.Engine;
 
 namespace TAC_AI.AI.AlliedOperations
 {
-    /// REVISED (overview): dropped the unused AIOperation interface / Operations dictionary / Startup() scaffolding;
-    /// Stationary now has its own Assault arm (ShootToDestroy + HoldProtect); the Escort Stationary DriverType arm was
-    /// removed; AutoSet reaching dispatch now self-heals via ExecuteAutoSetNoCalibrate instead of forcing Tank.
+    // REVISED (Step 5): the per-tick DediAI x DriverType switch is replaced by ProfileRunner.RunAllied. The B*
+    // handlers are preserved - now invoked through the Allied.* / Economy.* / Support.* behavior modules the
+    // runner dispatches - and the DriverType==Stationary branch + the Escort inner DriverType switch are
+    // reproduced in the runner's assignment (Stationary) and the AlliedEscort module (Escort) respectively.
     internal class AlliedOperationsController
     {
         private TankAIHelper helper;
@@ -19,129 +17,7 @@ namespace TAC_AI.AI.AlliedOperations
 
         public void Execute()
         {
-            EControlOperatorSet direct = helper.GetDirectedControl();
-            if (helper.DriverType == AIDriverType.Stationary)
-            {
-                switch (helper.DediAI)
-                {
-                    case AIType.Assault:
-                        // REVISED: stationary Assault now aims/fires (ShootToDestroy) on top of the base hold
-                        BAssassin.ShootToDestroy(helper, helper.tank);
-                        BBase.HoldProtect(helper, helper.tank, ref direct);
-                        break;
-                    default:
-                        // I fight for my friends
-                        BBase.HoldProtect(helper, helper.tank, ref direct);
-                        BGeneral.AidDefend(helper, helper.tank);
-                        break;
-                }
-            }
-            else
-            {
-                switch (helper.DediAI)
-                {
-                    case AIType.Escort:
-                        switch (helper.DriverType)
-                        {
-                            case AIDriverType.Tank:
-                                // We move to victory
-                                BGeneral.AidDefend(helper, helper.tank);
-                                BEscort.MotivateMove(helper, helper.tank, ref direct);
-                                break;
-
-                            case AIDriverType.Astronaut:
-                                // Grace from Space
-                                BGeneral.AidDefend(helper, helper.tank);
-                                BAstrotech.MotivateSpace(helper, helper.tank, ref direct);
-                                break;
-
-                            case AIDriverType.Sailor:
-                                // Yarr
-                                BGeneral.AidDefend(helper, helper.tank);
-                                BBuccaneer.MotivateBote(helper, helper.tank, ref direct);
-                                break;
-
-                            case AIDriverType.Pilot:
-                                // Fly and doggyfight
-                                BAviator.Dogfighting(helper, helper.tank);
-                                BAviator.MotivateFly(helper, helper.tank, ref direct);
-                                break;
-
-
-                            // REVISED: removed the Escort Stationary DriverType arm (AidDefend + HoldSupport)
-
-                            case AIDriverType.AutoSet:
-                                // REVISED: AutoSet reaching dispatch now self-heals via ExecuteAutoSetNoCalibrate instead of forcing Tank
-                                DebugTAC_AI.LogError(KickStart.ModID + ": AutoSet reached dispatch for "
-                                    + helper.tank.name + " — upstream resolve missing. DediAI=" + helper.DediAI);
-                                helper.ExecuteAutoSetNoCalibrate();
-                                break;
-
-                            default:
-                                DebugTAC_AI.Log(KickStart.ModID + ": AIDriver is set to an invalid state - " + helper.DriverType);
-                                DebugTAC_AI.Log(KickStart.ModID + ": RESETTING TO DEFAULTS");
-                                helper.SetDriverType(AIDriverType.Tank);
-                                break;
-                        }
-                        break;
-                    case AIType.Assault:
-                        // Up your arsenal
-                        BAssassin.ShootToDestroy(helper, helper.tank);
-                        BAssassin.MotivateKill(helper, helper.tank, ref direct);
-                        break;
-
-                    case AIType.Aegis:
-                        // I fight for my friends (priority resource techs pending)
-                        BGeneral.AidDefend(helper, helper.tank);
-                        BAegis.MotivateProtect(helper, helper.tank, ref direct);
-                        break;
-
-                    case AIType.Prospector:
-                        // We back in the mine
-                        BGeneral.SelfDefend(helper, helper.tank);
-                        BProspector.MotivateMine(helper, helper.tank, ref direct);
-                        break;
-
-                    case AIType.Scrapper:
-                        // Grab Scrape and sell
-                        BGeneral.SelfDefend(helper, helper.tank);
-                        BScrapper.MotivateFind(helper, helper.tank, ref direct);
-                        break;
-
-                    case AIType.Energizer:
-                        // The thing that keeps going
-                        BGeneral.SelfDefend(helper, helper.tank);
-                        BEnergizer.MotivateCharge(helper, helper.tank, ref direct);
-                        break;
-
-                    case AIType.MTTurret:
-                        // Load, Aim,    FIIIIIRRRRRRRRRRRRRRRRRRRRRRRRRRRE!!!
-                        BMultiTech.MimicDefend(helper, helper.tank);
-                        BMultiTech.MTStatic(helper, helper.tank, ref direct);
-                        BMultiTech.BeamLockWithinBounds(helper, helper.tank); //lock rigidbody with closest non-MT Tech on build beam
-                        break;
-
-                    case AIType.MTStatic:
-                        // Defend and sit like good guard dog
-                        BMultiTech.MimicDefend(helper, helper.tank);
-                        BMultiTech.MTStatic(helper, helper.tank, ref direct);
-                        BMultiTech.BeamLockWithinBounds(helper, helper.tank); //lock rigidbody with closest non-MT Tech on build beam
-                        break;
-
-                    case AIType.MTMimic:
-                        // Copycat
-                        BMultiTech.MimicAllClosestAlly(helper, helper.tank, ref direct);
-                        break;
-
-                    default:
-                        DebugTAC_AI.Log(KickStart.ModID + ": AIType is set to an invalid state - " + helper.DediAI);
-                        DebugTAC_AI.Log(KickStart.ModID + ": RESETTING TO DEFAULTS");
-                        helper.DediAI = AIType.Escort;
-                        break;
-                }
-            }
-            helper.SetDirectedControl(direct);
+            ProfileRunner.RunAllied(new AIContext(helper));
         }
-
     }
 }

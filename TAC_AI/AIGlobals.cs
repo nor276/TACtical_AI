@@ -170,16 +170,16 @@ namespace TAC_AI
 
         // GENERAL AI PARAMETERS
         public const float DefaultMaxObjectiveRange = 750;
-        public const float TargetVelocityLeadPredictionMulti = 0.01f; // for projectiles of speed 100
+        public static float TargetVelocityLeadPredictionMulti = 0.01f; // for projectiles of speed 100
         // REVISED: NEW — caps aim-lead time-of-flight so far-target solutions don't over-lead.
-        public const float LeadPredictionMaxTOF = 3f;
+        public static float LeadPredictionMaxTOF = 3f;
         public const float StationaryMoveDampening = 6;
         public const int TeamRangeStart = 256;
         public const short NetAIClockPeriod = 30;
 
-        public const float TargetCacheRefreshInterval = 1.5f;  // Seconds until we try to gather enemy Techs within range
+        public static float TargetCacheRefreshInterval = 1.5f;  // Seconds until we try to gather enemy Techs within range
         // REVISED: NEW — faster enemy-scan cache refresh while in combat (idle still uses the 1.5s interval).
-        public const float TargetCacheRefreshIntervalCombat = 0.4f;
+        public static float TargetCacheRefreshIntervalCombat = 0.4f;
 
         internal static GUIButtonMadness ModularMenu;
         private const int IDGUI = 8037315;
@@ -270,24 +270,24 @@ namespace TAC_AI
         // General
         public const int LonerEnemyTeam = ManSpawn.NewEnemyTeam;
         public const int DefaultEnemyTeam = ManSpawn.FirstEnemyTeam;
-        public const float YieldSpeed = 10;
+        public static float YieldSpeed = 10;
         public static bool AllowWeaponsDisarm2 = false;
         public const bool BaseSubNeutralsCuriousFollow = true;
         public const float defaultExpandRad = 24f;
         public const float defaultExpandRadRange = 192f;
 
         // Elevation
-        public const float GroundOffsetGeneralAir = 10;
+        public static float GroundOffsetGeneralAir = 10;
         public const float GroundOffsetRTSAir = 24;
-        public const float GroundOffsetAircraft = 22;
-        public const float GroundOffsetChopper = 8.5f;
+        public static float GroundOffsetAircraft = 22;
+        public static float GroundOffsetChopper = 8.5f;
         public const float GroundOffsetChopperExtra = 5f;
         public const float GroundOffsetCrashWarnChopperDelta = -2.5f;
 
         // Anchors
-        public const float SafeAnchorDist = 50f;     // enemy too close to anchor
+        public static float SafeAnchorDist = 50f;     // enemy too close to anchor
         /// <summary> How much do we dampen anchor movements by? </summary>
-        public const int AnchorAimDampening = 45;
+        public static int AnchorAimDampening = 45;
         public const short MaxAnchorAttempts = 3;//12;
 
         // Unjamming
@@ -305,9 +305,9 @@ namespace TAC_AI
         // window (while commanding drive) is making no net progress, so yaw jitter no longer masks a genuine wedge.
         // The threshold scales with EstTopSped so a slow/heavy tech making genuine slow headway is not falsely flagged
         // stuck (it tracks the same speed basis as the EnemyAISpeedPanicDividend gate); the floor covers near-zero EstTopSped.
-        public const float StuckNetProgressWindow = 1.5f;
-        public const float StuckNetProgressFraction = 0.2f;
-        public const float StuckNetProgressFloor = 1f;
+        public static float StuckNetProgressWindow = 1.5f;
+        public static float StuckNetProgressFraction = 0.2f;
+        public static float StuckNetProgressFloor = 1f;
 
         public const float AISubscribeDelay = 0.1f;
 
@@ -320,36 +320,36 @@ namespace TAC_AI
         internal static Bitfield<ObjectTypes> sceneryBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[1] { ObjectTypes.Scenery });
         internal static Bitfield<ObjectTypes> crashBitMask = new Bitfield<ObjectTypes>(new ObjectTypes[2] { ObjectTypes.Scenery, ObjectTypes.Vehicle });
 
-        public const float AIPathingSuccessRad = 2.4f; // How far should the tech radius from the path point to consider finishing the path point?
+        public static float AIPathingSuccessRad = 2.4f; // How far should the tech radius from the path point to consider finishing the path point?
         public const float AIPathingSuccessRadPrecise = 1.2f; // How far should the tech radius from the path point to consider finishing the path point?
 
         public const int PathfindingExtraSpace = 6;  // Extra pathfinding space
-        public const float DefaultDodgeStrengthMultiplier = 1.75f;  // The motivation in trying to move away from a tech in the way
-        public const float AirborneDodgeStrengthMultiplier = 0.4f;  // The motivation in trying to move away from a tech in the way
+        public static float DefaultDodgeStrengthMultiplier = 1.75f;  // The motivation in trying to move away from a tech in the way
+        public static float AirborneDodgeStrengthMultiplier = 0.4f;  // The motivation in trying to move away from a tech in the way
         public const float FindItemScanRangeExtension = 50;
         public const float FindBaseScanRangeExtension = 500;
         // REVISED: retuned reverse-away holds; these are now actionPause tick set-values read at 500 ticks/sec (ReverseDelay 500 = 1.0s, ReverseFromResourceDelay 300 = 0.6s) via the AITimer shim.
         public const int ReverseDelay = 500;
         public const int ReverseFromResourceDelay = 300;
         // REVISED: NEW — seconds the 3D-navi tech must stay tipped over before firing a build beam to flip upright.
-        public const float BeamFlipTippedHoldSecs = 1.5f;
-        public const float PlayerAISpeedPanicDividend = 8;
-        public const float EnemyAISpeedPanicDividend = 9;
+        public static float BeamFlipTippedHoldSecs = 1.5f;
+        public static float PlayerAISpeedPanicDividend = 8;
+        public static float EnemyAISpeedPanicDividend = 9;
         /// <summary>Depth that land Techs are able to drive into</summary>
         public const float WaterDepthTechHeightPercent = 0.35f;
 
         // Control the aircrafts and AI
         public const float PropLerpStrictness = 10f;// 10
         public const int MaxTakeoffFailiures = 240;
-        public const float BoosterThrustBias = 0.5f;
+        public static float BoosterThrustBias = 0.5f;
         /// <summary> TtWR = Thrust to Weight Ratio </summary>
-        public const float ImmelmanTtWRThreshold = 1.5f;
+        public static float ImmelmanTtWRThreshold = 1.5f;
         public static float ChopperDownAntiBounce = 0.5f;
         public static float ChopperThrottleDamper = 1.25f;
 
         public const float AircraftDestSuccessRadius = 32;
         public const float AerofoilSluggishnessBaseValue = 30;
-        public const float AircraftMaxDive = 0.75f;
+        public static float AircraftMaxDive = 0.75f;
         public const float AircraftChillFactorMulti = 4.5f;         // More accuraccy, less responsiveness
         public const float LargeAircraftChillFactorMulti = 1.25f;   // More responsiveness, less accuraccy
 
@@ -358,8 +358,8 @@ namespace TAC_AI
         public const float AirWanderMaxHeightIngame = 100f;//75;// How high the AI is allowed to go while wandering randomly above the player
         public static float AirWanderMaxHeight => IsNotAttract ? AirWanderMaxHeightIngame : AirNPTMaxHeightOffset;         // How far the AI is allowed to go while wandering randomly above the player
         public const float AirPromoteSpaceHeight = 150;     // The height the player, beyond passing, will encounter more spacecraft
-        public const float AirMaxYaw = 0.45f;//0.2f; // 0 - 1 (float)
-        public const float AirMaxYawBankOnly = 0.75f; // 0 - 1 (float)
+        public static float AirMaxYaw = 0.45f;//0.2f; // 0 - 1 (float)
+        public static float AirMaxYawBankOnly = 0.75f; // 0 - 1 (float)
 
         public const float ChopperYChillFactorMulti = 0.2f;
         public const float ChopperXZChillFactorMulti = 2.5f;
@@ -375,7 +375,7 @@ namespace TAC_AI
 
         public const int LargeAircraftSize = 15;            // The size of which we count an aircraft as large
         /// <summary> IN m/s !!!</summary>
-        public const float AirStallSpeed = 42;//25          // The speed of which most wings begin to stall at
+        public static float AirStallSpeed = 42;//25          // The speed of which most wings begin to stall at
         public const float GroundAttackStagingDistMain = 275;
         public static float GroundAttackStagingDist => IsNotAttract ? 120 : GroundAttackStagingDistMain;   // Distance to fly (in meters!) before turning back
         public const float TechSplitDelay = 0.5f;
@@ -394,21 +394,21 @@ namespace TAC_AI
         public const float minimumChargeFractionToConsider = 0.75f;
 
         // Combat Parameters
-        public const float TargetValidationDelay = 0.6f;//1.5f;
+        public static float TargetValidationDelay = 0.6f;//1.5f;
         // REVISED: default targeting range widened from 150 to 1500.
-        public const int DefaultMaxTargetingRange = 1500;
+        public static int DefaultMaxTargetingRange = 1500;
 
         // Combat target switching
-        public const int ProvokeTime = 200;         // Roughly around 200/40 = 5 seconds
+        public static int ProvokeTime = 200;         // Roughly around 200/40 = 5 seconds
         public const int ProvokeTimeShort = 80;
         // REVISED: NEW — seconds a target stays held after LOS is lost (behind cover) before pursuit ends.
-        public const float LOSLostGraceTime = 3.0f;
-        public const int DamageAlertThreshold = 45;// Above this damage we react to the threat
+        public static float LOSLostGraceTime = 3.0f;
+        public static int DamageAlertThreshold = 45;// Above this damage we react to the threat
         // REVISED: NEW — cumulative damage-alert model: damage sums toward DamageAlertCumulativeThreshold and decays at DamageAlertDecayPerSec, so steady chip damage eventually trips the alert.
         public const float DamageAlertCumulativeThreshold = 60f;
         public const float DamageAlertDecayWindowSeconds = 3.0f;
         public const float DamageAlertDecayPerSec = DamageAlertCumulativeThreshold / DamageAlertDecayWindowSeconds;
-        public const float ScanDelay = 0.5f;        // Seconds until we try to find a appropreate target
+        public static float ScanDelay = 0.5f;        // Seconds until we try to find a appropreate target
         public const float PestererSwitchDelay = 12.5f; // Seconds before Pesterers find a new random target
 
         // REVISED: NEW flicker controls — keep a held target until past 1.5x range, require 2 blocked-LOS checks before asserting cover, and cap RTS-locked targets at 2.5x range.
@@ -423,30 +423,30 @@ namespace TAC_AI
         public const float EnemyTeamAwarenessUpdateDelay = 6;
         public const float DamageAngerDropRelations = 2500;//2500
         // REVISED: renamed from DamageAngerCoolPerSec and now a true per-second rate (25), no longer pre-multiplied by EnemyTeamAwarenessUpdateDelay — the per-tick decay is computed at the consumer.
-        public const float DamageAngerCoolRatePerSec = 25;
-        public const int DefaultEnemyScanRange = 150;
+        public static float DamageAngerCoolRatePerSec = 25;
+        public static int DefaultEnemyScanRange = 150;
         public const int TileFringeDist = 96;
         public const float BatteryRetreatPercent = 0.25f;
 
         // Attack Detection/Chase ranges
-        public const int DefaultEnemyMaxCombatRange = 150;
-        public const int PassiveMaxCombatRange = 75;
-        public const int BaseFounderMaxCombatRange = 60;     //
-        public const int BossMaxCombatRange = 250;        //
-        public const int InvaderMaxCombatRange = 250;        //
-        public const float SpyperMaxCombatRange = 175;    //
+        public static int DefaultEnemyMaxCombatRange = 150;
+        public static int PassiveMaxCombatRange = 75;
+        public static int BaseFounderMaxCombatRange = 60;     //
+        public static int BossMaxCombatRange = 250;        //
+        public static int InvaderMaxCombatRange = 250;        //
+        public static float SpyperMaxCombatRange = 175;    //
 
         // Combat Minimum Spacing Ranges
-        public const float MinCombatRangeDefault = 12;
-        public const float MinCombatRangeSpyper = 60;
+        public static float MinCombatRangeDefault = 12;
+        public static float MinCombatRangeSpyper = 60;
         // REVISED: combat back-off dead-band. A tech holds-and-faces between (hull contact + MinCombatRange*this) and the
         // full stand-off, and only reverses (FACE-ENEMY back off) when pushed inside that inner radius - so it stops
         // constantly back-pedalling front-on just to maintain the stand-off. Lower = backs off less / holds sooner.
-        public const float CombatReverseInnerFraction = 0.35f;
+        public static float CombatReverseInnerFraction = 0.35f;
         // REVISED: when a mod forces continuous strafe (TweakTech/WeaponAimMod -> ShouldForceContinuousStrafe), only
         // techs with at least this turret share keep strafing endlessly (their turrets can fire mid-circle). A
         // mostly-front-fixed tech below this falls back to the duty cycle so it still gets a face/fire window.
-        public const float ContinuousStrafeMinTurretFraction = 0.5f;
+        public static float ContinuousStrafeMinTurretFraction = 0.5f;
         public const float SpacingRangeSpyperAir = 72;
         public const float SpacingRangeAircraft = 24;
         public const float SpacingRangeChopper = 12;
@@ -473,16 +473,16 @@ namespace TAC_AI
         public const float EnemyKeepAwakeRange = 700f;
 
         // REVISED: NEW dive-attack FSM tunables — MinDiveAGL gates Approach->Commit (x0.4 = commit->recover); Min/MaxRecoverHold are the Recover dwell floor/escape; CommitRecoverAltHysteresis debounces terrain-column jitter before aborting a dive; PostRecoverCooldown is the minimum gap before a new dive (kills the climb-dive yo-yo); DiveCachedAimMaxRange caps cached-aim reuse.
-        public const float MinDiveAGL = 60f;
-        public const float MinRecoverHold = 1.5f;
-        public const float MaxRecoverHold = 8f;
+        public static float MinDiveAGL = 60f;
+        public static float MinRecoverHold = 1.5f;
+        public static float MaxRecoverHold = 8f;
         public const float CommitRecoverAltHysteresis = 0.3f;
-        public const float PostRecoverCooldown = 2.0f;
+        public static float PostRecoverCooldown = 2.0f;
         public const float DiveCachedAimMaxRange = 2000f;
         // REVISED: NEW — minimum distance from the player a raid spawn may appear.
         public const int RaidMinSpawnDistance = 96;
-        public const float RetreatBelowTechDamageThreshold = 50;
-        public const float RetreatBelowTeamDamageThreshold = 30;
+        public static float RetreatBelowTechDamageThreshold = 50;
+        public static float RetreatBelowTeamDamageThreshold = 30;
 
         public const int MPEachBaseProfits = 250;
         public const float RaidCooldownTimeSecs = 1200;
