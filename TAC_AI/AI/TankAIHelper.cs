@@ -299,7 +299,7 @@ namespace TAC_AI.AI
         public AIAlignment AIAlign = AIAlignment.Static;             // 0 is static, 1 is ally, 2 is enemy
         public AIWeaponState WeaponState = AIWeaponState.Normal;    // 0 is sleep, 1 is target, 2 is obsticle, 3 is mimic
         public bool UpdateDirectorsAndPathing = false;       // Collision avoidence active this FixedUpdate frame?
-        public bool UsingAirControls = false; // Use the not-VehicleAICore cores
+        public bool UsingAirControls = false; // Use the not-VehicleAICore cores. REVISED: VehicleAICore (the old combined driver) was removed; this now means the per-type cores - Land/Sea/Space/Static plus the Air cores.
         internal int FrustrationMeter = 0;  // tardiness buildup before we use our guns to remove obsticles
         internal float Urgency = 0;         // tardiness buildup before we just ignore obstructions
         internal float UrgencyOverload = 0; // builds up too much if our max speed was set too high
@@ -417,6 +417,7 @@ namespace TAC_AI.AI
         //  !!ADVANCED!!
         /// <summary>
         /// Use 3D navigation  (VehicleAICore)
+        /// REVISED: VehicleAICore was removed; 3D navigation now runs through SpaceAICore, selected via MovementDispatch.
         /// Normally this AI navigates on a 2D plane but this enables it to follow height.
         /// </summary>
         internal bool Attempt3DNavi = false;

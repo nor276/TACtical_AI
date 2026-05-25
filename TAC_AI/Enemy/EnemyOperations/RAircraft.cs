@@ -13,7 +13,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
     {
         // ENEMY CONTROLLERS
         /*
-            Circle,     // Attack like the AC-130 Gunship, broadside while salvoing [BROKEN]
+            // REVISED: Circle now has a live broadside case (gated by canBroadside: WeaponAimMod + LargeAircraft/BankOnly), changed from a commented-out [BROKEN] path.
+            Circle,     // Attack like the AC-130 Gunship, broadside while salvoing
             Grudge,     // Chase and dogfight whatever hit this aircraft last
             Coward,     // Avoid danger
             Bully,      // Attack other aircraft over ground structures.  If inverted, prioritize ground structures over aircraft

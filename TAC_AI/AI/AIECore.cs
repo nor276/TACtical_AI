@@ -22,6 +22,7 @@ namespace TAC_AI.AI
              - AI Movement Director - Tells the AI how to navigate safely and avoid obsticles along the way
              - AI Movement Maintainer - Makes the AI drive to the director's coordinates
              - AI Core - Each Core implements Director and Maintainer, and contain the details of how to move (Classes like AiplaneAICore vs VehicleAICore)
+               REVISED: VehicleAICore was removed; the live cores are LandAICore / SeaAICore / SpaceAICore / StaticAICore plus the Air cores (Airplane/Helicopter/Vtol), selected via MovementDispatch.
 
         Flow 2 - Planning flow:
         TankAIHelper.FixedUpdate -> AlliedOperationsController.Execute

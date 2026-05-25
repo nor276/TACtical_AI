@@ -963,7 +963,7 @@ namespace TAC_AI
                 teamID2 = swapper;
             }
             // ALWAYS prioritize the immutable ones to get the correct alignment!
-            // ALWAYS prioritize the non-immutable ones to get the correct alignment!
+            // REVISED: first hit checks ETD.IsReadonly (the immutable team); stray "non-immutable" copy from the writable-priority variant removed.
             if (inst.teams.TryGetValue(teamID1, out ETD) && ETD.IsReadonly)
                 return true;
             if (inst.teams.TryGetValue(teamID2, out ETD))

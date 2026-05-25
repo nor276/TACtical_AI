@@ -133,6 +133,7 @@ namespace TAC_AI.AI.Movement.AICores
 
         /// <summary>
         /// A very limited version of the VehicleAICore DriveMaintainer for downed aircraft
+        /// REVISED: VehicleAICore was removed; this mirrors the equivalent land logic now in LandAICore.DriveMaintainer.
         /// </summary>
         /// <param name="thisControl"></param>
         /// <param name="helper"></param>
