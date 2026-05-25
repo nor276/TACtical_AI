@@ -7,4 +7,4 @@ This is a heavy revision pass of the code for the sole purpose of increasing mai
 
 To Legionite: take anything from here you find useful. No attribution needed, no expectations in any way. If none of it is useful, that's fine too — this exists primarily for my own use.
 
-# AS OF RIGHT NOW THIS IS A WORK IN PROGRESS, AND MAY ACTUALLY BE LESS STABLE THAN THE CURRENT PUBLISHED VERSION!
+# THIS IS NOT A WORKING VERSION AT THE MOMENT, AND IS CURRENTLY FAR BUGGIER THAN THE ORIGINAL.
