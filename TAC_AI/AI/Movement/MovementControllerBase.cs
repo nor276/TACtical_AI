@@ -4,6 +4,10 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI
 {
+    /// REVISED (overview): NEW — abstract base hosting the common IMovementAIController plumbing
+    /// (Tank/Helper/AICore/EnemyMind fields, GetDrive, UpdateEnemyMind, Recycle) that the three outer
+    /// controllers (Default/Air/Static) previously each duplicated. Subclasses now only supply SelectCore
+    /// plus the OnPre/OnPost/OnRecycle hooks and the abstract per-tick members.
     internal abstract class MovementControllerBase : MonoBehaviour, IMovementAIController
     {
         private Tank _tank;
@@ -17,6 +21,8 @@ namespace TAC_AI.AI
 
         public float GetDrive => _AI != null ? _AI.GetDrive : 0f;
 
+        /// Initiate template: OnPreInitiate -> SelectCore(mind) -> AICore.Initiate -> OnPostInitiate.
+        /// Subclasses customize via the hooks and the SelectCore override rather than reimplementing this.
         public void Initiate(Tank tank, TankAIHelper helper, Enemy.EnemyMind mind = null)
         {
             Tank = tank;
@@ -28,6 +34,7 @@ namespace TAC_AI.AI
             OnPostInitiate();
         }
 
+        /// Per-subclass core picker: Default consults MovementDispatch.CoreFor*, Air picks from thrust geometry, Static returns StaticAICore.
         protected abstract IMovementAICore SelectCore(Enemy.EnemyMind mind);
         protected virtual void OnPreInitiate() { }
         protected virtual void OnPostInitiate() { }

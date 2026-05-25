@@ -284,5 +284,7 @@ namespace TAC_AI.AI.Enemy
             return helper.PendingDamageCheck;
         }
 
+        // REVISED: removed the unused EnemyNewTechConstruction stepper (a never-called RepairStepperClock variant of
+        // EnemyRepairStepper); no caller remained so the dead method was dropped.
     }
 }

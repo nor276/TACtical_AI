@@ -21,6 +21,7 @@ namespace TAC_AI.Templates
 
         private static FieldInfo BigVal = typeof(TechSpawnFilter).GetField("m_MaxValue", BindingFlags.NonPublic | BindingFlags.Instance);
         private static FieldInfo BigBloc = typeof(TechSpawnFilter).GetField("m_MaxBlockCount", BindingFlags.NonPublic | BindingFlags.Instance);
+        // REVISED: field name now "m_MaxRadiusSize" (leading space removed) so the reflection lookup resolves instead of returning null
         private static FieldInfo BigRad = typeof(TechSpawnFilter).GetField("m_MaxRadiusSize", BindingFlags.NonPublic | BindingFlags.Instance);
 
         internal static TempFilterStore DayTechsSav;
@@ -167,6 +168,7 @@ namespace TAC_AI.Templates
                 TechSpawnFilter TSF = (TechSpawnFilter)toApplyTo.GetValue(inst);
                 try
                 {
+                    // REVISED: Bloc/Rad/Val below now read from TSF (the fetched filter); changed from TFS (the empty store being populated)
                     TFS.Bloc = (int)BigBloc.GetValue(TSF);
                 }
                 catch

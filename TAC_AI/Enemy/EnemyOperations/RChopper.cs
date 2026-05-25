@@ -9,6 +9,10 @@ using TAC_AI.AI.Movement;
 
 namespace TAC_AI.AI.Enemy.EnemyOperations
 {
+    /// REVISED (overview): null-target idle case hoisted out to the controller (no longer handled here);
+    /// Homing mend now routes to RAircraft.LollyGagAir. Every speed-threshold check switched from the
+    /// PlayerAISpeedPanicDividend to EnemyAISpeedPanicDividend (this was the only enemy FSM still using the
+    /// player divisor). Bucket transitions now mark advance/retreat hysteresis and a mind.MinCombatRange writeback was added.
     internal static class RChopper
     {
         // ENEMY CONTROLLERS
@@ -26,6 +30,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             helper.Attempt3DNavi = false;
             helper.AvoidStuff = true;
 
+            // REVISED: the lastEnemyGet == null -> LollyGag early-return was removed; no-target idle is handled
+            // upstream in the controller (target guaranteed live here). Homing mend now uses RAircraft.LollyGagAir
+            // (was RGeneral.LollyGag) for the air-specific idle/heal path.
             if (mind.CommanderMind == EnemyAttitude.Homing)
             {
                 if ((helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).magnitude > mind.MaxCombatRange)

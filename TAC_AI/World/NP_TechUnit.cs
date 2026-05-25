@@ -113,6 +113,7 @@ namespace TAC_AI.World
             trackedVis.SetPos(WorldPos);
         }
 
+        // REVISED: new helper — re-anchors an unloaded tech to newTile (uses posHint if it lands on the tile, else tile-center keeping current y); used by mid-move drift recovery
         internal void RebindToTile(IntVector2 newTile, ManSaveGame.StoredVisible posHint = null)
         {
             WorldPosition newPos;

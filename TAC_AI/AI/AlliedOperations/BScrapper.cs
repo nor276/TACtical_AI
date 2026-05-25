@@ -50,6 +50,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived in safety of the base.");
                     helper.AvoidStuff = false;
+                    // REVISED: actionPause decrement removed at every arrive/reverse branch; the extra "-= AIClockPeriod/5" speed-up no longer applies, so the reverse/yield timer only drains at the normal tick rate
                     {  }
                 }
                 else if (helper.recentSpeed < 3)
@@ -246,6 +247,7 @@ namespace TAC_AI.AI.AlliedOperations
                     helper.EstTopSped = 1;//slow down the clock to reduce lagg
                     helper.foundGoal = AIECore.FetchLooseBlocks(tank.rootBlockTrans.position, helper.JobSearchRange + AIGlobals.FindItemScanRangeExtension, out var tmpRes);
                     helper.theResource = tmpRes;
+                    // REVISED: now also stamps theResourceNode with the found block (only when foundGoal); original wrote theResource alone
                     if (helper.foundGoal) helper.theResourceNode = tmpRes;
                     if (!helper.foundGoal)
                     {

@@ -64,6 +64,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived in safety of the base.");
                     helper.AvoidStuff = false;
+                    // REVISED: the helper.actionPause -= AIClockPeriod/5 decrement was removed here (and at every
+                    // other empty {  } in this method); ActionPause is no longer bled down inside the scavenger loop.
                     {  }
                 }
                 else if (helper.recentSpeed < 3)
@@ -237,6 +239,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 if (!helper.foundGoal)
                 {
                     helper.EstTopSped = 1;//slow down the clock to reduce lagg
+                    // REVISED: theResource is now a property so it can't be an out-arg; fetch into a local then assign.
+                    // Also records the found block into theResourceNode (new) when a goal is located.
                     helper.foundGoal = AIECore.FetchLooseBlocks(tank.rootBlockTrans.position, mind.MaxCombatRange, out var tmpRes);
                     helper.theResource = tmpRes;
                     if (helper.foundGoal) helper.theResourceNode = tmpRes;

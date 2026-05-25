@@ -151,6 +151,7 @@ namespace TAC_AI.AI
                         }
                     }
                 }
+                // REVISED: removes by index (step) instead of by value; matches the step--/run-- index walk so the correct entry drops
                 Minables.RemoveAt(step);//it's invalid and must be removed
                 step--;
                 run--;
@@ -565,6 +566,7 @@ namespace TAC_AI.AI
                         foreach (BoosterJet boost in bloc.transform.GetComponentsInChildren<BoosterJet>())
                         {
                             //We have to get the total thrust in here accounted for as well because the only way we CAN boost is ALL boosters firing!
+                            // REVISED: weights each booster's bias by its actual thrust force; was an unweighted unit-direction sum
                             float boostForce = (float)AIControllerDefault.boostGet.GetValue(boost);
                             boostBiasDirection -= tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)) * boostForce;
                         }

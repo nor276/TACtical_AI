@@ -39,6 +39,7 @@ namespace TAC_AI.World
     /// <summary>
     /// The master class to command fleets of AI
     /// </summary>
+    /// REVISED (overview): lastTarget aging centralized in TickTargetExpiry() (called per operator turn); HandleUnitRecon now gathers own-tech tiles unconditionally and only gates the MainBase scan on MainBase != null; failed unit moves now detach via StopManagingUnit instead of a bare list-remove; founder-move paths (SetFounderDestination/DoFounderMovement) propagate move failure so the caller can detach.
     public class NP_Presence
     {
 #if DEBUG
@@ -87,6 +88,7 @@ namespace TAC_AI.World
         }
         private Visible _lastTarget = null;
         private int lastTargetUpdateCount = 0;
+        // REVISED: per-tick lastTarget aging factored into one helper — counts down lastTargetUpdateCount (lastTarget getter returns null at 0); now called once at the top of each operator turn
         protected void TickTargetExpiry() { if (lastTargetUpdateCount > 0) lastTargetUpdateCount--; }
 
         public NP_Presence(int Team)
@@ -276,6 +278,7 @@ namespace TAC_AI.World
             scannedPositions.Clear();
             UnloadedBases.RefreshTeamMainBaseIfAnyPossible(this);
 
+            // REVISED: own-tech tile gather (tilesHasOwnTechs) now runs unconditionally; only the MainBase scan + attack/defend decision below stays gated on MainBase != null (was all nested inside that gate)
             tilesHasOwnTechs.Clear();
             foreach (NP_TechUnit ETU in EMUs)
             {
@@ -481,6 +484,7 @@ namespace TAC_AI.World
                         ManEnemyWorld.StrategicMoveQueue(ETU, playerCoord, OnUnitReachDestinationNoBase, out bool fail);
                         if (fail)
                         {
+                            // REVISED: a failed move now fully detaches the unit via StopManagingUnit; changed from a bare EMUs.Remove (which left the tech registered/tracked elsewhere). Same StopManagingUnit-on-MoveETU-fail pattern repeats in MoveAllETUs below
                             ManEnemyWorld.StopManagingUnit(ETU);
                             step--;
                             count--;
@@ -893,6 +897,7 @@ namespace TAC_AI.World
                     PresenceDebug(" Founder " + ETU.Name.ToString() + " is moving to tile " + lastEventTile + " to do " + founderMode);
                     techsMoving = true;
                 }
+                // REVISED: a failed founder move (direct queue or via SetFounderDestination) now propagates false so the caller detaches the unit
                 if (fail)
                     return false;
             }
@@ -908,6 +913,7 @@ namespace TAC_AI.World
         /// </summary>
         /// <param name="ETU"></param>
         /// <param name="techsMoving"></param>
+        /// REVISED: returns bool now (was void) — reports false when a founder StrategicMoveQueue fails so the caller can detach the unit; the no-op early-out (no base / cooling down) returns true
         private bool SetFounderDestination(NP_TechUnit ETU, ref bool techsMoving)
         {
             if (MainBase == null || lastFounderStopUpdateTicks > 0)

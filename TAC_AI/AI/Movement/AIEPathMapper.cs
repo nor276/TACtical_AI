@@ -19,6 +19,10 @@ namespace TAC_AI.AI.Movement
     ///   It's a heightmap of the terrain accounting for obsticles.
     ///   Hosted in TankAIManager.
     ///   REVISED: self-instantiates on its own "PathMapper" GameObject (RegisterTile); TankAIManager only drives its lifecycle via ResetAll.
+    /// REVISED (overview): cached path tiles are no longer object-pooled — GetAIPathTileCached just news one up
+    /// (UnusedTiles queue / Reset() / DepoolUnusedTiles / ImmedeatelyPathAll all removed). RegisterTile now self-heals
+    /// a missing instance and skips duplicate tiles (was an exception); ResetAll now fully tears the instance down.
+    /// Difficulty/enterability probes now floor their sample box at EvalRad*2.
     /// </summary>
     public class AIEPathMapper : MonoBehaviour
     {
@@ -240,6 +244,7 @@ namespace TAC_AI.AI.Movement
 
         public static bool StopPather(AIEAutoPather pather)
         {
+            // REVISED: regrouped so IsRegistered now gates both list removals (previously the suspended-list removal ran even on a null/unregistered pather).
             if (pather != null && pather.IsRegistered
                 && (pathRequests.Remove(pather) || pathRequestsSuspended.Remove(pather)))
             {
@@ -255,6 +260,7 @@ namespace TAC_AI.AI.Movement
         }
         public static void RegisterTile(WorldTile tile)
         {
+            // REVISED: also re-creates the instance if it was destroyed (was guarded only on !sub).
             if (!sub || inst == null)
             {
                 sub = true;
@@ -263,6 +269,7 @@ namespace TAC_AI.AI.Movement
                 ManWorld.inst.TileManager.TileDestroyedEvent.Subscribe(UnregisterTile);
                 ManWorldDeformerExt.OnTerrainDeformed.Subscribe(UnregisterTile);
             }
+            // REVISED: a duplicate tile now logs and returns instead of throwing.
             if (tilesMapped.ContainsKey(tile.Coord))
             {
                 DebugTAC_AI.Log("AIEPathMapper(RegisterTile) - tile " + tile.Coord + " already registered; skipping.");
@@ -287,6 +294,7 @@ namespace TAC_AI.AI.Movement
             pathRequests.Clear();
             pathRequestsSuspended.Clear();
             autoPathers.Clear();
+            // REVISED: now fully tears the instance down — unsubscribes the tile/deform events, destroys the PathMapper GameObject, and clears sub so RegisterTile rebuilds clean.
             if (inst != null)
             {
                 if (sub)
@@ -524,6 +532,7 @@ namespace TAC_AI.AI.Movement
         public static byte GetDifficulty(Vector3 scenePos, AIEAutoPather pather)
         {
             float ToFill = pather.MoveGridScale * AIEAutoPather.PathingRadiusMulti;
+            // REVISED: sample box is now floored at EvalRad*2 so small techs still probe at least one eval cell (recurs in the other GetDifficulty*/GetIsEnterable* probes).
             ToFill = Mathf.Max(ToFill, EvalRad * 2);
             byte bestDiff = 0;
             Vector2 posAltSub = scenePos.ToVector2XZ() - new Vector2(ToFill / 2, ToFill / 2);
@@ -897,6 +906,7 @@ namespace TAC_AI.AI.Movement
             private readonly byte[] chunkBytes;
             private List<WorldPosition> unpathable = null;
 
+            // REVISED: no longer recycled from an UnusedTiles pool (pool + Reset() removed); always news a fresh tile.
             internal static AIPathTileCached GetAIPathTileCached(WorldTile tile)
             {
                 var inst = new AIPathTileCached();
@@ -956,6 +966,7 @@ namespace TAC_AI.AI.Movement
                         if (!blockers.Contains(item))
                             blockers.Add(item);
                     }
+                    // REVISED: prunes all null Objects (was TakeWhile, which stopped at the first non-null and left later nulls in).
                     Objects.RemoveWhere(x => x == null);
                     foreach (var item in Objects)
                     {
@@ -1147,6 +1158,7 @@ namespace TAC_AI.AI.Movement
                 }
                 if (ThrowException && BytesToNotLoaded(ref chunkByte))
                 {
+                    // REVISED: no longer zeroes chunkBytes[index] before throwing — the cached cell is kept rather than reset on the not-loaded throw.
                     throw new TileNotLoadedException("Tile at " + pos.TileCoord + " scenePos " + pos.ScenePosition + " is not loaded");
                 }
                 return chunkByte;

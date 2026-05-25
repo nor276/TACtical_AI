@@ -23,6 +23,7 @@ namespace TAC_AI
     // Previously an extension to RandomAdditions, TACtical AI is the AI branch of the mod.
     //   Featuring a simple to use, fully-fledged AI which adapts to its vehicle nearly instantly
     //   based on the parts attached to it, with minimal manual intervention.
+    /// REVISED (overview): init/deinit hardened — Init/DeInit cycle counters + 10s EmitHealthPulse diagnostic; PatchMod now idempotent per-batch (patchedBatches); DeInit now symmetrically restores vanilla settings (block-survival, fragility, pop limit) and unsubscribes events; MainOfficialInitIterate reordered (PatchMod runs mid-init, pop override + wiki moved in); SafeSaves hook failure now FatalError.
     public class KickStart
     {
         internal const string ModID = "Advanced AI";
@@ -76,6 +77,7 @@ namespace TAC_AI
         public static bool DoLogHealthPulse = false;
         public static bool DoLogOwnership = false;
         private static bool healthPulseScheduled = false;
+        // REVISED: NEW — 10s diagnostic pulse; always emits the spawn-attempt summary, and (when DoLogHealthPulse) logs helper/team/anchor counts.
         internal static void EmitHealthPulse()
         {
             try { World.ManEnemyWorld.EmitSpawnAttemptSummary(); } catch {  }
@@ -105,6 +107,7 @@ namespace TAC_AI
             }
         }// How many techs that can exist before giving up tech splitting?
         internal static int MaxEnemyBaseLimit = 3;  // How many different enemy team bases are allowed to exist in one instance
+        // REVISED: HQ limit raised from 1 to 24.
         internal static int MaxEnemyHQLimit = 24;    // How many HQs are allowed to exist in one instance
         /// <summary>
         /// Maker bases (excludes defenses)
@@ -156,6 +159,7 @@ namespace TAC_AI
                         if (tankInst.lastAIType != AITreeType.AITypes.Escort)
                             tankInst.WakeAIForChange(true);
                         tankInst.SetRTSState(true);
+                        // REVISED: requests a reasoned controller swap (PlayerAutopilot) instead of bluntly setting MovementAIControllerDirty.
                         tankInst.RequestMovementControllerSwap(TankAIHelper.MovementSwapReason.PlayerAutopilot);
                     }
                 }
@@ -170,6 +174,7 @@ namespace TAC_AI
         /// For handing Directors
         /// </summary>
         public static int AIDodgeCheapness = 20;
+        // REVISED: NEW config tunable — period (seconds) of the combat circle/face duty cycle; combat alternates between circling and facing proportional to turret fraction.
         public static float CombatFacingCyclePeriod = 4f;
         public static int AIPopMaxLimit = 8;
         public static bool MuteNonPlayerRacket = true;
@@ -278,6 +283,7 @@ namespace TAC_AI
         internal static bool isControlBlocksPresent = false;
         internal static bool isTweakTechPresent = false;
         internal static bool isWeaponAimModPresent = false;
+        // REVISED: NEW — Circle attack mode (which needs target leading) is only forced continuous when TweakTech or WeaponAimMod is present.
         internal static bool ShouldForceContinuousStrafe() => isTweakTechPresent || isWeaponAimModPresent;
         internal static bool isBlockInjectorPresent = false;
         internal static bool isPopInjectorPresent = false;
@@ -304,6 +310,7 @@ namespace TAC_AI
 #else
         public static int difficulty = 50;
 #endif
+        // REVISED: NEW difficulty bounds — ApplyDifficulty clamps to the floor only (no upper cap enforced); slider runs to 1500.
         public const int DifficultyMin = -50;
         public const int DifficultyMax = 1500;
 
@@ -499,6 +506,7 @@ namespace TAC_AI
             return true;
         }
 
+        // REVISED: NEW per-batch patch guard — each batch is tracked in patchedBatches so a retry after a partial-patch failure won't double-patch already-applied batches.
         private static HashSet<Type> patchedBatches = new HashSet<Type>();
         private static void PatchBatchOnce(Type batch)
         {
@@ -543,6 +551,7 @@ namespace TAC_AI
                 ManSafeSaves.RegisterSaveSystem(assemble, OnSaveManagers, OnLoadManagers);
                 HasHookedUpToSafeSaves = true;
             }
+            // REVISED: SafeSaves hook failure now logs the exception and raises FatalError (was a plain ErrorReport).
             catch (Exception e)
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": Error on RegisterSaveSystem: " + e);
@@ -645,6 +654,7 @@ namespace TAC_AI
         }
 
 #if STEAM
+        // REVISED: boot sequence reordered/hardened — failed VALIDATE_MODS now yield breaks (was falling through); LegModExt.InsurePatches added; PatchMod moved up to mid-init (after GUINPTInteraction, before RefreshDelays); OverrideEnemyMax (gated on !PopInjector), AIWiki warmup/InitWiki, and the BlocksPostChangeEvent->AfterBlocksLoaded subscription folded in.
         public static IEnumerable<float> MainOfficialInitIterate()
         {
             //Where the fun begins
@@ -750,6 +760,7 @@ namespace TAC_AI
             if (launched)
                 return;
             launched = true;
+            // REVISED: bumps the init lifecycle counter and schedules the 10s EmitHealthPulse repeat (once).
             initCycleCount++;
             DebugTAC_AI.Log("[TAC_AI:Lifecycle] Init #" + initCycleCount
                 + " (DeInit cycles seen: " + deInitCycleCount + ")");
@@ -818,6 +829,7 @@ namespace TAC_AI
             float timeStart = Time.realtimeSinceStartup;
             DebugTAC_AI.Log(KickStart.ModID + ": Doing mod DeInit. Garbage Cleanup... current " + GC.GetTotalMemory(false));
             EnableBetterAI = false;
+            // REVISED: DeInit now clears the launched guard, unsubscribes the BlocksPostChangeEvent handlers, and cancels the EmitHealthPulse repeat so re-init starts clean.
             launched = false;
 
             try
@@ -840,6 +852,7 @@ namespace TAC_AI
             DebugTAC_AI.Log("[TAC_AI:Lifecycle] DeInit #" + deInitCycleCount
                 + " (Init cycles seen: " + initCycleCount + ")");
 
+            // REVISED: NEW symmetric restore — puts vanilla block-survival chance, enemy fragility and the pop limit back to their saved defaults, then clears the popup cache.
             try
             {
                 if (Globals.inst != null)
@@ -898,6 +911,7 @@ namespace TAC_AI
             }
 
             // DE-INIT ALL
+            // REVISED: teardown order changed — GUINPTInteraction now torn down first and ManBaseTeams last; the AIEPathMapper.DepoolUnusedTiles call was dropped.
             GUINPTInteraction.DeInit();
             SpecialAISpawner.DeInit();
             ManEnemyWorld.DeInit();
@@ -942,6 +956,7 @@ namespace TAC_AI
                 }
                 PatchMod();
                 HookToSafeSaves();
+                // REVISED: TTMM init path brought in line with the Steam path — added LegModExt.InsurePatches, ManBaseTeams/InitSharedMenu/SpecialAISpawner/GUINPTInteraction init; uses RLoadedBases.BaseFunderManager (was RBases) and drops the old GUIEvictionNotice.Initiate.
                 LegModExt.InsurePatches();
 
                 ManBaseTeams.Initiate();
@@ -1016,6 +1031,7 @@ namespace TAC_AI
         }
 
         internal static FieldInfo limitBreak = typeof(ManPop).GetField("m_PopulationLimit", BindingFlags.NonPublic | BindingFlags.Instance);
+        // REVISED: FatalErrors if the reflection field is missing, stashes the vanilla pop limit into SavedDefaultPopulationLimit (for DeInit restore) before overriding, and logs on failure instead of swallowing.
         public static void OverrideEnemyMax()
         {
             if (limitBreak == null)

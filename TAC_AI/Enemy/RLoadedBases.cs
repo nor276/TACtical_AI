@@ -11,6 +11,10 @@ using TAC_AI.AI.Movement;
 namespace TAC_AI.AI.Enemy
 {
 
+    /// REVISED (overview): InsureHarvester now per-team rate-limited (lastHarvesterBuildTime), aborts when all template cascades
+    /// fall back to Hoarder, and now actually charges the build cost (TryMakePurchase). IterateTeamBaseFunders switched from
+    /// TakeWhile to Where so non-contiguous team funders are no longer truncated. HasTooMuchOfType's low-resource HasReceivers
+    /// case now blocks the build. MP per-base profit math is now float-accurate.
     public static class RLoadedBases
     {
         internal static int MaxSingleBaseType { get { return KickStart.MaxBasesPerTeam / 3; } }
@@ -21,6 +25,7 @@ namespace TAC_AI.AI.Enemy
 
         internal static StringBuilder SB = new StringBuilder();
 
+        // REVISED: per-team cooldown stamp for InsureHarvester so a team doesn't rapid-fire harvester builds
         private static readonly Dictionary<int, float> lastHarvesterBuildTime = new Dictionary<int, float>();
 
         public static int TeamActiveMobileTechCount(int Team)
@@ -78,6 +83,8 @@ namespace TAC_AI.AI.Enemy
             return null;
         }
         public static Func<int,int> GetTeamFunds => ManBaseTeams.GetTeamMoney;
+        // REVISED: Where (was TakeWhile) - now yields ALL matching team funders rather than stopping at the first list
+        // entry that fails the predicate, so funders sitting after an off-team/empty base are no longer dropped.
         public static IEnumerable<EnemyBaseFunder> IterateTeamBaseFunders(int Team) =>
             AllEnemyBases.Where(delegate (EnemyBaseFunder cand) { return cand.Team == Team && cand._tank.blockman.blockCount > 0; });
         public static int GetAllTeamsEnemyHQCount()
@@ -133,6 +140,8 @@ namespace TAC_AI.AI.Enemy
             }
             else if (purpose == BasePurpose.HasReceivers && FetchNearbyResourceCounts(Team) < AIGlobals.MinResourcesReqToCollect)
             {
+                // REVISED: now returns true (blocks the build) when there aren't enough mineables - was false, which let
+                // receiver bases be built with nothing to harvest
                 thisIsTrue = true;
                 DebugTAC_AI.Log(KickStart.ModID + ": HasTooMuchOfType - Team " + Team + " Does not have enough mineables in range to build Reciever bases.");
             }
@@ -1110,6 +1119,8 @@ namespace TAC_AI.AI.Enemy
                         int addBucks = 0;
                         foreach (var item in IterateTeamBaseFunders(mind.Tank.Team))
                         {
+                            // REVISED: float division (40f / AIClockPeriod) then cast to int - was integer division that
+                            // truncated to 0 whenever AIClockPeriod > 40, zeroing out the per-base profit
                             addBucks += (int)(AIGlobals.MPEachBaseProfits * (40f / KickStart.AIClockPeriod));
                         }
                         if (addBucks > 0)
@@ -1571,6 +1582,7 @@ namespace TAC_AI.AI.Enemy
         {   // Make sure at least one harvester is on scene
             try
             {
+                // REVISED: per-team rate limit - skip if this team built a harvester within the last DelayBetweenBuilding*2
                 if (lastHarvesterBuildTime.TryGetValue(funds.Team, out float lastTime)
                     && Time.time - lastTime < AIGlobals.DelayBetweenBuilding * 2f)
                     return false;
@@ -1607,11 +1619,14 @@ namespace TAC_AI.AI.Enemy
                                 SBT = RawTechLoader.GetEnemyBaseType(FactionSubTypes.GSO, lvl, new HashSet<BasePurpose> { BasePurpose.Harvesting, BasePurpose.NotStationary }, BaseTerrain.AnyNonSea, maxPrice: funds.BuildBucks);
                             }
                         }
+                        // REVISED: abort if every faction/vanilla/GSO cascade still resolved to a Fallback template (would
+                        // otherwise spawn an unwanted Hoarder); previously the fragment was spawned unconditionally
                         if (RawTechLoader.IsFallback(SBT))
                         {
                             DebugTAC_AI.Log(KickStart.ModID + ": InsureHarvester - All cascades resolved to Fallback (would be Hoarder); aborting.");
                             return false;
                         }
+                        // REVISED: now charges the build cost (TryMakePurchase) and stamps the per-team cooldown after spawning
                         var template = RawTechLoader.GetBaseTemplate(SBT);
                         RawTechLoader.SpawnTechFragment(pos, funds.Team, template);
                         funds.TryMakePurchase(template.baseCost);

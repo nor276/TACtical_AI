@@ -16,6 +16,10 @@ namespace TAC_AI.AI
     /// <summary>
     /// This AI either runs normally in Singleplayer, or on the Server in Multiplayer
     /// </summary>
+    /// REVISED (overview): AttackEnemy renamed WantsToFight; combat Circle stop-and-shoot replaced by the TurretFraction duty cycle (CombatWantsCircleNow).
+    /// REVISED (overview): MovementController swaps now route through RequestMovementControllerSwap/SwapMovementController and MovementDispatch container kinds.
+    /// REVISED (overview): DetermineCombat split into retreat-only DetermineRetreatPosture(Enemy); target ownership centralized in SetPursuit/TrySetPursuit/ReleaseTarget with range/LOS-grace hysteresis.
+    /// REVISED (overview): tick-counter fields (DelayedAnchorClock/unanchorCountdown/actionPause/lightBoost) migrated to seconds-based AITimer shims; CheckRebuildAlignment refactored into DispatchAlignment + Apply*Alignment by MpRole.
     public class TankAIHelper : MonoBehaviour, IWorldTreadmill
     {
 
@@ -36,6 +40,7 @@ namespace TAC_AI.AI
             }
         }
         private AIDriverType driveType = AIDriverType.AutoSet;
+        // REVISED: AutoSet with a built tank now resolves the driver immediately via ExecuteAutoSetNoCalibrate instead of storing AutoSet verbatim; controller swap routed through RequestMovementControllerSwap.
         public void SetDriverType(AIDriverType driverType)
         {
             if (driverType == AIDriverType.AutoSet && tank != null && tank.blockman != null && tank.blockman.blockCount > 0)
@@ -44,6 +49,7 @@ namespace TAC_AI.AI
                 DriverType = driverType;
             RequestMovementControllerSwap(MovementSwapReason.SetDriverType);
         }
+        // REVISED: replaces the bare `MovementAIControllerDirty = true` writes everywhere; records the reason + appends to state history so controller swaps are traceable.
         internal enum MovementSwapReason
         {
             SetDriverType, Subscribe, Recycled, RemoteAIType, ReValidate, AlignmentReset,
@@ -68,8 +74,9 @@ namespace TAC_AI.AI
         public AIType DediAI = AIType.Escort;
         /// <summary> How to attack the enemy </summary>
         public EAttackMode AttackMode = EAttackMode.Circle; // How to attack the enemy
+        // REVISED: TurretFraction = wide-gimbal-turret share of weapons (0 all front-fixed, 1 all turreted), set in (R/E)WeapSetup.GetAttackStrat; drives the combat circle/face duty cycle.
         public float TurretFraction = 0f;
-        private float combatCyclePhase01 = -1f;
+        private float combatCyclePhase01 = -1f;  // per-tech random phase offset so neighbours desync their circle/face windows
         private AlliedOperationsController _OpsController;
         internal AlliedOperationsController OpsController
         {
@@ -117,17 +124,20 @@ namespace TAC_AI.AI
         public bool Allied => AIAlign == AIAlignment.Player;
         public bool IsPlayerControlled => AIAlign == AIAlignment.PlayerNoAI || AIAlign == AIAlignment.Player;
         public bool ActuallyWorks => hasAI || tank.PlayerFocused;
+        // REVISED: SetToActive now also requires lastAITypeResolved (set once TryGetCurrentAIType succeeds) so the AI stays suspended until its vanilla AI type is known, instead of treating an unresolved tech as active.
         internal bool lastAITypeResolved = false;
         public bool SetToActive => lastAITypeResolved && lastAIType != AITreeType.AITypes.Idle;
         public bool AITypeUnresolved => !lastAITypeResolved;
         public bool IsRTSReceivable => !IsMultiTech;
         private int consecutiveNullMovementControllerTicks;
+        // REVISED: AIAlign is latched at OnPreUpdate and read as TickAIAlign through the tick, so an alignment switch mid-tick cannot make Directors/Operations branch inconsistently.
         private AIAlignment tickAIAlign = AIAlignment.Static;
         private bool tickAlignmentLatched = false;
         internal AIAlignment TickAIAlign => tickAlignmentLatched ? tickAIAlign : AIAlign;
         public bool NotInBeam => BeamTimeoutClock == 0;
         public bool CanCopyControls => !IsMultiTech || tank.PlayerFocused;
         public bool CanUseBuildBeam => !(tank.IsAnchored && !PlayerAllowAutoAnchoring);
+        // REVISED: gained the `unanchorCountdown <= 0` term so a tech that just unanchored cannot immediately re-auto-anchor during the unanchor warn window.
         public bool CanAutoAnchor => AutoAnchor && PlayerAllowAutoAnchoring && !WantsToFight && tank.Anchors.NumPossibleAnchors > 0
             && tank.Anchors.NumIsAnchored == 0 && DelayedAnchorClock >= AIGlobals.BaseAnchorMinimumTimeDelay
             && unanchorCountdown <= 0 && CanAnchorNow;
@@ -168,6 +178,8 @@ namespace TAC_AI.AI
         /// <summary> Should the AI circle the enemy? </summary>
         public bool SideToThreat => Allied ? (AISetSettings.SideToThreat && AILimitSettings.SideToThreat) : AISetSettings.SideToThreat;
 
+        // REVISED: new turret-fraction duty cycle. Returns true (circle) for ~TurretFraction of each KickStart.CombatFacingCyclePeriod, else false (face).
+        // Replaces the old ActionPause>120 stop-and-shoot gate in the combat Circle bucket; read by RWheeled Circle + allied LandAICore.
         public bool CombatWantsCircleNow()
         {
             float frac = Mathf.Clamp01(TurretFraction);
@@ -293,7 +305,9 @@ namespace TAC_AI.AI
         }
         public bool NeedsLineOfSight => WeaponAimType == AIWeaponType.Direct;
         public bool BlockedLineOfSight = false;
+        // REVISED: BlockedLineOfSight is now debounced - it only flips true after LosBlockedStreakThreshold consecutive blocked LOS checks (counter below), to stop strafe/stand flicker.
         private int _losBlockedStreak = 0;
+        // REVISED: combat-bucket hysteresis flag - set while retreating in the Ranged bucket; read by AvoidAssist* to suppress sideways re-targeting so the retreat vector wins.
         public bool WasRetreatingInCombat = false;
         internal bool beEvilRegenAttempted = false;
 
@@ -355,6 +369,7 @@ namespace TAC_AI.AI
         internal float lastAuxVal = 0;
         public Visible lastPlayer;
         public Visible lastEnemyGet { get => lastEnemy; }
+        // REVISED: lastEnemy is now a property; clearing it to null also drops KeepEnemyFocus so the target lock cannot outlive its target.
         private Visible _lastEnemy = null;
         internal Visible lastEnemy
         {
@@ -371,6 +386,7 @@ namespace TAC_AI.AI
             }
         }
         public bool RTSManualTargetLock => RTSControlled && RTSDestInternal == RTSDisabled;
+        // REVISED: PreserveEnemyTarget now also true while KeepEnemyFocus is held (not just RTS manual lock), so a SetPursuit-locked target survives range hysteresis.
         public bool PreserveEnemyTarget => RTSManualTargetLock || KeepEnemyFocus;
         public Visible lastLockOnTarget;
         public Transform Obst;
@@ -397,6 +413,7 @@ namespace TAC_AI.AI
                 _theResource = value;
             }
         }
+        // REVISED: new dedicated objective slots split out from the overloaded theResource (host MT tech, guarded ally, resource node).
         internal Visible theResourceNode = null;
         internal Visible theHostTech = null;
         internal Visible theGuardedAlly = null;
@@ -435,6 +452,8 @@ namespace TAC_AI.AI
         internal Vector3 PathPoint => MovementController.PathPoint;
 
         //Timestep
+        // REVISED: the old framerate/MP-dependent tick counters (DelayedAnchorClock, unanchorCountdown, actionPause, LightBoostFeatheringClock) are now seconds-based shims over AITimer.
+        // Legacy int set-values are interpreted at fixed ticks-per-second (Anchor=5, ActionPause=500) and the timers self-count via Time.time, so the old `++`/`--`/`-=AIClockPeriod` steps are gone and durations are SP=MP invariant.
         internal const float AnchorTicksPerSecond = 5f;
         private float anchorRestStart = -1f;
         internal int DelayedAnchorClock
@@ -474,6 +493,7 @@ namespace TAC_AI.AI
         //  Direction to point while heading to the target
         //  Driving direction in relation to driving to the target
         private EControlOperatorSet ControlOperator = EControlOperatorSet.Default;
+        // REVISED: ControlOperator now stamps the frame it was last set (SetDirectedControl / MarkOperatorDirty) so UpdateTechControl can detect and warn when the Operations->Maintainer handoff goes stale.
         private int controlOperatorSetTick = 0;
         internal int ControlOperatorAgeFrames => Time.frameCount - controlOperatorSetTick;
         internal bool IsControlOperatorStale =>
@@ -491,6 +511,7 @@ namespace TAC_AI.AI
         }
         internal bool IsDirectedMoving => ControlOperator.DriveDest != EDriveDest.None;
         internal bool IsDirectedMovingToDest => ControlOperator.DriveDest > EDriveDest.FromLastDestination;
+        // REVISED: now keys purely on DriveDest==FromLastDestination; dropped the extra `ForceSpeed && DriveVar<-0.01` reverse-detection term.
         internal bool IsDirectedMovingFromDest => ControlOperator.DriveDest == EDriveDest.FromLastDestination;
 
         /// <summary> Drive direction </summary>
@@ -508,6 +529,7 @@ namespace TAC_AI.AI
         }
         public void SetCoreControl(EControlCoreSet cont)
         {
+            // REVISED: rejects a NaN lastDestination, falling back to Default rather than poisoning the core control with NaN.
             if (cont.lastDestination.IsNaN())
             {
                 DebugTAC_AI.Exception("SetCoreControl - cont.lastDestination was NaN; falling back to Default");
@@ -636,6 +658,7 @@ namespace TAC_AI.AI
             }
             set
             {
+                // REVISED: RTSDestInternal is now computed BEFORE the network broadcast (was after), so the air/ground-offset-corrected value is what gets broadcast and saved.
                 if (value == RTSDisabled)
                     RTSDestInternal = RTSDisabled;
                 else if (DriverType == AIDriverType.Astronaut || DriverType == AIDriverType.Pilot)
@@ -678,6 +701,7 @@ namespace TAC_AI.AI
 
         internal void DirectRTSDest(Vector3 Pos)
         {
+            // REVISED: a MultiTech member now forwards the RTS destination to its host tech's helper instead of setting its own.
             if (IsMultiTech && theHostTech != null && theHostTech.tank != null)
             {
                 theHostTech.tank.GetHelperInsured().DirectRTSDest(Pos);
@@ -739,6 +763,7 @@ namespace TAC_AI.AI
                 return this;
             }
             tank = GetComponent<Tank>();
+            // REVISED: Subscribe now bails (and self-destructs) if there is no Tank component, instead of NRE-ing later; AILimitSettings construction also moved after this guard.
             if (tank == null)
             {
                 DebugTAC_AI.LogError(KickStart.ModID + ": TankAIHelper.Subscribe - attached to GameObject '"
@@ -762,6 +787,7 @@ namespace TAC_AI.AI
         }
         public void DelayedSubscribe()
         {
+            // REVISED: now retries (up to MaxDelayedSubscribeRetries) when the blockman is not yet ready instead of running once and swallowing all exceptions; dirtyAI/dirtyExtents set in a finally so they always fire.
             if (this == null || tank == null || tank.blockman == null)
             {
                 if (++delayedSubscribeRetries <= MaxDelayedSubscribeRetries && tank != null && enabled)
@@ -811,6 +837,7 @@ namespace TAC_AI.AI
             EstTopSped = 1;
             PendingHeightCheck = true;
             dirtyExtents = true;
+            // REVISED: block attach now invalidates WeaponAimType (re-detect aim type) and, for enemies, forces DirtyAndReboot (full AI regen) rather than a plain Dirty; player techs flag PendingPlayerRecompose for driver re-evaluation.
             WeaponAimType = AIWeaponType.Unknown;
             dirtyAI = AIAlign == AIAlignment.NonPlayer ? AIDirtyState.DirtyAndReboot : AIDirtyState.Dirty;
             if (AIAlign == AIAlignment.Player)
@@ -838,6 +865,7 @@ namespace TAC_AI.AI
             PendingHeightCheck = true;
             PendingDamageCheck = true;
             dirtyExtents = true;
+            // REVISED: same as attach - detach now resets WeaponAimType, reboots enemy AI (DirtyAndReboot), and flags player recompose.
             WeaponAimType = AIWeaponType.Unknown;
             if (AIAlign == AIAlignment.NonPlayer)
                 dirtyAI = AIDirtyState.DirtyAndReboot;
@@ -854,6 +882,7 @@ namespace TAC_AI.AI
         }
         internal void Recycled()
         {
+            // REVISED: recycle now cancels any pending DelayedSubscribe and unsubscribes the treadmill + damage-event listeners, preventing orphaned callbacks on a recycled helper.
             CancelInvoke(nameof(DelayedSubscribe));
             delayedSubscribeRetries = 0;
             beEvilRegenAttempted = false;
@@ -882,6 +911,7 @@ namespace TAC_AI.AI
             enabled = false;
         }
 
+        // REVISED: new lifecycle hook - re-enabling the helper marks the ControlOperator dirty so its age/staleness is reset and it is not treated as stale on the first tick back.
         private void OnEnable() => MarkOperatorDirty();
 
         public void SetRTSState(bool RTSEnabled)
@@ -933,6 +963,7 @@ namespace TAC_AI.AI
                             TryInsureManualAnchor();
                             PlayerAllowAutoAnchoring = false;
                         }
+                        // REVISED: now goes through SetDriverType (resolves AutoSet, requests a swap) instead of assigning DriverType directly.
                         SetDriverType(driver);
                     }
                     RequestMovementControllerSwap(MovementSwapReason.RemoteAIType);
@@ -972,6 +1003,7 @@ namespace TAC_AI.AI
             }
 
             AIList.Clear();
+            // REVISED: builds AIList by iterating ModuleAIExtension components directly, instead of iterating ModuleAIBot blocks and fetching their AIExtension sibling.
             foreach (ModuleAIExtension AIE in tank.blockman.IterateBlockComponents<ModuleAIExtension>())
             {
                 if (AIE.IsNotNull())
@@ -1102,6 +1134,7 @@ namespace TAC_AI.AI
             catch (Exception eEvtSub) { DebugTAC_AI.LogWarnPlayerOnce("[TAC_AI:catch:Player] block-event subscribe", eEvtSub); }
             AIEBases.SetupTechAutoConstruction(this);
         }
+        // REVISED: new helpers. A neutral tech running a vanilla Flee/Specific/FacePlayer tree is left to vanilla: RunState is dropped to Default and alignment forced Static so this mod stops driving it.
         private static bool NeutralTechHasOwnVanillaAI(Tank t)
         {
             if (t == null || t.AI == null) return false;
@@ -1139,6 +1172,7 @@ namespace TAC_AI.AI
             Provoked = 0;
             ActionPause = 0;
             KeepEnemyFocus = false;
+            // REVISED: alignment reset now also clears the LOS-lost grace timer and the per-source damage accumulator (and uses ReleaseTarget/SettleDown below) so combat-focus state does not survive an alignment switch.
             _losLostGraceTimer = 0f;
             ResetDamageAccumulator();
             MultiTechsAffiliated.Clear();
@@ -1203,6 +1237,7 @@ namespace TAC_AI.AI
 
         }
 
+        // REVISED: single generic swap helper replacing the duplicated null-out/Recycle/GetOrAddComponent blocks in every Recal* path; reuses the existing controller if it is already the right type, else recycles the old one after building the new.
         private T SwapMovementController<T>(EnemyMind mind) where T : Component, IMovementAIController
         {
             if (MovementController is T existing)
@@ -1226,6 +1261,8 @@ namespace TAC_AI.AI
             LogMovementControllerSwapIfChanged();
         }
 
+        // REVISED: controller selection now keyed on MovementDispatch.ContainerForEnemy(EvilCommander) (Static/Air/Default) instead of explicit EnemyHandling checks (Stationary, Chopper/Airplane).
+        // REVISED: a flying enemy whose air controller reports Grounded (no longer flightworthy) is demoted via BlockSetEnemyHandling/Wheeled rather than being kept airborne; null EnemyMind now self-heals to Default instead of throwing.
         private bool RecalMoveAIControllerNPT(EnemyMind enemy)
         {
             if (enemy.IsNotNull())
@@ -1263,6 +1300,7 @@ namespace TAC_AI.AI
                 return true;
             }
         }
+        // REVISED: keyed on MovementDispatch.ContainerForPlayer(DriverType) instead of explicit Stationary/Pilot checks; a grounded (non-flightworthy) Pilot tech is demoted to Tank rather than kept on air controls.
         private bool RecalMoveAIControllerPlayer()
         {
             if (MovementDispatch.ContainerForPlayer(DriverType) == MovementContainerKind.Static && AnchorState != AIAnchorState.Unanchor)
@@ -1305,6 +1343,7 @@ namespace TAC_AI.AI
             {
                 UsingAirControls = false;
                 var enemy = gameObject.GetComponent<EnemyMind>();
+                // REVISED: a NonPlayer tech missing its EnemyMind now self-heals (client demotes to Static+dirty; host regenerates the enemy AI) instead of the controller swap throwing on the missing mind.
                 if (AIAlign == AIAlignment.NonPlayer && enemy.IsNull())
                 {
                     DebugTAC_AI.LogWarnPlayerOnce(KickStart.ModID +
@@ -1377,6 +1416,7 @@ namespace TAC_AI.AI
             DebugTAC_AI.Log(KickStart.ModID + ": ExecuteAutoSetNoCalibrate() " + tank.name + " guessing driver is " + DriverType);
         }
 
+        // REVISED: new player-recompose pass. When blocks were added/removed (PendingPlayerRecompose), re-derives the driver type; only requests a controller swap if the driver actually changed (or it is still on air controls).
         private bool PendingPlayerRecompose = false;
         private void ReevaluatePlayerMovementIfNeeded()
         {
@@ -1412,6 +1452,8 @@ namespace TAC_AI.AI
                 { LocalisationEnums.Languages.Japanese, "基地が攻撃を受けている！"},
             });
 
+        // REVISED: OnHit now also trips on CUMULATIVE damage from one source (AccumulateAndCheckThreat / decaying per-source buckets), not just a single hit over DamageAlertThreshold; small sustained chip damage now provokes.
+        // REVISED: Provoked/FIRE_ALL/cache-invalidate are set first regardless of source liveness, then SetPursuit(force:true) is attempted only if the source is still alive (was nested entirely inside a SetPursuit gate before).
         internal void OnHit(ManDamage.DamageInfo dingus)
         {
             bool tripped = dingus.Damage > AIGlobals.DamageAlertThreshold;
@@ -1497,6 +1539,7 @@ namespace TAC_AI.AI
             }
             RequestMovementControllerSwap(MovementSwapReason.SwitchAI);
 
+            // REVISED: switching AI now also fully settles movement, releases the target, clears WeaponDelayClock, and zeroes the MultiTech offset/mimic state so leftover MT state cannot bleed into the new role.
             SettleDown();
             ReleaseTarget();
             WantsToFight = false;
@@ -1511,6 +1554,7 @@ namespace TAC_AI.AI
         {
             tank.AI.SetBehaviorType(type);
         }
+        // REVISED: ForceAllAIsToEscort no longer hardcodes vanilla Escort; stationary/turret/anchored techs now map to vanilla Idle (Escort only for mobile roles) so anchored techs do not get a movement AI tree.
         private AITreeType.AITypes ChooseAppropriateVanillaAIType()
         {
             bool stationary = DediAI == AIType.MTStatic
@@ -2459,6 +2503,7 @@ namespace TAC_AI.AI
 
             return (energy.storageTotal - energy.spareCapacity) / energy.storageTotal;
         }
+        // REVISED: ground IsTechMoving* now also counts yaw (angularVelocity.y > AngularProgressThreshold) as moving, so a tech pivoting in place is not treated as stuck. IsTechMovingSigned was removed.
         public bool IsTechMovingAbs(float minSpeed)
         {
             if (tank.rbody.IsNull())
@@ -2510,6 +2555,7 @@ namespace TAC_AI.AI
             }
             return false;
         }
+        // REVISED: now null-guards tank/network/playerTank throughout and returns null (clearing lastPlayer) on failure, instead of returning the stale lastPlayer; SP path returns the live player tank's visible directly.
         public Visible GetPlayerTech()
         {
             if (tank == null)
@@ -2595,6 +2641,8 @@ namespace TAC_AI.AI
             return isTrue;
         }
 
+        // REVISED: renamed from ControlTech; this is the per-frame movement bridge invoked by the ExecuteControl Harmony prefix.
+        // REVISED: the AIControlOverride early-returns are now inverted (return true when the override returns false), so the override's return value gates correctly.
         public bool RunMovementBridge(TankControl thisControl)
         {
             if (ManNetwork.IsNetworked)
@@ -2705,6 +2753,7 @@ namespace TAC_AI.AI
                 return;
             CurHeight = -500;
 
+            // REVISED: a null MovementController now triggers a recalibrate-and-retry (and a throttled file-only warning, escalating at 30 ticks) instead of just logging; the tech skips driving this tick rather than NRE-ing.
             if (MovementController is null)
             {
                 RecalibrateMovementAIController();
@@ -2807,6 +2856,7 @@ namespace TAC_AI.AI
             BoltsFired = false;
             Attempt3DNavi = false;
 
+            // REVISED: target focus/Provoke decay (UpdateTargetCombatFocus) now runs once up-front for ALL allied techs, including PlayerFocused ones (was only on the non-PlayerFocused branch); the per-tick ActionPause decrement moved out to OnPreUpdate.
             UpdateTargetCombatFocus();
 
             if (tank.PlayerFocused)
@@ -2839,6 +2889,7 @@ namespace TAC_AI.AI
                 }
                 return;
             }
+            // REVISED: a failed TryGetCurrentAIType now clears lastAITypeResolved (so SetToActive stays false and the tech is suspended) instead of silently falling through with a stale Idle.
             if (!aI.TryGetCurrentAIType(out lastAIType))
             {
                 if (lastAITypeResolved)
@@ -2866,6 +2917,7 @@ namespace TAC_AI.AI
                     OpsController.Execute();
             }
         }
+        // REVISED: the per-tick `ActionPause -= AIClockPeriod` decrement was removed here (it is now seconds-based and self-counts); only the retreat posture is computed before BeEvil(Light).
         private void RunEnemyOperations(bool light = false)
         {
             DetermineRetreatPostureEnemy();
@@ -3121,6 +3173,7 @@ namespace TAC_AI.AI
                 DebugTAC_AI.Assert(MovementController == null, "MOVEMENT CONTROLLER IS NULL");
                 RecalibrateMovementAIController();
             }
+            // REVISED: signed speed now kept (recentSpeedSigned) alongside the clamped recentSpeed, and EstTopSped is tracked here every Pre frame (was scattered per-branch in the Operations phase).
             recentSpeedSigned = GetSpeed();
             recentSpeed = recentSpeedSigned;
             if (recentSpeed < 1)
@@ -3129,6 +3182,7 @@ namespace TAC_AI.AI
                 EstTopSped = recentSpeed;
             UpdateLastTechExtentsIfNeeded();
             CheckRebuildAlignment();
+            // REVISED: AIAlign is latched into tickAIAlign for the rest of the tick (TickAIAlign), so Directors/Operations see a consistent alignment even if it changes mid-tick.
             tickAIAlign = AIAlign;
             tickAlignmentLatched = true;
             UpdateCollectors();
@@ -3141,6 +3195,7 @@ namespace TAC_AI.AI
             RunPostOps();
             ShowCollisionAvoidenceDebugThisFrame();
         }
+        // REVISED: the global `updateErrored` latch (which permanently muted ALL further critical-error warnings after the first one anywhere) was removed; each tick method now logs via per-tank-keyed LogWarnPlayerOncePerKey so errors keep being reported per tech. The Operations error no longer rethrows.
         private static List<Tank> TempMultiTechRecalibrate = new List<Tank>();
         private void UpdateLastTechExtentsIfNeeded()
         {
@@ -3237,6 +3292,7 @@ namespace TAC_AI.AI
                 }
                 switch (TickAIAlign)
                 {
+                    // REVISED: unjam paths (here and the NonPlayer cases below) now MarkOperatorDirty after TryHandleObstruction so the freshly-written ControlOperator is not flagged stale; per-branch EstTopSped tracking removed (moved to OnPreUpdate).
                     case AIAlignment.Player:
                         if (!OverrideControl)
                             CheckEnemyAndAiming();
@@ -3317,6 +3373,7 @@ namespace TAC_AI.AI
                     break;
             }
         }
+        // REVISED: client operations now actually runs RunStaticOperations for Static techs (was a no-op that only cached EstTopSped); wrapped in try/catch with throttled logging. Player/NonPlayer no longer do per-tick work here.
         internal void OnUpdateClientAIOperations()
         {
             try
@@ -3346,8 +3403,10 @@ namespace TAC_AI.AI
             dirtyAI = rebootSameAIAlign ? AIDirtyState.DirtyAndReboot : AIDirtyState.Dirty;
             CheckRebuildAlignment();
         }
+        // REVISED: the old SP-host vs NonHostClient code was duplicated top-to-bottom; the three cases now collapse into one MpRole enum threaded through DispatchAlignment + the per-alignment Apply* helpers (client-only steps gated by role != MpClient).
         private enum MpRole { SpHost, MpHost, MpClient }
 
+        // REVISED: early-returns when not dirty (inverted guard), now bumps RunState Default->Advanced on rebuild, and routes through DispatchAlignment; the whole body is wrapped in one try/catch with throttled logging.
         private void CheckRebuildAlignment()
         {
             if (tank.blockman.blockCount == 0)
@@ -3387,6 +3446,7 @@ namespace TAC_AI.AI
             }
         }
 
+        // REVISED: new alignment dispatcher (Player/PlayerNoAI/NonPlayer/Static). New branch: a neutral tech that already has its own vanilla AI tree (Flee/Specific/FacePlayer) is handed off to vanilla via HandOffToVanillaForNeutral instead of being forced Static.
         private void DispatchAlignment(bool rebootSame, MpRole role)
         {
             if (ManSpawn.IsPlayerTeam(tank.Team))
@@ -3557,6 +3617,7 @@ namespace TAC_AI.AI
         }
 
         internal static List<KeyValuePair<Vector3, float>> posWeights = new List<KeyValuePair<Vector3, float>>();
+        // REVISED: all AvoidAssist* variants now early-out (return targetIn unmodified) while WasRetreatingInCombat, so ally-spacing/scenery dodge does not fight the combat-FSM retreat vector. The obsolete AvoidAssistInv_OBS variant was removed.
         internal Vector3 AvoidAssist(Vector3 targetIn, bool AvoidStatic = true)
         {
             if (!AvoidStuff || tank.IsAnchored)
@@ -3830,6 +3891,7 @@ namespace TAC_AI.AI
             {
                 Tank lastCloseAlly;
                 float lastAllyDist;
+                // REVISED: the dodge-sphere center no longer divides by Responsiveness; DSO is the raw DodgeSphereCenter (Responsiveness arg now unused for this offset).
                 Vector3 DSO = DodgeSphereCenter;
                 float moveSpace = (DSO - tank.boundsCentreWorldNoCheck).magnitude;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
@@ -3896,6 +3958,7 @@ namespace TAC_AI.AI
             SafeVelocity = Vector3.zero;
             LocalSafeVelocity = Vector3.zero;
         }
+        // REVISED: the AIClockPeriod/40 scale factor is now float division ((float)AIClockPeriod/40f); it was integer division that evaluated to 0 in both SP and MP, disabling the orbit check. IsOrbiting_LEGACY was removed.
         public bool IsOrbiting(float minimumCloseInSpeedSqr = AIGlobals.MinimumCloseInSpeedSqr)
         {
             return GetPathPointDeltaDistSq() * ((float)KickStart.AIClockPeriod / 40f) <
@@ -3981,6 +4044,7 @@ namespace TAC_AI.AI
             }
             return false;
         }
+        // REVISED: unjam FSM reworked - clears IsTryingToUnjam below UnjamUpdateStart; bails immediately on a Stop facing; soft-decays FrustrationMeter when the tech is actually making linear/angular progress; the UnjamUpdateEnd ceiling now calls SettleDown()+return (full reset) instead of pinning FrustrationMeter=45; the old `45 <` literal gate is now AIGlobals.UnjamUpdateFire.
         public void TryHandleObstruction(bool hasMessaged, float dist, bool useRush, bool useGun, ref EControlOperatorSet direct)
         {
             if (!hasMessaged)
@@ -4151,6 +4215,7 @@ namespace TAC_AI.AI
             }
             return ObstList.ElementAt(bestStep).trans;
         }
+        // REVISED: now also re-fetches the obstruction when the cached Obst has drifted out of 1.5x searchRad (was only re-fetched when null); the unconditional `FIRE_ALL = true` was removed.
         public void RemoveObstruction(float searchRad = 12)
         {
             float staleRadSqr = (searchRad * 1.5f) * (searchRad * 1.5f);
@@ -4162,6 +4227,7 @@ namespace TAC_AI.AI
                 Urgency += KickStart.AIClockPeriod / 5f;
             }
         }
+        // REVISED: SettleDown now does a full unjam reset - clears IsTryingToUnjam, ForceSetBeam, BeamTimeoutClock, FIRE_ALL, the Obsticle weapon state, and (unless stopCore=false) issues a Stop via SetCoreControlStop.
         public void SettleDown(bool stopCore = true)
         {
             UrgencyOverload = 0;
@@ -4178,6 +4244,7 @@ namespace TAC_AI.AI
             FIRE_ALL = false;
         }
 
+        // REVISED: small-tech auto-fire now also requires aimRadius>0 and a non-Obsticle aim state, so a tech aiming at an obstruction (or with no aim) does not blind-fire.
         internal void AimAndFireWeapons(Vector3 aimWorld, float aimRadius)
         {
             if (maxBlockCount < AIGlobals.SmolTechBlockThreshold && aimRadius > 0f
@@ -4188,6 +4255,7 @@ namespace TAC_AI.AI
         }
         internal void FireAllWeapons() => tank.control.FireControl = true;
         internal void MaxBoost() => tank.control.BoostControlJets = true;
+        // REVISED: MaxProps now sets BoostControlProps (was setting BoostControlJets, same as MaxBoost).
         internal void MaxProps() => tank.control.BoostControlProps = true;
 
         private static int TargetMask = Globals.inst.layerScenery.mask | Globals.inst.layerSceneryCoarse.mask |
@@ -4231,6 +4299,7 @@ namespace TAC_AI.AI
             }
         }
 
+        // REVISED: drops the lastSuppressedState cache; now keys off the actual tank.Weapons.enabled state and, when disabling, just clears FireControl instead of forcing an aim at the tech's own center.
         internal void SuppressFiring(bool Disable)
         {
             try
@@ -4248,6 +4317,8 @@ namespace TAC_AI.AI
                 DebugTAC_AI.LogWarnPlayerOnce("SuppressFiring() Critical error", e);
             }
         }
+        // REVISED: LOS is now debounced - it accumulates into _losBlockedStreak and only sets BlockedLineOfSight after LosBlockedStreakThreshold consecutive blocked checks; raycast distance is clamped to the target distance and skips when nearly coincident.
+        // REVISED: target drop now uses two-tier range hysteresis (hard cap MaxCombatRange*RTSLockMaxRangeMultiplier, soft cap *CombatRangeRetentionMult honoured only when not PreserveEnemyTarget) and goes through ReleaseTarget.
         private void CheckEnemyAndAiming()
         {
             if (LastWeapCheck < Time.time)
@@ -4300,6 +4371,8 @@ namespace TAC_AI.AI
                 }
             }
         }
+        // REVISED: adopting the player's manual target now validates team/teammate, degrades relations (DegradeRelations) when the player fires on a not-yet-enemy alterable team, and only locks pursuit (SetPursuit force) once the target is actually an enemy - instead of unconditionally setting lastEnemy to the player's target.
+        // REVISED: air-vs-ground branch keyed on AICore IsFixedWing instead of AIControllerAir.FlyStyle==Aircraft.
         public Visible TryRefreshEnemyAllied()
         {
             if ((bool)lastPlayer)
@@ -4334,6 +4407,7 @@ namespace TAC_AI.AI
                 lastEnemy = FindEnemy(false);
             return lastEnemy;
         }
+        // REVISED: dropped the unused `pos` ranked-target param (1st/2nd/3rd-closest selection removed downstream); air branch keyed on IsFixedWing.
         public Visible TryRefreshEnemyEnemy(bool InvertBullyPriority)
         {
             if (MovementController is AIControllerAir air && air.AICore is IAirMovementAICore aircore && aircore.IsFixedWing)
@@ -4344,6 +4418,7 @@ namespace TAC_AI.AI
                 lastEnemy = FindEnemy(InvertBullyPriority);
             return lastEnemy;
         }
+        // REVISED: rewritten as early-return cascade and now owns the Provoked decrement (Provoked-=AIClockPeriod moved here). Adds a LOS-lost grace window: while Provoke=0 and the held target's LOS is blocked, it holds for LOSLostGraceTime before EndPursuit, instead of dropping immediately - so a target behind brief cover is kept.
         private float _losLostGraceTimer = 0f;
         private void UpdateTargetCombatFocus()
         {
@@ -4391,6 +4466,7 @@ namespace TAC_AI.AI
             _lastCombatRange = float.MaxValue;
             return _lastCombatRange;
         }
+        // REVISED: renamed from DetermineCombat and now RETURNS the retreat verdict (callers do `Retreat = DetermineRetreatPosture()`) instead of writing Retreat as a side effect; it no longer acquires targets, only drops a now-friendly held target and decides retreat.
         private bool DetermineRetreatPosture()
         {
             if (lastEnemyGet?.tank)
@@ -4474,6 +4550,7 @@ namespace TAC_AI.AI
         }
 
         private float lastTargetGatherTime = 0;
+        // REVISED: target-scan cache is now range-aware (re-gathers if the requested range exceeds what was last cached) and refreshes faster in combat (TargetCacheRefreshIntervalCombat when Provoked/has-target vs idle TargetCacheRefreshInterval); InvalidateTargetCache forces a re-scan (called from OnHit).
         private float lastTargetGatherRangeSqr = 0;
         private List<Tank> targetCache = new List<Tank>();
         internal void InvalidateTargetCache() { lastTargetGatherTime = 0; }
@@ -4502,6 +4579,7 @@ namespace TAC_AI.AI
             }
             return targetCache;
         }
+        // REVISED: dropped the `pos` ranked-target param and the whole 1st/2nd/3rd-closest pos-switch machinery, plus the UseVanillaTargetFetching shortcut; held-target retain now uses the same two-tier range hysteresis (hard/soft cap) as CheckEnemyAndAiming and Random mode picks uniformly from in-range candidates.
         private Visible FindEnemy(bool InvertBullyPriority)
         {
             Visible target = lastEnemyGet;
@@ -4616,6 +4694,7 @@ namespace TAC_AI.AI
             }
             return target;
         }
+        // REVISED: new extracted air-scan helpers. They replace FindEnemyAir's inline altitude-sorted scans; FindEnemyAir now calls them twice (airborne-first, then ground) so air targets are preferred without the old per-tech altitudeHigh comparison.
         private Visible ScanAirborneRandom(List<Tank> techs, int launchCount, bool preferAirborne, ref float TargetRangeSqr, Vector3 scanCenter)
         {
             var valid = new List<Visible>(launchCount);
@@ -4656,6 +4735,7 @@ namespace TAC_AI.AI
             }
             return target;
         }
+        // REVISED: dropped the `pos` param and the inline altitude-ranked scans; scanCenter is now DodgeSphereCenter throughout, held-target retain uses the two-tier range hysteresis, and Random/Strong delegate to ScanAirborne* (airborne-preferred, then ground).
         private Visible FindEnemyAir(bool InvertBullyPriority)
         {
             Visible target = lastEnemyGet;
@@ -4751,6 +4831,7 @@ namespace TAC_AI.AI
         private const float MaxBoundsVelo = 350;
         private static Vector3 lowMaxBoundsVelo = -new Vector3(MaxBoundsVelo, MaxBoundsVelo, MaxBoundsVelo);
         private static Vector3 highMaxBoundsVelo = new Vector3(MaxBoundsVelo, MaxBoundsVelo, MaxBoundsVelo);
+        // REVISED: null-guards the target and now applies lead prediction whenever lastCombatRange is finite (lastCombatRange < float.MaxValue) instead of only within EnemyExtendActionRange, so long-range shots also lead.
         public Vector3 RoughPredictTarget(Tank targetTank)
         {
             if (targetTank.IsNull())
@@ -4838,6 +4919,7 @@ namespace TAC_AI.AI
         public int Provoked = 0;
         public bool KeepEnemyFocus { get; private set; } = false;
 
+        // REVISED: new per-source cumulative-damage accumulator. Each attacker has a decaying bucket (DamageAlertDecayPerSec); returns true once a source's accumulated damage crosses DamageAlertCumulativeThreshold, so sustained small hits can provoke even when no single hit exceeds DamageAlertThreshold.
         private struct DamageBucket { public float Accumulator; public float LastUpdateTime; }
         private readonly Dictionary<int, DamageBucket> _damageBuckets = new Dictionary<int, DamageBucket>(4);
         internal bool AccumulateAndCheckThreat(Tank source, float damage)
@@ -4869,6 +4951,7 @@ namespace TAC_AI.AI
             NullTarget     = 3,
             InvalidTank    = 4,
         }
+        // REVISED: SetPursuit reworked over TrySetPursuit which returns a SetPursuitResult and takes a `force` flag. A held KeepEnemyFocus target now blocks a new pursuit (BlockedByLock) unless force=true; previously KeepEnemyFocus simply short-circuited and only-null cleared focus. Setting a target also MarkOperatorDirty.
         public bool SetPursuit(Visible target) => IsSetPursuitSuccess(TrySetPursuit(target, false));
         public bool SetPursuit(Visible target, bool force) => IsSetPursuitSuccess(TrySetPursuit(target, force));
         private static bool IsSetPursuitSuccess(SetPursuitResult r) =>
@@ -4903,6 +4986,7 @@ namespace TAC_AI.AI
                 KeepEnemyFocus = false;
             }
         }
+        // REVISED: new hard target-clear. Unlike EndPursuit (which only drops the KeepEnemyFocus lock), ReleaseTarget nulls lastEnemy outright (and the lastEnemy setter then also clears KeepEnemyFocus).
         public void ReleaseTarget()
         {
             lastEnemy = null;
@@ -5048,6 +5132,7 @@ namespace TAC_AI.AI
                 }
                 ExpectAITampering = true;
                 tank.visible.Teleport(startPos, tankFore, true, true);
+                // REVISED: a failed anchor attempt now resets anchorAttempts so the tech can retry from scratch later rather than staying stuck at the attempt cap.
                 if (!worked)
                     anchorAttempts = 0;
                 AnchorState = AIAnchorState.None;
@@ -5063,6 +5148,7 @@ namespace TAC_AI.AI
                     WakeAIForChange();
                 }
             }
+            // REVISED: AnchorState is now always reset to None (moved out of the `was anchored` branch), so the unanchor state is cleared even when there was nothing to unanchor.
             AnchorState = AIAnchorState.None;
             anchorAttempts = 0;
         }
@@ -5295,6 +5381,7 @@ namespace TAC_AI.AI
             {
                 AvoidStuff = false;
                 IsTryingToUnjam = false;
+                // REVISED: now issues a core Stop (SetCoreControlStop) when yielding to an approaching tech, so it actually halts instead of just disabling avoidance.
                 SetCoreControlStop();
                 CancelInvoke();
                 Invoke("EndSlowForApproacher", 2);

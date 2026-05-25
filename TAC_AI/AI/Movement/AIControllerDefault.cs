@@ -13,8 +13,13 @@ using System.Text;
 
 namespace TAC_AI.AI
 {
+    /// REVISED (overview): now derives from MovementControllerBase instead of implementing IMovementAIController
+    /// directly — the Tank/Helper/AICore/EnemyMind plumbing, GetDrive, UpdateEnemyMind and Recycle moved to the
+    /// base. Core picking moved out of Initiate into SelectCore (via MovementDispatch.CoreFor*); init/teardown
+    /// now run through the OnPostInitiate/OnRecycle hooks. The old OnAttach/OnDetach event subscriptions were removed.
     internal class AIControllerDefault : MovementControllerBase, IPathfindable
     {
+        // REVISED: reflection target changed from BoosterJet to Thruster for the m_Force field.
         internal static FieldInfo boostGet = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
         //Manuvering (Post-Pathfinding)
@@ -26,6 +31,7 @@ namespace TAC_AI.AI
         {
             set
             {
+                // REVISED: now also rejects an infinite Y, and returns on the bad-value branch so the value below isn't stored.
                 if (value.IsNaN() || float.IsInfinity(value.x) || float.IsInfinity(value.y) || float.IsInfinity(value.z))
                 {
                     DebugTAC_AI.Assert("AIControllerDefault.PathPointSet - lastDestination was NaN or infinity.  Defaulting to own position");
@@ -105,6 +111,7 @@ namespace TAC_AI.AI
                 PathPlanned.Clear();
                 return; // Clearing
             }
+            // REVISED: now clears the planned queue before enqueuing the new path (previously old waypoints were appended to).
             PathPlanned.Clear();
             if (DebugTAC_AI.NoLogPathing)
             {
@@ -186,6 +193,7 @@ namespace TAC_AI.AI
             }
             else//ENEMY
             {
+                // REVISED: RTS enemy path now calls DriveDirectorEnemyRTS (was DriveDirectorEnemy, the non-RTS variant).
                 this.AICore.DriveDirectorEnemyRTS(this.EnemyMind, ref core);
             }
         }
@@ -195,6 +203,9 @@ namespace TAC_AI.AI
             AICore.DriveMaintainer(Helper, Tank, ref core);
         }
 
+        // REVISED: core selection extracted from the old Initiate into this override. The per-DriverType /
+        // per-EvilCommander switches now resolve through MovementDispatch.CoreFor*; an unmapped kind (None) no
+        // longer throws — it logs once via LogWarnPlayerOncePerKey and falls back to LandAICore.
         protected override IMovementAICore SelectCore(EnemyMind mind)
         {
             MovementCoreKind kind = mind.IsNull()

@@ -44,6 +44,7 @@ namespace TAC_AI
         public float CombatChase { get => chaseRange; }
         private float chaseRange;
         /// <summary>Maximum Range to stray from objective</summary>
+        // REVISED: per-instance objectiveRange (derived from modules in Recalibrate) instead of always returning the global DefaultMaxObjectiveRange.
         public float ObjectiveRange { get => objectiveRange; }
         private float objectiveRange;
         public bool shouldChase => CombatChase > 0;
@@ -99,6 +100,7 @@ namespace TAC_AI
             advancedAI = false;
             allMT = false;
             sideToThreat = false;
+            // REVISED: useInventory now cleared on recalibrate, then re-derived from the AIList below.
             useInventory = false;
             foreach (ModuleAIExtension AIEx in helper.AIList)
             {
@@ -212,6 +214,7 @@ namespace TAC_AI
 
             advancedAI = refr.AdvancedAI;
             allMT = refr.AllMT;
+            // REVISED: fullMelee now copied from refr.FullMelee (was reading refr.AllMT).
             fullMelee = refr.FullMelee;
             sideToThreat = refr.SideToThreat;
             autoRepair = refr.AutoRepair;

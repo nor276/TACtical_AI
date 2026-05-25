@@ -49,6 +49,7 @@ namespace TAC_AI.AI.Movement
         {
             if (active != pathable.AutoPathfind)
             {
+                // REVISED: the advanced-pathing early-out now only blocks turning pathfinding ON; deactivation always proceeds (was unconditional).
                 if (active && !AIEPathMapper.EnableAdvancedPathing)
                     return;
                 pathable.AutoPathfind = active;
@@ -90,6 +91,7 @@ namespace TAC_AI.AI.Movement
         public const float TerrainSlopeMaxClimbPerUnit = 1.0f;
         [Range(0.1f, 50f)]
         public const float TerrainSlopeMaxDropPerUnit = 6.25f;
+        // REVISED: climb penalty is now a fixed 8f (was DefaultMaxDifficulty / MaxClimbPerUnit); the fall penalty now derives from MaxDropPerUnit instead of aliasing the climb penalty, so up- and down-slope are weighted independently.
         public const float TerrainSlopeClimbPenaltyMulti = 8f;
         public const float TerrainSlopeFallPenaltyMulti = DefaultMaxDifficulty / TerrainSlopeMaxDropPerUnit;
         public const float maxDeadEndsTillFailMulti = 2f;

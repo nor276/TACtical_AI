@@ -10,6 +10,7 @@ using UnityEngine;
 
 namespace TAC_AI.World
 {
+    /// REVISED (overview): UnitGroups now use a fixed UnitGroupCount-bucket contract (NewBuckets/NormalizeSerial), and save/load harden bucket counts + null instances against malformed saves; DelayedInitiate destroys old select windows before re-creating; queue scans skip null TrackedVisibles/helpers instead of dereferencing them; singleplayer fire-command can force FIRE_ALL on player-controlled techs.
     [AutoSaveManager]
     public class ManWorldRTS : MonoBehaviour
     {
@@ -237,6 +238,7 @@ namespace TAC_AI.World
             }
         }
 
+        // REVISED: fixed bucket-count contract — UnitGroups/UnitGroupsSerial always hold UnitGroupCount lists; NewBuckets builds an empty set and NormalizeSerial/save/load enforce the count on deserialized data
         public const int UnitGroupCount = 10;
 
         private static List<List<T>> NewBuckets<T>()
@@ -349,6 +351,7 @@ namespace TAC_AI.World
                 DebugTAC_AI.Log(KickStart.ModID + ": Created SelectCircle.");
             }
 
+            // REVISED: destroys any pre-existing SelectWindow/autoWindow before re-instantiating, so a repeated DelayedInitiate no longer leaks orphaned GameObjects
             if (SelectWindow != null) Destroy(SelectWindow);
             SelectWindow = Instantiate(new GameObject("TechSelectRect"));
             SelectWindow.AddComponent<GUIRectSelect>();
@@ -1306,6 +1309,7 @@ namespace TAC_AI.World
                     TrackedVisible TV = ManVisible.inst.GetTrackedVisible(ID);
                     if (TV == null)
                     {
+                        // REVISED: null-TV entry is removed then loop advances (numStep--/continue); previously fell through and dereferenced the null TV
                         TechMovementQueue.Remove(ID);
                         numStep--;
                         continue;
@@ -1373,6 +1377,7 @@ namespace TAC_AI.World
                     SetVisOfAll(isRTSState);
                     linesLastUsed = linesUsed;
                     linesUsed = 0;
+                    // REVISED: new — in singleplayer, holding the fire command forces FIRE_ALL on every player-aligned RTS-controlled tech this frame
                     if (!ManNetwork.IsNetworked && LocalPlayerTechsControlled.Count > 0 &&
                         AIGlobals.PlayerClientFireCommand())
                     {
@@ -1464,6 +1469,7 @@ namespace TAC_AI.World
             }
         }
 
+        // REVISED: new — forces a loaded UnitGroupsSerial to exactly UnitGroupCount buckets, padding short and dropping (with a logged count) any overflow buckets
         private static void NormalizeSerial(List<List<int>> serial)
         {
             while (serial.Count < UnitGroupCount) serial.Add(new List<int>());
@@ -1484,9 +1490,11 @@ namespace TAC_AI.World
             {
                 if (inst == null)
                 {
+                    // REVISED: now returns on null instance instead of continuing into a null-deref
                     DebugTAC_AI.Log("ManWorldRTS - Save failed, saving instance null??");
                     return;
                 }
+                // REVISED: serial buffer is rebuilt to UnitGroupCount empty buckets (or cleared in place if already the right size) before re-serializing
                 if (inst.UnitGroupsSerial == null || inst.UnitGroupsSerial.Count != UnitGroupCount)
                     inst.UnitGroupsSerial = NewBuckets<int>();
                 else
@@ -1512,6 +1520,7 @@ namespace TAC_AI.World
         {
             try
             {
+                // REVISED: bails when inst or UnitGroupsSerial is null instead of throwing on the foreach
                 if (inst?.UnitGroupsSerial == null) return;
                 foreach (var item in inst.UnitGroupsSerial)
                     item.Clear();
@@ -1545,6 +1554,7 @@ namespace TAC_AI.World
 
                 if (inst.UnitGroupsSerial != null)
                 {
+                    // REVISED: a mismatched saved bucket count is normalized to UnitGroupCount and the restore loop is bounded by the min of the three counts (per-bucket null-coalesced) so legacy/odd saves can't throw
                     if (inst.UnitGroupsSerial.Count != UnitGroupCount)
                         DebugTAC_AI.Log("ManWorldRTS - UnitGroupsSerial bucket count " +
                             inst.UnitGroupsSerial.Count + " != expected " + UnitGroupCount + "; normalizing.");
@@ -1977,6 +1987,7 @@ namespace TAC_AI.World
             foreach (var item in TechMovementQueue)
             {
                 TrackedVisible TV = ManVisible.inst.GetTrackedVisible(item.Key);
+                // REVISED: skips entries with a missing TrackedVisible or no live tech helper instead of dereferencing them
                 if (TV == null)
                     continue;
                 TankAIHelper helper = TV.visible?.tank?.GetHelperInsured();

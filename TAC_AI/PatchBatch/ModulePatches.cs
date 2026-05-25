@@ -12,6 +12,9 @@ using static LocalisationEnums;
 
 namespace TAC_AI
 {
+    /// REVISED (overview): ModuleWeapon.UpdateAim now does projectile lead-prediction in the Enemy aim state and null-guards the Obsticle
+    /// state (resetting to Normal + running vanilla when the obstacle is gone); ModuleTechController.ExecuteControl per-tick drive
+    /// now routes through TankAIHelper.RunMovementBridge instead of ControlTech.
     internal class ModulePatches
     {
         internal static class ModuleAIBotPatches
@@ -45,6 +48,7 @@ namespace TAC_AI
                             case AIWeaponState.Normal:
                                 break;
                             case AIWeaponState.Enemy:
+                                // REVISED: now does projectile lead prediction against lastEnemyGet — estimates time-of-flight from muzzle velocity and aims at the target's extrapolated position (capped at AIGlobals.LeadPredictionMaxTOF); changed from empty break (vanilla aim)
                                 if (___m_TargetAimer && AICommand.lastEnemyGet?.tank?.rbody != null &&
                                     ___m_WeaponComponent is ModuleWeaponGun leadGun)
                                 {
@@ -73,6 +77,7 @@ namespace TAC_AI
                                     __instance.block.trans.TransformDirection(new Vector3(0, -0.5f, 1)), __instance.RotateSpeed);
                                 return false;
                             case AIWeaponState.Obsticle:
+                                // REVISED: when Obst is null or its Visible is inactive, now clears Obst, resets ActiveAimState to Normal and returns true (lets vanilla aim run); changed from null-unsafe access that only nulled Obst and still fell through to dereference it
                                 if (AICommand.Obst.IsNull())
                                 {
                                     AICommand.Obst = null;
@@ -289,6 +294,7 @@ namespace TAC_AI
                             var helper = tank.gameObject.GetComponent<TankAIHelper>();
                             if (helper)
                             {
+                                // REVISED: per-tick drive now routes through helper.RunMovementBridge; changed from helper.ControlTech
                                 if (helper.RunMovementBridge(__instance.block.tank.control))
                                 {
                                     __result = true;

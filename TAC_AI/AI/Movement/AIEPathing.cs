@@ -97,6 +97,7 @@ namespace TAC_AI.AI.Movement
             worked = false;
             if (!DoDodge || KickStart.AIDodgeCheapness >= 75 || helper.DriveDestDirected == EDriveDest.ToMine || helper.DriveDestDirected == EDriveDest.ToBase)   // are we desperate for performance or going to mine
                 return Vector3.zero;    // don't bother with this
+            // REVISED: the obstacle closeness metric in the loop below now uses true (linear) distance minus radius floored at 0 (was clamped squared-distance-minus-radius), and no longer skips temp==0 entries. (Same change in the ObstDodgeOffsetInv overload.)
             Vector3 Offset = Vector3.zero;
 
             if (tank.rbody == null)
@@ -790,6 +791,7 @@ namespace TAC_AI.AI.Movement
                         final.y = helper.tank.boundsCentreWorldNoCheck.y;
                     }
                 }
+                // REVISED: swallowed exception now logged once via LogWarnPlayerOnce instead of an empty catch (same change in SnapOffsetFromGroundA and IsUnderMaxAltPlayer below).
                 catch (Exception eAlt) { DebugTAC_AI.LogWarnPlayerOnce("[TAC_AI:catch:Movement] altitude AdviseAwayCore", eAlt); }
             }
             else

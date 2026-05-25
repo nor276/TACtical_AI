@@ -9,10 +9,16 @@ using TAC_AI.AI.Movement;
 
 namespace TAC_AI.AI.Enemy.EnemyOperations
 {
+    /// REVISED (overview): null-target idle case hoisted out to the controller (no longer handled here).
+    /// Circle bucket reworked into a turret-fraction DUTY CYCLE: circles a fraction of the time via
+    /// helper.CombatWantsCircleNow() (was the old ActionPause > 120 stop-and-shoot), plus an APPROACH
+    /// GATE that drives straight at the enemy while dist > spacer + range. Ranged/default buckets gained
+    /// WasRetreatingInCombat hysteresis (advanceEdge / holdEdge) to stop bucket snap-flipping.
     internal static class RWheeled
     {
         private static void MoveSideways(TankAIHelper helper, float dist, ref EControlOperatorSet direct)
         {   // Continuous circle
+            // REVISED: clamp negative dist (target inside own bounds) to 0 before obstruction handling.
             if (dist < 0f) dist = 0f;
             helper.AISetSettings.SideToThreat = true;
             if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend)
@@ -32,6 +38,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 
 
             float distToTarget = 0;
+            // REVISED: the lastEnemyGet == null -> LollyGag early-return was removed; the no-target idle
+            // case is now handled upstream in EnemyOperationsController before dispatch (target guaranteed live here).
+            // The Homing mend below no longer needs its old lastEnemyGet null-guard for the same reason.
             if (mind.CommanderMind == EnemyAttitude.Homing)
             {
                 distToTarget = (tank.boundsCentreWorldNoCheck - helper.lastEnemyGet.tank.boundsCentreWorldNoCheck).magnitude;
@@ -60,6 +69,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 case EAttackMode.Safety:
                     range = AIGlobals.MinCombatRangeDefault;
                     helper.AISetSettings.ObjectiveRange = spacer + range;
+                    // REVISED: all SettleDown() calls in this method now pass stopCore:false (was the default true),
+                    // so the tech keeps its core spinning while settling. REVISED: MarkRetreating/MarkAdvancing
+                    // set helper.WasRetreatingInCombat, the new hysteresis flag widening the Ranged/default advance edges.
                     RGeneral.MarkRetreating(helper);
                     if ((bool)helper.lastEnemyGet)
                         direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
@@ -94,6 +106,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     helper.AutoSpacing = range;
                     direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
+                    // REVISED: new APPROACH GATE - while still out of range (dist > spacer + range) drive straight
+                    // toward the enemy instead of circling, so the tech closes before orbiting.
                     if (dist > spacer + range)
                     {
                         helper.AISetSettings.SideToThreat = false;
@@ -111,6 +125,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     else
                     {
+                        // REVISED: turret-fraction DUTY CYCLE - circles (DriveToFacingPerp) while CombatWantsCircleNow()
+                        // is true, else faces the enemy for a firing window. Replaced the old ActionPause > 120
+                        // stop-and-shoot timer; the old mind.Hurt -> randomize actionPause line is gone with it.
                         if (helper.CombatWantsCircleNow())
                         {
                             if (!helper.IsTechMovingAbs(helper.EstTopSped / (AIGlobals.EnemyAISpeedPanicDividend * 2))
@@ -137,6 +154,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
 
+                    // REVISED: advanceEdge replaces the fixed range*1.25 hold boundary with hysteresis - widens to
+                    // range*1.4 while WasRetreatingInCombat so the FSM doesn't snap-flip retreat<->advance frame to frame.
                     float advanceEdge = spacer + (range * (helper.WasRetreatingInCombat ? 1.4f : 1.25f));
 
                     if (dist < spacer + (range * 0.65f))
@@ -211,6 +230,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     helper.AISetSettings.SideToThreat = false;
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
+                    // REVISED: holdEdge adds the same WasRetreatingInCombat hysteresis to the hold boundary (range*1.25
+                    // while retreating, else range*1). The advance bucket below also widened from range*1.25 to range*1.5.
                     float holdEdge = spacer + (range * (helper.WasRetreatingInCombat ? 1.25f : 1f));
                     if (dist < spacer)
                     {   // too close?

@@ -12,6 +12,10 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.Templates
 {
+    /// REVISED (overview): fallback selection now actually returns the fallback tech (the discarded-result DoSpawnFallback helper was inlined);
+    /// Disarmed mobile spawns no longer request fallback handling and re-team via GetRandomSubNeutralBaseTeam(false); SpawnMobileTechPrefab
+    /// dropped its try/catch and null-conditional FixupAnchors; ExportRawTechToTechData skips blocks whose BlockType won't resolve; and
+    /// BookmarkBuilder now snapshots/restores the helper's AI settings around a build. (BookmarkBuilder class lives at the bottom of this file.)
     public class RawTechLoader : MonoBehaviour
     {
         internal static RawTechLoader inst;
@@ -1037,8 +1041,10 @@ namespace TAC_AI.Templates
         public static Tank SpawnRandomTechAtPosHead(Vector3 pos, Vector3 forwards, int Team, RawTechPopParams filter, bool nullOnErrorTech)
         {   // This will try to spawn player-made enemy techs as well
             if (filter.Disarmed)
+                // REVISED: now passes false to GetRandomSubNeutralBaseTeam (recurs at every Disarmed re-team site below); changed from the no-arg overload
                 Team = AIGlobals.GetRandomSubNeutralBaseTeam(false);
             filter.ForceAnchor = false;
+            // REVISED: fallback handling is now gated on !filter.Disarmed; changed from always true — disarmed/sub-neutral spawns no longer fall back to a fallback-tagged tech
             var RT = FilteredSelectFromAll(filter, !filter.Disarmed, nullOnErrorTech);
             if (RT == null)
                 return null;
@@ -1083,11 +1089,13 @@ namespace TAC_AI.Templates
             float height = ManWorld.inst.ProjectToGround(pos, true).y;
             if (pos.y < height)
                 pos.y = height;
+            // REVISED: SpawnRawTech is no longer wrapped in a try/catch (a failed spawn now propagates instead of being asserted-and-swallowed)
             Tank theTech = toSpawn.SpawnRawTech(pos, Team, forwards, filter.SnapTerrain,
                 filter.SpawnCharged, filter.RandSkins, filter.ForceCompleted);
             if (theTech && filter.IsPopulation)
                 AddToManPopIfLoner(theTech, false);
 
+            // REVISED: FixupAnchors call is no longer null-conditional; changed from theTech?.FixupAnchors
             theTech.FixupAnchors(true);
 
             return theTech;
@@ -1603,6 +1611,7 @@ namespace TAC_AI.Templates
                         if (KickStart.TryForceOnlyPlayerSpawns)
                             DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - Forced Player-Made Techs spawn possible: false");
                         DebugTAC_AI.LogSpawn(KickStart.ModID + ": FilteredSelectFromAll - No Techs found");
+                        // REVISED: the fallback tech is now actually returned (inlined the former DoSpawnFallback helper, recurs at the other two fallback sites below); changed from calling DoSpawnFallback as a statement and discarding its result, which then fell through to NotAvail/null
                         if (handleFallback)
                         {
                             ShufflerSingleUse.Clear();
@@ -1648,6 +1657,7 @@ namespace TAC_AI.Templates
                             }
                             DebugTAC_AI.Log(SB.ToString());
                         }
+                        // REVISED: now uses GetRandomEntry (no error-logging variant) for index picks throughout this method; changed from GetRandomEntryWithError
                         outcomeExt = selectedExt.GetRandomEntry();
                         if (outcomeExt == -1)
                         {
@@ -2330,6 +2340,7 @@ namespace TAC_AI.Templates
             ResetSkinIDSet();
             foreach (RawBlockMem mem in blueprint)
             {
+                // REVISED: uses the try-style StringToBlockType(out) and skips blocks that don't resolve (e.g. missing mod); changed from the single-return overload which produced an unresolved/invalid type
                 if (!BlockIndexer.StringToBlockType(mem.t, out BlockTypes type))
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": ExportRawTechToTechData - Removed " + mem.t + " as no matching BlockType resolved (missing mod?)");
@@ -3320,6 +3331,7 @@ namespace TAC_AI.Templates
         public FactionSubTypes faction;
         public bool unprovoked = false;
         public bool instant = true;
+        // REVISED: snapshot of the helper's pre-builder AI settings so they can be restored once the build finishes (see HookUp/Finish)
         private bool priorAdvancedAI;
         private bool priorUseInventory;
         private bool priorAutoRepair;
@@ -3361,6 +3373,7 @@ namespace TAC_AI.Templates
         }
         internal void HookUp(TankAIHelper helper)
         {
+            // REVISED: capture AdvancedAI/UseInventory/AutoRepair once before forcing builder overrides, so Finish can restore them
             if (!snapshotTaken)
             {
                 priorAdvancedAI = helper.AISetSettings.AdvancedAI;
@@ -3377,6 +3390,7 @@ namespace TAC_AI.Templates
         {
             //DebugTAC_AI.Assert("BookmarkBuilder - Finished building from assignment");
             helper.FinishedRepairEvent.Unsubscribe(Finish);
+            // REVISED: restore the pre-builder AI settings snapshotted in HookUp; changed from leaving the builder overrides applied after the build completed
             if (snapshotTaken)
             {
                 AISettingsSet restored = helper.AISetSettings;

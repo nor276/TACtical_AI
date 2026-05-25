@@ -93,6 +93,7 @@ namespace TAC_AI
                     if (!ManNetwork.IsNetworked)
                     {
                         helper.theResource = node.visible;
+                        // REVISED: also records the source node in theResourceNode (tracked alongside theResource); same addition in CommandCollect
                         helper.theResourceNode = node.visible;
                         helper.CollectedTarget = false;
                     }
@@ -192,6 +193,7 @@ namespace TAC_AI
         }
         public static TankAIHelper GetHelperInsured(this Tank tank)
         {
+            // REVISED: null-tank guard now returns null (logs error) instead of dereferencing
             if (!tank)
             {
                 DebugTAC_AI.LogError(KickStart.ModID + ": GetHelperInsured - CALLED ON NULL OBJECT");
@@ -204,6 +206,7 @@ namespace TAC_AI
             }
             return helper;
         }
+        // REVISED: new helper - collapses duplicate components of type T on a GameObject, destroying all but the first and asserting the duplication; returns the survivor (or null if none)
         public static T EnforceSingleComponent<T>(this GameObject go, string ctx) where T : Component
         {
             var all = go.GetComponents<T>();
@@ -223,6 +226,7 @@ namespace TAC_AI
             }
             if (!vis.tank)
                 return vis.Radius;
+            // REVISED: fetches the helper via vis.tank.GetHelperInsured (no longer adds a helper to the Visible's own GameObject); falls back to vis.Radius when none
             TankAIHelper helper = vis.tank.GetHelperInsured();
             return helper != null ? helper.lastTechExtents : vis.Radius;
         }

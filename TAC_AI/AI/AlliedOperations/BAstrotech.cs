@@ -4,6 +4,8 @@ using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI.AlliedOperations
 {
+    /// REVISED (overview): stuck-detect divisor changed from EnemyAISpeedPanicDividend to PlayerAISpeedPanicDividend (allied tech now uses the player panic threshold).
+    /// unanchorCountdown decrement removed at the move/depart branches; the if-guard now no-ops so the countdown only resets on Unanchor and no longer ticks down here.
     internal static class BAstrotech
     {
         //Same a escort code, because the BEscort code supports 3D!

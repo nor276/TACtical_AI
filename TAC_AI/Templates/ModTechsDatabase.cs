@@ -59,6 +59,7 @@ namespace TAC_AI.Templates
         }
 
         // --------------------  RawTech Lookups  --------------------
+        // REVISED: fixed preload batch rate of 240 steps; changed from a Time.deltaTime-derived value (Clamp(RoundToInt(4 / Time.deltaTime), 1, 1000)) so the rate no longer depends on the boot-time frame rate
         internal static int IterateExtraRate = 240;
 
         internal static string Subject = null;

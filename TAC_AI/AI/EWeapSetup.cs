@@ -7,10 +7,13 @@ using UnityEngine;
 namespace TAC_AI.AI
 {
     // Sets up all important AI statistics based on AI core
+    /// REVISED (overview): missile-jet force is now read off the Thruster base type instead of BoosterJet; rotorcraft detection routes through the AICore (IAirMovementAICore.IsRotorcraft) instead of AIControllerAir.FlyStyle.
+    /// GetAttackStrat now also publishes helper.TurretFraction (circle-capable weapons / total weapons) to feed the combat duty cycle.
     internal static class EWeapSetup
     {
         internal static readonly FieldInfo deals = typeof(WeaponRound).GetField("m_Damage", BindingFlags.NonPublic | BindingFlags.Instance),
             bDPS = typeof(BeamWeapon).GetField("m_DamagePerSecond", BindingFlags.NonPublic | BindingFlags.Instance),
+            // REVISED: reflect m_Force on the Thruster base type (was BoosterJet) so any thruster-derived missile jet is measured for ranged classification
             burn = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
         // Bully-like
@@ -251,6 +254,7 @@ namespace TAC_AI.AI
                 case AIType.Aviator:
                     if (helper.MovementController is AIControllerAir air)
                     {
+                        // REVISED: rotorcraft check via AICore (IAirMovementAICore.IsRotorcraft) instead of air.FlyStyle == FlightType.Helicopter
                         if (air.AICore is TAC_AI.AI.Movement.AICores.IAirMovementAICore aircore && aircore.IsRotorcraft)
                         {   // Try use our height to our advantage
                             if (smolTech)
@@ -378,6 +382,7 @@ namespace TAC_AI.AI
                     }
                     break;
             }
+            // REVISED: publish the circle-weapons/total-weapons ratio; consumed by the combat duty cycle (CombatWantsCircleNow) to scale circle-vs-face behavior
             helper.TurretFraction = count > 0 ? (float)circleWeaps / count : 0f;
             return attack;
         }

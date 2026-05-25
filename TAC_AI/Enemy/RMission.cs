@@ -134,6 +134,10 @@ namespace TAC_AI.AI.Enemy
             return DidFire;
         }
 
+        // REVISED: now returns a MissionSetupResult flag instead of a plain bool. FullyConfigured means GenerateEnemyAI skips
+        // the whole auto-config chain; PartialMind means only the intelligence step is skipped (handling/stats still run);
+        // None means nothing matched. Base/mission/specific-name paths set FullyConfigured, the Ω/⦲ markers and Specific/FacePlayer
+        // trees set PartialMind. The OnRails gate now tests "result != None" in place of the old DidFire bool.
         internal static MissionSetupResult SetupBaseOrMissionAI(TankAIHelper helper, Tank tank, EnemyMind mind)
         {
             string name = tank.name;

@@ -334,6 +334,8 @@ namespace TAC_AI.AI.Enemy
                     }
                     break;
             }
+            // REVISED: now records the turret-vs-total weapon ratio (circle-capable weapons / total weapons) onto the helper.
+            // Consumed by the combat duty-cycle so a tech with mostly turreted weapons spends proportionally more time circling.
             mind.AIControl.TurretFraction = count > 0 ? (float)circleWeaps / count : 0f;
             return attack;
         }

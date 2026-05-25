@@ -5,6 +5,11 @@ namespace TAC_AI.AI
     internal enum MovementContainerKind { Default, Air, Static }
     internal enum MovementCoreKind { None, Land, Sea, Space }
 
+    /// REVISED (overview): NEW — single switch-based mapping table that routes (DriverType / EnemyHandling)
+    /// to an outer container kind and an inner core kind. Replaces the scattered inline if/switch decisions
+    /// the old combined VehicleAICore made; the outer layer (RecalMoveAIController*) reads ContainerFor*,
+    /// AIControllerDefault.SelectCore reads CoreFor*. Coarse outer split (most types collapse into Default),
+    /// fine inner split via CoreFor* (Land/Sea/Space, None = unmapped -> Land+warn fallback at the call site).
     internal static class MovementDispatch
     {
         public static MovementContainerKind ContainerForPlayer(AIDriverType driver)

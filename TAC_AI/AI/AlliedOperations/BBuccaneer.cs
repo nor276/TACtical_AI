@@ -52,6 +52,7 @@ namespace TAC_AI.AI.AlliedOperations
                 direct.DriveDest =  EDriveDest.FromLastDestination;
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
                 helper.DriveVar = -1;
+                // REVISED: unanchorCountdown decrement removed at the room/depart branches; the if-guard now no-ops so the countdown only resets on Unanchor, no longer ticks down here
                 if (helper.unanchorCountdown > 0)
                     {  }
                 if (helper.AutoAnchor && helper.PlayerAllowAutoAnchoring && tank.Anchors.NumPossibleAnchors >= 1)

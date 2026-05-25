@@ -2,10 +2,12 @@ using UnityEngine;
 
 namespace TAC_AI
 {
+    /// REVISED (overview): NEW — AITimer / AIAccumulator deadline+accumulation primitives that replace scattered Time.time deadline math.
     public struct AITimer
     {
         private float deadline;
 
+        /// REVISED: deadline is seconds-based (Time.time), so durations are framerate- and SP/MP-invariant.
         public void Set(float seconds) { deadline = Time.time + seconds; }
 
         public bool Due => Time.time >= deadline;
@@ -25,6 +27,7 @@ namespace TAC_AI
 
         public static float PassSeconds(int clockPeriod) => clockPeriod * Time.fixedDeltaTime;
 
+        /// REVISED: accumulates real seconds per Operations pass (clockPeriod * fixedDeltaTime), so totals stay invariant when AIClockPeriod changes.
         public void AddPass(int clockPeriod) { Value += clockPeriod * Time.fixedDeltaTime; }
 
         public void Reset() { Value = 0f; }

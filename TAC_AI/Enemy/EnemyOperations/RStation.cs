@@ -21,6 +21,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 
             float dist = helper.GetDistanceFromTask2D(mind.sceneStationaryPos);
 
+            // REVISED: the lastEnemyGet == null early-return was removed; the no-target case is now handled upstream
+            // in the controller (DispatchNoTargetIdle), so the close-range else branch can safely dereference lastEnemyGet.
             if (dist > 6)
             {
                 direct.DriveDest = EDriveDest.ToLastDestination;

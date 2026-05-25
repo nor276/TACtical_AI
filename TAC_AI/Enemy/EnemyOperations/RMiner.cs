@@ -74,6 +74,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     {
                         hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                         direct.Reverse(helper);
+                        // REVISED: the helper.actionPause -= AIClockPeriod/5 decrement was removed here (and at every
+                        // other empty {  } in this method); ActionPause is no longer bled down inside the miner loop.
                         {  }
                         return;
                     }

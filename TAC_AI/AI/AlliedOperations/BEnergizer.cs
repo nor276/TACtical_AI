@@ -45,6 +45,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
+                    // REVISED: actionPause decrement removed at every arrive/reverse branch; the extra "-= AIClockPeriod/5" speed-up no longer applies, so the reverse/yield timer only drains at the normal tick rate
                     {  }
                     return;
                 }

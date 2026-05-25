@@ -136,6 +136,7 @@ namespace TAC_AI.AI
             DrivePathing = EDrivePathing.OnlyImmedeate;
             lastDest = Vector3.zero;
             TurningStrictness = ESteeringStrength.Lazy;
+            // REVISED: copies the destination through the lastDestination setter (NaN-guarded) instead of assigning the backing field directly.
             lastDestination = direct.lastDestination;
         }
         private EControlCoreSet(EDriveDest move, EDriveFacing facing)

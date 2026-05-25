@@ -7,6 +7,11 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
+    /// REVISED (overview): now implements IAirMovementAICore (IsRotorcraft => true). The grounded
+    /// recovery in DriveMaintainer was rewritten to always apply powered upwards thrust (dropping the
+    /// old SafeVelocity-gated unground branch), WatchStability's takeoff-failure tally was reworked to
+    /// accumulate only while ForcePitchUp + sinking and decay on climb, and the Aegis guard branch now
+    /// honors the TryAdjustForCombat result + operator-range gate.
     internal class HelicopterAICore : IAirMovementAICore
     {
         private AIControllerAir pilot;
@@ -15,6 +20,7 @@ namespace TAC_AI.AI.Movement.AICores
         private float groundOffset => Helper.GroundOffsetHeight;
         private float groundOffsetEmerg => AIGlobals.GroundOffsetCrashWarnChopperDelta + Helper.GroundOffsetHeight;
         public float GetDrive => pilot.CurrentThrottle;
+        // REVISED: IAirMovementAICore identity exposed for cross-pipeline rotorcraft branching.
         public bool IsRotorcraft => true;
         public bool IsFixedWing => false;
 
@@ -45,6 +51,9 @@ namespace TAC_AI.AI.Movement.AICores
         {
             if (pilot.Grounded)
             {
+                // REVISED: grounded recovery rewritten. Below tech height -> EmergLand; otherwise always
+                // apply powered upwards thrust toward loaded ground height and climb. Dropped the old
+                // SafeVelocity.y>0.1 branch that toggled Grounded off / pumped max thrust on a sink.
                 if (!AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents))
                 {
                     DriveMaintainerEmergLand(helper, tank, ref core);
@@ -114,6 +123,9 @@ namespace TAC_AI.AI.Movement.AICores
                 pilot.ForcePitchUp = false;
                 pilot.ErrorsInTakeoff = 0;
             }
+            // REVISED: takeoff-failure tally reworked. Now accumulates only while ForcePitchUp AND sinking
+            // (SafeVelocity.y < 0.1); crossing MaxTakeoffFailiures marks the tech Grounded (incapable of
+            // flight). When climbing again the counter decays instead of latching.
             if (pilot.ForcePitchUp && Helper.SafeVelocity.y < 0.1f)
             {
                 // DebugTAC_AI.Log(KickStart.ModID + ": Tech " + pilot.Tank.name + "  Avoiding Ground!");
@@ -146,6 +158,7 @@ namespace TAC_AI.AI.Movement.AICores
             control3D.m_State.m_InputRotation = Vector3.zero;
             control3D.m_State.m_InputMovement = Vector3.zero;
             VehicleUtils.controlGet.SetValue(tank.control, control3D);
+            // REVISED: steer reference is now lastDestinationCore, changed from lastDestinationOp.
             Vector3 destDirect = helper.lastDestinationCore - tank.boundsCentreWorldNoCheck;
             // DEBUG FOR DRIVE ERRORS
             if (AIGlobals.ShowDebugFeedBack)
@@ -353,6 +366,9 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 Helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(pilot.Tank.Team),
                     pilot.Tank.boundsCentreWorldNoCheck, Helper.MaxCombatRange * Helper.MaxCombatRange, out _, pilot.Helper).visible;
+                // REVISED: Aegis guard now records theGuardedAlly and only falls back to escort positioning
+                // when out of operator range OR TryAdjustForCombat declines (was: always combat-adjust, then
+                // clamp by lastCombatRange afterward). Out-of-range ignores enemy distance.
                 Helper.theGuardedAlly = Helper.theResource;
                 bool aegisOutOfRange = Helper.lastOperatorRange > Helper.MaxCombatRange;
                 if (aegisOutOfRange || !TryAdjustForCombat(true, ref pilot.PathPointSet, ref core))
@@ -560,6 +576,8 @@ namespace TAC_AI.AI.Movement.AICores
 
                 }
                 lastCloseAlly = AIEPathing.ClosestAllyPrecision(AlliesAlt, predictionOffset, out lastAllyDist, pilot.Helper);
+                // REVISED: a null closest-ally now bails out (return targetIn) instead of falling through
+                // and dereferencing it.
                 if (lastCloseAlly == null)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
@@ -592,6 +610,7 @@ namespace TAC_AI.AI.Movement.AICores
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
+                // REVISED: real null check (IsNotNull on resource + its tank) replaces the truthy theResource?.tank.
                 if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);

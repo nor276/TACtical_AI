@@ -46,6 +46,9 @@ namespace TAC_AI.Templates
 
         }
     }
+    /// REVISED (overview): pooled-AI management cadence is now wall-clock based (every 0.5s) instead of a 25-frame counter;
+    /// population-purge loop now includes the first pooled aircraft (step >= 0); TrySetSpawnLand/Sea now swallow-and-log
+    /// swap failures instead of rethrowing, so a failed override falls back to the vanilla spawn.
     public class SpecialAISpawner : MonoBehaviour
     {   //  We handle all the AI goodies here when Population Injector is N/A
         //      This module should ONLY be active (when initated) in Campaign mode!!!
@@ -80,6 +83,7 @@ namespace TAC_AI.Templates
         internal static bool thisActive = false;
         internal static bool CreativeMode = false;
         private float counter = 0;
+        // REVISED: pool-manage cadence is now wall-clock based (next-run timestamp); changed from a frame-count timer (updateTimer > 25), so cadence no longer varies with frame rate — see OnUpdate
         private float nextPoolManageTime = 0f;
 
         const int MaxAirborneAIAllowed = 4;
@@ -311,6 +315,7 @@ namespace TAC_AI.Templates
             }
             catch (Exception e)
             {
+                // REVISED: swallows and logs the swap failure (vanilla spawn proceeds); changed from rethrowing (throw e) — same change applies to TrySetSpawnSea below
                 DebugTAC_AI.Log(KickStart.ModID + ": Attempt to swap Land tech failed! - " + e);
             }
         }
@@ -862,6 +867,7 @@ namespace TAC_AI.Templates
                 return;
             if (onlyPopulation)
             {
+                // REVISED: loop now reaches index 0 (step >= 0); changed from step > 0, which skipped the first pooled airborne AI
                 for (int step = AirPool.Count - 1; step >= 0; step--)
                 {
                     var airborneAI = AirPool.ElementAt(step);

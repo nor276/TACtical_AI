@@ -9,7 +9,10 @@ namespace TAC_AI.AI.Movement
     /// <summary>
     /// Acts as the slow, non-immedeate pathfinding for land and sea AIs.
     /// </summary>
-
+    /// REVISED (overview): the obstacle-gated diagonal expansion was removed — diagonals are now always evaluated
+    /// (the per-WaterPathing "if (!nearbyObst)" wrappers and "else nearbyObst = true" branches are gone), so the
+    /// search no longer suppresses diagonal neighbours near obstacles. Recalc/stop no longer fire
+    /// OnFinishedPathfinding(null) at the consumer; the final PathRoute.RemoveAt(0) trim was dropped.
     public class AIEAutoPather2D : AIEAutoPather
     {
         private IntVector2 CurPos;
@@ -77,6 +80,7 @@ namespace TAC_AI.AI.Movement
         }
         private void Recalc_Internal(Vector3 startPos, Vector3 endPos)
         {
+            // REVISED: resets the dead-end counter on recalc; no longer pushes OnFinishedPathfinding(null) to the consumer here.
             deadEnds = 0;
             PathRoute.Clear();
             pathed.Clear();
@@ -188,6 +192,7 @@ namespace TAC_AI.AI.Movement
         {
             pos.Clear();
             pos.Add(IntVector2.zero);
+            // REVISED: seed ring now initialised once before the loop; the per-step re-seed (posPre.Add(zero) inside the loop) was removed so each ring expands only from the previous ring's frontier.
             posPre.Clear();
             posPre.Add(IntVector2.zero);
             for (int step = 0; step < rad; step++)
@@ -261,6 +266,7 @@ namespace TAC_AI.AI.Movement
             }
             catch { DebugTAC_AI.Log("PrintError no ENTRIES to report."); }
         }
+        // REVISED: now gated on endPrematureDebug (early-returns otherwise) and actually emits the diagnostic Log (the body was previously stubbed out).
         internal void PrintErrorInfoCoord(IntVector2 chunk, byte end)
         {
             if (!endPrematureDebug)
@@ -292,6 +298,7 @@ namespace TAC_AI.AI.Movement
             {
                 Finished = false;
                 DebugTAC_AI.Log("AIAutoPather - Stopped updating.");
+                // REVISED: no longer notifies the consumer with OnFinishedPathfinding(null) on the stopped-updating path.
                 return false;
             }
             toCheck.Clear();
@@ -318,6 +325,7 @@ namespace TAC_AI.AI.Movement
                                 toCheckAlt.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
+                        // REVISED: diagonal neighbours are now always evaluated and added; the "if (!nearbyObst)" guard around this block (and the "else nearbyObst = true" that fed it) was removed, so an over-difficulty straight neighbour no longer suppresses the diagonals. (Same removal in the AllowWater and StayInWater cases below; nearbyObst is now effectively unused.)
                         toCheckExtra.Clear();
                         toCheckExtra2.Clear();
                         foreach (var item in iterationsDia)
@@ -760,6 +768,7 @@ namespace TAC_AI.AI.Movement
                     ChainRemoveStep++;
                 }
             }
+            // REVISED: the trailing PathRoute.RemoveAt(0) (which dropped the first/start waypoint) was removed; the full route is now kept.
         }
 
     }

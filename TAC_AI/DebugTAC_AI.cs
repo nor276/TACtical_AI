@@ -6,6 +6,12 @@ using UnityEngine;
 
 namespace TAC_AI
 {
+    /// REVISED (overview): new warning-routing helpers split popups from file-only logs
+    /// (LogWarnPlayerOncePerKey per-key-deduped popup; LogWarnFileOnly per-key-deduped, file
+    /// only, [AIWARN] tag, no popup). Added a targeting-log channel (DoLogTargeting/LogTargeting),
+    /// a LogError overload that takes an Exception, and a tagged-diagnostics suite
+    /// (Prefix/LogTagged/WarnTagged/ErrorTagged/DebugTagged, VisibleName, LogOwnership,
+    /// DumpStateHistory, FirstFire) replacing the old PopupDebugInfo passthroughs.
     internal static class DebugTAC_AI
     {
         internal static bool NotErrored = true;
@@ -14,10 +20,10 @@ namespace TAC_AI
         internal static bool DoLogInfos = false;
         internal static bool DoLogAISetup = false;
         internal static bool DoLogPathing = false;
-        internal static bool DoLogSpawning = false;
+        internal static bool DoLogSpawning = false; // REVISED: default off now (was on)
         internal static bool DoLogLoading = false;
         internal static bool DoLogTeams = true;
-        internal static bool DoLogTargeting = false;
+        internal static bool DoLogTargeting = false; // REVISED: new gate for the LogTargeting channel
         private static bool DoLogNet = false;
 #if DEBUG
         private static bool LogDev = true;
@@ -100,6 +106,7 @@ namespace TAC_AI
             UnityEngine.Debug.Log(KickStart.ModID + ": "  + message + e);
         }
         private static readonly HashSet<string> warnedKeys = new HashSet<string>();
+        // REVISED: per-key-deduped popup warning; pops once per distinct key (vs LogWarnPlayerOnce which pops once globally)
         internal static void LogWarnPlayerOncePerKey(string key, string message, Exception e)
         {
             if (!ShouldLog)
@@ -111,6 +118,7 @@ namespace TAC_AI
             UnityEngine.Debug.Log(KickStart.ModID + ": " + message + e);
         }
         private static readonly HashSet<string> fileWarnedKeys = new HashSet<string>();
+        // REVISED: per-key-deduped, file-log-only warning tagged [AIWARN], NO popup; routes stale-load/transient AI warnings away from the popup path
         internal static void LogWarnFileOnly(string key, string message, Exception e = null)
         {
             if (!ShouldLog)
@@ -147,6 +155,7 @@ namespace TAC_AI
             UnityEngine.Debug.Log(message);
         }
         internal static bool NoLogTargeting => !ShouldLog || !DoLogTargeting;
+        // REVISED: new targeting-log channel gated on DoLogTargeting; tank overload restricts output to the player tank
         internal static void LogTargeting(string message)
         {
             if (NoLogTargeting) return;
@@ -189,6 +198,7 @@ namespace TAC_AI
                 return;
             UnityEngine.Debug.Log(message + "\n" + StackTraceUtility.ExtractStackTrace().ToString());
         }
+        // REVISED: new overload appending the Exception to the error line plus a stack trace
         internal static void LogError(string message, Exception e)
         {
             if (!ShouldLog)
@@ -274,6 +284,11 @@ namespace TAC_AI
             }
         }
 
+        // REVISED: new tagged-diagnostics suite (replaces the old PopupDebugInfo passthroughs).
+        // Prefix builds a [TAC_AI:subsystem:severity] tag consumed by the Log/Warn/Error/DebugTagged
+        // emitters below; DebugTagged is LogDev-gated. VisibleName resolves a tracked-visible/Tank id
+        // to a readable name, LogOwnership records old->new field changes with a reflected caller hint,
+        // DumpStateHistory dumps a helper's state snapshot, and FirstFire logs a key the first time only.
         internal static string Prefix(string subsystem, string severity = "INFO")
             => "[TAC_AI:" + subsystem + ":" + severity + "]";
 

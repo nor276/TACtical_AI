@@ -807,6 +807,7 @@ namespace TAC_AI.World
             {
                 var item = lastTanks[step];
                 item.RTSControlled = false;
+                // REVISED: clears the combat target via ReleaseTarget() now; changed from nulling lastEnemy directly
                 item.ReleaseTarget();
                 item.ForceAllAIsToEscort(false);
             }

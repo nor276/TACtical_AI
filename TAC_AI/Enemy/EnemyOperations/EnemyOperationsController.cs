@@ -16,6 +16,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
 
             EControlOperatorSet direct = helper.GetDirectedControl();
 
+            // REVISED: centralized no-target handling, hoisted out of every R* handler. When there's no live target,
+            // re-acquire/idle via RGeneral.DispatchNoTargetIdle; if still none, commit (with retreat override) and
+            // return before the EvilCommander switch. Below this point lastEnemyGet is guaranteed non-null for the R* handlers.
             if (helper.lastEnemyGet == null || helper.lastEnemyGet.tank == null)
             {
                 RGeneral.DispatchNoTargetIdle(helper, tank, Mind, ref direct);
@@ -52,6 +55,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 case EnemyHandling.Stationary:
                     RStation.AttackWham(helper, tank, Mind, ref direct);
                     break;
+                // REVISED: new self-heal arm for unknown EnemyHandling values - resets values, logs once per raw value,
+                // and falls back to RWheeled for this tick. Unlike the allied controller, Mind.EvilCommander is left
+                // untouched so the bad value stays visible for auditing rather than being silently rewritten.
                 default:
                     {
                         var origHandling = Mind.EvilCommander;

@@ -13,6 +13,7 @@ namespace TAC_AI.AI.AlliedOperations
         /// <param name="tank"></param>
         public static void HoldSupport(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
         {
+            // REVISED: now forwards to HoldProtect (the two bodies were identical); kept as an alias
             HoldProtect(helper, tank, ref direct);
         }
         public static void HoldProtect(TankAIHelper helper, Tank tank, ref EControlOperatorSet direct)
@@ -28,6 +29,7 @@ namespace TAC_AI.AI.AlliedOperations
 
             helper.ThrottleState = AIThrottleState.PivotOnly;
             helper.SettleDown();
+            // REVISED: guards lastEnemyGet.tank before dereferencing it
             if (helper.lastEnemyGet && helper.lastEnemyGet.tank)
             {
                 direct.DriveDest = EDriveDest.ToLastDestination;
@@ -38,6 +40,7 @@ namespace TAC_AI.AI.AlliedOperations
             {
                 if (helper.ActionPause <= 0)
                 {
+                    // REVISED: no longer scatters a random nearby SetLastDest; just resets the action-pause and idles in place
                     helper.actionPause = UnityEngine.Random.Range(50, 300);
                     direct.DriveDest = EDriveDest.None;
                     direct.DriveDir = EDriveFacing.Neutral;

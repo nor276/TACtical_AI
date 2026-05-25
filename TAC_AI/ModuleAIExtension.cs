@@ -9,6 +9,10 @@ using TerraTechETCUtil;
 public class ModuleAIExtension : TAC_AI.ModuleAIExtension { }
 namespace TAC_AI
 {
+    /// REVISED (overview): added persisted objective/scan ranges and a saved tech blueprint.
+    /// New [SSaveField]s lastObjectiveRange / lastScanRange / SavedTechBlueprint plus a runtime
+    /// MaxObjectiveRange field; save path now captures MaxObjectiveRange, JobSearchRange and the
+    /// TechMemor blueprint, and the load path now applies ObjectiveRange/ScanRange to AISetSettings.
     [AutoSaveComponent]
     public class ModuleAIExtension : ExtModule
     {
@@ -95,6 +99,7 @@ namespace TAC_AI
             "MaxCombatRange": 100,  // Max range the AI will travel from it's priority defence target (or x2 assassin provoke radius from home)
         }
         */
+        // REVISED: new persisted fields - objective/scan ranges and the serialized tech blueprint, restored on load
         [SSaveField]
         public float lastObjectiveRange = AIGlobals.DefaultMaxObjectiveRange;
         [SSaveField]
@@ -140,7 +145,7 @@ namespace TAC_AI
         /// Minimum range to enemy
         /// </summary>
         public float MinCombatRange = 50;
-        public float MaxObjectiveRange = AIGlobals.DefaultMaxObjectiveRange;
+        public float MaxObjectiveRange = AIGlobals.DefaultMaxObjectiveRange; // REVISED: new runtime objective-range field
 
         /// <summary>
         /// Changed from OnFirstAttach
@@ -423,6 +428,7 @@ namespace TAC_AI
             AISettingsSet additionalEdits = helper.AISetSettings;
             additionalEdits.CombatSpacing = lastSetRangeMin;
             additionalEdits.CombatChase = lastSetRangeMax;
+            // REVISED: restore objective/scan ranges from save into the helper settings
             additionalEdits.ObjectiveRange = lastObjectiveRange;
             additionalEdits.ScanRange = lastScanRange;
             helper.AISetSettings = additionalEdits;
@@ -443,6 +449,7 @@ namespace TAC_AI
                         WasMobileAnchor = Helper.PlayerAllowAutoAnchoring;
                         lastSetRangeMin = Helper.MinCombatRange;
                         lastSetRangeMax = Helper.MaxCombatRange;
+                        // REVISED: also capture objective range and job-search range for save
                         lastObjectiveRange = Helper.MaxObjectiveRange;
                         lastScanRange = Helper.JobSearchRange;
                         switch (Helper.DediAI)
@@ -481,6 +488,7 @@ namespace TAC_AI
                                 LastTargetVisibleID = -1;
                                 break;
                         }
+                        // REVISED: capture the TechMemor blueprint string for save (null when none stored)
                         var techMem = Helper.TechMemor;
                         if (techMem != null && techMem.HasSavedTech())
                             SavedTechBlueprint = techMem.SerializeBlueprintToString();

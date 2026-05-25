@@ -115,6 +115,7 @@ namespace TAC_AI.World
             }
             else if (purpose == BasePurpose.HasReceivers && RLoadedBases.FetchNearbyResourceCounts(Team) < AIGlobals.MinResourcesReqToCollect)
             {
+                // REVISED: too-few-mineables now reports "too much" (true) so no receiver base is built; changed from returning false
                 thisIsTrue = true;
                 DebugTAC_AI.Log(KickStart.ModID + ": HasTooMuchOfType - Team " + Team + " Does not have enough mineables in range to build Reciever bases.");
             }

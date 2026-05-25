@@ -5,6 +5,9 @@ using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI.AlliedOperations
 {
+    /// REVISED (overview): dropped the unused AIOperation interface / Operations dictionary / Startup() scaffolding;
+    /// Stationary now has its own Assault arm (ShootToDestroy + HoldProtect); the Escort Stationary DriverType arm was
+    /// removed; AutoSet reaching dispatch now self-heals via ExecuteAutoSetNoCalibrate instead of forcing Tank.
     internal class AlliedOperationsController
     {
         private TankAIHelper helper;
@@ -22,6 +25,7 @@ namespace TAC_AI.AI.AlliedOperations
                 switch (helper.DediAI)
                 {
                     case AIType.Assault:
+                        // REVISED: stationary Assault now aims/fires (ShootToDestroy) on top of the base hold
                         BAssassin.ShootToDestroy(helper, helper.tank);
                         BBase.HoldProtect(helper, helper.tank, ref direct);
                         break;
@@ -64,7 +68,10 @@ namespace TAC_AI.AI.AlliedOperations
                                 break;
 
 
+                            // REVISED: removed the Escort Stationary DriverType arm (AidDefend + HoldSupport)
+
                             case AIDriverType.AutoSet:
+                                // REVISED: AutoSet reaching dispatch now self-heals via ExecuteAutoSetNoCalibrate instead of forcing Tank
                                 DebugTAC_AI.LogError(KickStart.ModID + ": AutoSet reached dispatch for "
                                     + helper.tank.name + " — upstream resolve missing. DediAI=" + helper.DediAI);
                                 helper.ExecuteAutoSetNoCalibrate();

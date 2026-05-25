@@ -101,6 +101,8 @@ namespace TAC_AI
         /// <summary> This team has not enough Build Bucks </summary>
         internal bool Bankrupt => bankrupt;
 
+        // REVISED: HQ now persists by saved visible ID (hqVisibleID); the live pointer _HQ is [JsonIgnore] and
+        // lazily re-resolved from that ID when invalid (was a plain non-persisted pointer).
         public int hqVisibleID = -1;
         [JsonIgnore] private TeamBasePointer _HQ = null;
         internal TeamBasePointer HQ
@@ -117,6 +119,7 @@ namespace TAC_AI
                 return _HQ;
             }
         }
+        // REVISED: re-finds the HQ pointer matching the saved hqVisibleID across loaded base funders then unloaded NP_BaseUnits.
         private TeamBasePointer ResolveHQFromSavedID()
         {
             foreach (var f in RLoadedBases.IterateTeamBaseFunders(Team))
@@ -132,6 +135,7 @@ namespace TAC_AI
             }
             return null;
         }
+        // REVISED: sets the live HQ pointer and captures its visible ID into hqVisibleID for save/restore (replaces direct _HQ writes).
         private void SetHQInternal(TeamBasePointer p)
         {
             _HQ = p;
@@ -178,6 +182,7 @@ namespace TAC_AI
         {
             if (IsReadonly || ManSpawn.IsPlayerTeam(teamID))
                 return true;
+            // REVISED: a non-null presence no longer counts as alive on its own; now requires it to hold at least one unloaded base unit or mobile.
             var pres = ManEnemyWorld.GetTeam(Team);
             if (pres != null && (pres.EBUs.Count > 0 || pres.EMUs.Count > 0))
                 return true;
@@ -334,6 +339,7 @@ namespace TAC_AI
             TeamRelations TRP = Alignment_Internal(team);
             if (TRP >= TeamRelations.AITeammate)
                 return;
+            // REVISED: clamp ceiling is now AITeammate (was the enum value count, which let SameTeam=9001 leak through); same change in DegradeRelations_Internal.
             TeamRelations TRN = (TeamRelations)Mathf.Clamp((int)TRP + 1, (int)TeamRelations.Enemy, (int)TeamRelations.AITeammate);
             if (AIGlobals.ShowDebugFeedBack)
             {
@@ -410,6 +416,7 @@ namespace TAC_AI
             return true;
         }
 
+        // REVISED: public SetInfighting now guards IsReadonly (was an unguarded direct set); the raw write moved to SetInfighting_Internal for default-team seeding.
         public void SetInfighting(bool state)
         {
             if (IsReadonly)
@@ -432,6 +439,7 @@ namespace TAC_AI
                 return;
             }
             align[team] = relate;
+            // REVISED: mirror into the partner's align now skips readonly default teams (added !val.IsReadonly guard).
             if (ManBaseTeams.inst.teams.TryGetValue(team, out var val) && !val.IsReadonly && val.Alignment_Internal(teamID) != relate)
             {
                 val.align[teamID] = relate;
@@ -492,6 +500,7 @@ namespace TAC_AI
                     }
                 }
             }
+            // REVISED: HQ writes go through SetHQInternal (captures hqVisibleID); the "new HQ" log is now null-guarded so a team with no bases doesn't NRE.
             if (prevHQ != _HQ && _HQ != null)
                 DebugTAC_AI.LogTeams(KickStart.ModID + ": Base " + _HQ.Name + " is assigned as new HQ for team " + teamID);
             return true;
@@ -524,6 +533,11 @@ namespace TAC_AI
         }
     }
 
+    /// REVISED (overview): HQ is now persisted by visible ID (hqVisibleID) and lazily re-resolved, not held by transient pointer.
+    /// Dynamic team-ID allocation gained a dead-team GC sweep (TryReclaimDeadTeamID) and throws on exhaustion instead of wrapping.
+    /// Session reset is centralized in ResetSessionState (clears teams, HiddenVisibles, seededSpawnCoords, TradingSellOffers).
+    /// seededSpawnCoords is a new [SSaveField]; orphan TradingSellOffers are purged on save/load. Networked team deltas now
+    /// priority-drain and slice into packets of MaxPerPacket rather than a single 255-capped packet.
     [AutoSaveManager]
     public class ManBaseTeams
     {
@@ -537,6 +551,7 @@ namespace TAC_AI
         public Dictionary<int, int> TradingSellOffers = new Dictionary<int, int>();
         [SSaveField]
         public HashSet<int> HiddenVisibles = new HashSet<int>();
+        // REVISED: new persisted per-coord dedup set for LastSecondAddBaseToWorldTile spawns (prevents recycled-tile re-spawn).
         [SSaveField]
         public HashSet<IntVector2> seededSpawnCoords = new HashSet<IntVector2>();
 
@@ -547,6 +562,7 @@ namespace TAC_AI
                 inst.TradingSellOffers.Remove(vis.ID);
         }
 
+        // REVISED: new sweep removing TradingSellOffers whose visible is no longer tracked; called on save and post-load.
         private static int PurgeOrphanedSellOffers(string phase)
         {
             if (inst?.TradingSellOffers == null || inst.TradingSellOffers.Count == 0)
@@ -613,6 +629,7 @@ namespace TAC_AI
                 doFixup = true;
             }
 
+            // REVISED: a readonly team's align is now scrubbed unconditionally (was nested inside the doFixup branch); doFixup only re-applies infighting + defaultRelations.
             if (lockedReadOnly && ETD.align.Count > 0)
                 ETD.align.Clear();
 
@@ -682,6 +699,7 @@ namespace TAC_AI
                 }
             }
         }
+        // REVISED: removed the static SanityCheckIfDefaultTeam(EnemyTeamData) switch; default-team fixup now flows solely through CreateDefaultTeam/SetDefaultTeam.
         public static void DeInit()
         {
             if (inst == null)
@@ -693,6 +711,7 @@ namespace TAC_AI
             inst = null;
         }
 
+        // REVISED: extracted shared session reset (used by OnModeSwitch + OnWorldPreLoad); now also clears HiddenVisibles, seededSpawnCoords and TradingSellOffers (previously only teams/ready/lowTeam were reset).
         private static void ResetSessionState(string reason)
         {
             if (inst == null) return;
@@ -768,6 +787,7 @@ namespace TAC_AI
         }
         private const int LowTeamFloor = int.MinValue + 1;
 
+        // REVISED: new GC sweep - reaps dynamic non-readonly, non-player teams below the range start that have no techs left, recycling the highest freed ID.
         private static bool TryReclaimDeadTeamID(out int reclaimed)
         {
             List<int> dead = null;
@@ -790,6 +810,7 @@ namespace TAC_AI
             return true;
         }
 
+        // REVISED: now bounded by LowTeamFloor; on exhaustion it attempts TryReclaimDeadTeamID then throws InvalidOperationException (was a try/finally that simply kept decrementing past int.MinValue and overflowed).
         private static int GetNewTeamID()
         {
             while (inst.lowTeam > LowTeamFloor && inst.teams.ContainsKey(inst.lowTeam))
@@ -812,6 +833,7 @@ namespace TAC_AI
             inst.lowTeam--;
             return id;
         }
+        // REVISED: dropped the checked{}/OverflowException-fallback wrapper; ID exhaustion is now handled (reclaim-or-throw) inside GetNewTeamID.
         public static EnemyTeamData GetNewBaseTeam(TeamRelations defaultRelations)
         {
             int newTeamID = GetNewTeamID();
@@ -819,6 +841,7 @@ namespace TAC_AI
             inst.teams.Add(newTeamID, valNew);
             return valNew;
         }
+        // REVISED: dropped the checked{}/OverflowException wrapper; post-create verification now resolves against the passed-in team rather than the static playerTeam field.
         public static EnemyTeamData GetTeamAIBaseTeam(int team)
         {
             var findable = IterateBaseTeams(x => x.Alignment_Internal(team) == TeamRelations.AITeammate).FirstOrDefault();
@@ -883,6 +906,7 @@ namespace TAC_AI
             ETD = null;
             return false;
         }
+        // REVISED: snapshots to a List once and indexes Random.Range(0, Count) - the upper bound is now Count (exclusive), so the last team is now selectable (was Count-1, which never returned the final entry); same change in TryGetExistingBaseTeamWithPlayerAlignment.
         public static EnemyTeamData GetRandomExistingBaseTeam()
         {
             List<EnemyTeamData> teams = IterateBaseTeams().ToList();
@@ -937,6 +961,7 @@ namespace TAC_AI
         }
 
         // Relations
+        // REVISED: removed the unused near-duplicate GetRelationsOnlyWritable; GetRelationsWithWriteablePriority is the sole writable-priority resolver.
         private static bool GetRelationsWithWriteablePriority(int teamID1, int teamID2, out EnemyTeamData ETD)
         {
             if (teamID2 < teamID1)
@@ -1148,6 +1173,7 @@ namespace TAC_AI
                 if (item.IsReadonly)
                     continue;
                 int Team = item.Team;
+                // REVISED: anger decay is now rate*tick-interval (DamageAngerCoolRatePerSec * EnemyTeamAwarenessUpdateDelay) instead of a flat per-tick DamageAngerCoolPerSec, so cooldown tracks the actual update cadence.
                 if (item.angerThreshold > 0)
                     item.angerThreshold = Mathf.Max(0, item.angerThreshold - AIGlobals.DamageAngerCoolRatePerSec * AIGlobals.EnemyTeamAwarenessUpdateDelay);
                 if (AIECore.RetreatingTeams.Contains(Team))
@@ -1159,6 +1185,7 @@ namespace TAC_AI
                         averageTechDMG += item2.GetHelperInsured().DamageThreshold;
                         count++;
                     }
+                    // REVISED: zero-damage now continues to the next team instead of return-ing, so one team with no active techs no longer aborts the whole per-tick team loop (skipping anger decay + ManageBases for the rest).
                     if (averageTechDMG == 0)
                         continue;
                     averageTechDMG /= count;
@@ -1189,6 +1216,7 @@ namespace TAC_AI
             }
         }
 
+        // REVISED: hardened - snapshots teams up front and restores it on a fatal exception (rollback); the per-tech mapping is now a shared MigrateOne local wrapped in its own try/catch (per-tech failures counted, not fatal), and StoredTilesJSON parse failures skip the bad tile instead of aborting.
         public void MigrateTeamsToNewSaveFormat()
         {
             int count = 0, perTechFailures = 0;
@@ -1287,6 +1315,7 @@ namespace TAC_AI
                     DebugTAC_AI.LogError("ManBaseTeams - Save failed, saving instance null??");
                     return;
                 }
+                // REVISED: now purges orphaned TradingSellOffers before saving (and returns early on a null instance).
                 PurgeOrphanedSellOffers("pre-save");
                 if (inst.teams != null)
                 {
@@ -1312,6 +1341,7 @@ namespace TAC_AI
         {
             try
             {
+                // REVISED: now runs the full ResetSessionState before nulling teams, so stale hidden visibles / seeded coords / sell offers don't bleed across loads.
                 ResetSessionState("OnWorldPreLoad");
                 inst.teams = null;
             }
@@ -1323,6 +1353,7 @@ namespace TAC_AI
             {
                 if (inst.HiddenVisibles == null)
                     inst.HiddenVisibles = new HashSet<int>();
+                // REVISED: also null-guard the new seededSpawnCoords and TradingSellOffers for legacy saves; orphaned sell offers are purged post-load (see end of try).
                 if (inst.seededSpawnCoords == null)
                     inst.seededSpawnCoords = new HashSet<IntVector2>();
                 if (inst.TradingSellOffers == null)
@@ -1461,6 +1492,7 @@ namespace TAC_AI
 
         private const int MaxPerPacket = 200;
 
+        // REVISED: drain is now priority-ordered (removals, then BB, then align) and sliced into multiple packets of up to MaxPerPacket entries each, instead of one packet hard-capped at byte.MaxValue (which silently dropped the overflow).
         public static void PushTeamDeltasToClients()
         {
             if (ToSend.Count == 0) return;
@@ -1482,6 +1514,7 @@ namespace TAC_AI
         public class NetworkedAITeamUpdate : MessageBase
         {
             public NetworkedAITeamUpdate() { }
+            // REVISED: now carries an explicit payload slice (list + start + len) so Serialize writes just this packet's window; previously it serialized straight from the static ToSend dictionary and cleared it in a finally.
             private readonly List<KeyValuePair<int, byte>> _payload;
             private readonly int _start, _len;
             public NetworkedAITeamUpdate(List<KeyValuePair<int, byte>> payload, int start, int len)
@@ -1588,6 +1621,7 @@ namespace TAC_AI
                     DebugTAC_AI.Log("TAC_AI: FAILED to process UnpackTeamAlignmentInfo(), teams might be corrupted!!! - " + e);
                 }
             }
+            // REVISED: removed the unused serialized fields PackingInfo / TeamID / BribeAmount (never read or written by the packers).
         }
         private static NetworkHook<NetworkedAITeamUpdate> netHook = new NetworkHook<NetworkedAITeamUpdate>(
             "TAC_AI.NetworkedAITeamUpdate", OnReceiveTeamUpdate, NetMessageType.ToClientsOnly);

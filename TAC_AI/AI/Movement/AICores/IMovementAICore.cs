@@ -43,6 +43,9 @@ namespace TAC_AI.AI.Movement.AICores
         float GetDrive { get; }
     }
 
+    /// REVISED: new sub-interface for the air cores (Airplane/Heli/Vtol). Exposes the flight sub-type
+    /// (IsRotorcraft / IsFixedWing) polymorphically via "AICore is IAirMovementAICore", replacing the old
+    /// back-channel field; queried by target acquisition and weapon-aim strategy across pipeline boundaries.
     public interface IAirMovementAICore : IMovementAICore
     {
         bool IsRotorcraft { get; }

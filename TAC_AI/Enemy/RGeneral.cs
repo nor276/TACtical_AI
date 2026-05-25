@@ -9,6 +9,9 @@ using TAC_AI.AI.AlliedOperations;
 
 namespace TAC_AI.AI.Enemy
 {
+    /// REVISED (overview): added DispatchNoTargetIdle (controller's no-target entry: rescan, hold while Provoked, else route to LollyGag/LollyGagAir).
+    /// LollyGag now does an idle re-scan before the CommanderMind switch and gates charger-fetch on low energy. DefaultIdle action-pause
+    /// timing reworked. HomingIdle hardened with null-guard and typed NRE catch. Monitor releases/re-pursues targets via ReleaseTarget/SetPursuit.
     public static class RGeneral
     {
         public const float RANDRange = 125;
@@ -55,6 +58,7 @@ namespace TAC_AI.AI.Enemy
                                 DefaultIdle(helper, tank, mind, ref direct);
                             }
                         }
+                        // REVISED: charger-fetch now gated on energy < 0.9f, so a near-full tech no longer drives off to chargers
                         else if (!holdGround && helper.GetEnergyPercent() < 0.9f &&
                             AIECore.FetchChargedChargers(tank, mind.MaxCombatRange, out IAIFollowable posTrans, out _, tank.Team))
                         {
@@ -116,6 +120,8 @@ namespace TAC_AI.AI.Enemy
                 direct.SetLastDest(mind.sceneStationaryPos);
             else
             {
+                // REVISED: idle re-scan added before the attitude switch - when targetless, unprovoked, and the scan
+                // cooldown has elapsed, retry target acquisition (ScanDelay-throttled) so idle techs reacquire enemies.
                 if (helper.lastEnemyGet == null && helper.Provoked <= 0
                     && helper.NextFindTargetTime <= Time.time)
                 {
@@ -176,12 +182,15 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
+        // REVISED: new retreat-posture flag helpers - set/clear helper.WasRetreatingInCombat for combat retreat tracking
         internal static void MarkRetreating(TankAIHelper helper) { helper.WasRetreatingInCombat = true; }
         internal static void MarkAdvancing(TankAIHelper helper) { helper.WasRetreatingInCombat = false; }
 
         // Handle being bored AIs
         internal static void DefaultIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            // REVISED: action-pause cadence reworked - on expiry pick a new random dest and reset pause to 1000 (was 60),
+            // then drive toward it while pause > 250, else stop. Old code set pause 60 / drove while pause > 15.
             if (helper.ActionPause <= 0)
             {
                 direct.SetLastDest(GetRANDPos(tank));
@@ -192,6 +201,10 @@ namespace TAC_AI.AI.Enemy
             else
                 direct.DriveDest = EDriveDest.None;
         }
+        // REVISED: new centralized no-target entry called by EnemyOperationsController before its EvilCommander switch.
+        // Re-acquires via TryRefreshEnemyEnemy; bails if a target appears; holds (DriveDest=None) while still Provoked;
+        // else routes by locomotion - Airplane/Chopper to LollyGagAir, Stationary to LollyGag(holdGround:true), else LollyGag.
+        // Replaces the former per-R*-handler null-target guards.
         internal static void DispatchNoTargetIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
@@ -217,6 +230,8 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
+        // REVISED: hardened - added null-guard on helper/tank/mind, the target null-check now also requires target.tank != null,
+        // and the bare catch{} is now a typed NRE/MissingReference catch that logs once-per-key and falls back to DefaultIdle.
         internal static void HomingIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             if (helper == null || tank == null || mind == null)
@@ -284,6 +299,8 @@ namespace TAC_AI.AI.Enemy
             helper.WantsToFight = false;
             if (helper.lastEnemyGet)
             {
+                // REVISED: now formally locks pursuit via SetPursuit (was a bare lastEnemy hold); drops use ReleaseTarget()
+                // above so KeepEnemyFocus is cleared rather than leaving stale focus from a raw lastEnemy = null.
                 helper.SetPursuit(helper.lastEnemyGet);
                 if (ManBaseTeams.IsEnemy(tank.Team, helper.lastEnemyGet.tank.Team))
                     helper.WantsToFight = true;

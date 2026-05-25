@@ -499,6 +499,7 @@ namespace TAC_AI.Templates
                 DebugTAC_AI.Log(KickStart.ModID + ": LoadAllEnemyTechsExternalMods - No bundled techs found");
             return toAdd;
 #else
+            // REVISED: non-STEAM build returns an empty List<RawTechTemplate> to match the method signature; changed from List<BaseTemplate>
             return new List<RawTechTemplate>();
 #endif
         }

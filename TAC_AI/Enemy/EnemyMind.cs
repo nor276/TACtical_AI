@@ -11,6 +11,10 @@ namespace TAC_AI.AI.Enemy
     /// <summary>
     /// Where the brain is handled for enemies (and mayber non-player allies)
     /// </summary>
+    /// REVISED (overview): added an init-grace window (initWindowEndTime / EnemyInitGrace) during which freshly-added blocks have
+    /// their self-destruct aborted, plus a shared TryAbortSelfDestruct helper. Refresh now dedups via EnforceSingleComponent and
+    /// bails if it isn't the kept instance. OnHit reworked to also trip on accumulated sub-threshold threat and to null-guard the
+    /// damage source/team. GetRevengeOn lets a forced call override KeepEnemyFocus; EndAggro only re-roles when out of combat range.
     public class EnemyMind : MonoBehaviour
     {
         // ESSENTIALS
@@ -109,6 +113,7 @@ namespace TAC_AI.AI.Enemy
         public bool CanCallRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team);
         public bool CanDoRetreat => ManBaseTeams.IsBaseTeamAny(Tank.Team) || IsPopulation;
 
+        // REVISED: init-grace deadline - blocks added/lost before this time have their self-destruct aborted (see OnBlockAdd)
         private float initWindowEndTime;
 
         public void Initiate()
@@ -124,6 +129,8 @@ namespace TAC_AI.AI.Enemy
 
             AIControl.ResetAISettings();
 
+            // REVISED: open the init-grace window and sweep all current blocks to abort any pending self-destruct,
+            // so a freshly-spawned enemy tech doesn't shed blocks mid-construction
             initWindowEndTime = Time.time + AIGlobals.EnemyInitGrace;
             try
             {
@@ -141,6 +148,8 @@ namespace TAC_AI.AI.Enemy
             if (AIControl.MovementController == null)
                 throw new NullReferenceException("AIControl.MovementController null");
 
+            // REVISED: now enforces a single EnemyMind on the GameObject (was just an assert-log on duplicates) and bails out
+            // if this instance is the one being discarded; also re-opens the init-grace window on every Refresh.
             var kept = gameObject.EnforceSingleComponent<EnemyMind>("EnemyMind.Refresh");
             if (kept != this) return;
 
@@ -150,6 +159,7 @@ namespace TAC_AI.AI.Enemy
             AIControl.RunState = AIRunState.Advanced;
             AIControl.MovementController.UpdateEnemyMind(this);
             AIControl.AvoidStuff = true;
+            // REVISED: now ReleaseTarget() (clears target + focus) instead of EndPursuit() alone
             AIControl.ReleaseTarget();
             BoltsQueued = 0;
             try
@@ -176,6 +186,8 @@ namespace TAC_AI.AI.Enemy
             DestroyImmediate(this);
         }
 
+        // REVISED: self-destruct abort now also fires during the init-grace window and while RawTechLoader.Rebuilding
+        // (was only on FirstUpdateAfterSpawn); the inline body + silent catch{} are extracted into TryAbortSelfDestruct.
         public void OnBlockAdd(TankBlock blockAdd, Tank tonk)
         {
             if (tonk.FirstUpdateAfterSpawn || Time.time <= initWindowEndTime
@@ -184,6 +196,7 @@ namespace TAC_AI.AI.Enemy
                 TryAbortSelfDestruct(blockAdd);
             }
         }
+        // REVISED: extracted, fully null-guarded self-destruct abort shared by Initiate sweep and OnBlockAdd
         private static void TryAbortSelfDestruct(TankBlock b)
         {
             if (b == null) return;
@@ -196,6 +209,9 @@ namespace TAC_AI.AI.Enemy
             sceneStationaryPos += move;
         }
 
+        // REVISED: reworked from a single "big single hit" gate into a trip-flag model. It now also provokes when many
+        // sub-threshold hits accumulate (AccumulateAndCheckThreat), reads SourceTeamID directly with a teamKnown guard,
+        // and guards every SourceTank deref behind srcAlive so a hit from a now-dead/teamless source no longer NREs.
         public void OnHit(ManDamage.DamageInfo dingus)
         {
             bool tripped = dingus.Damage > AIGlobals.DamageAlertThreshold;
@@ -222,6 +238,7 @@ namespace TAC_AI.AI.Enemy
             {
                 AIControl.FIRE_ALL = true; // we do not want subneutrals firing all - this WILL cause collateral
             }
+            // REVISED: revenge-lock now also requires a live source (srcAlive) before dereferencing src.visible
             if (AIControl.Provoked <= 0 && srcAlive)
             {
                 AIControl.lastEnemy = src.visible;
@@ -267,6 +284,7 @@ namespace TAC_AI.AI.Enemy
                     }
                 }
             }
+            // REVISED: failures now logged once-per-key (was a silent catch{})
             catch (Exception e)
             {
                 DebugTAC_AI.LogWarnPlayerOncePerKey(
@@ -286,6 +304,7 @@ namespace TAC_AI.AI.Enemy
                 }
                 else
                 {
+                    // REVISED: roll is now 0..99 (Range(0,100)) so the drop-chance comparison covers the full 0-99 range (was 0..98); same change in the catch below
                     if (UnityEngine.Random.Range(0, 100) >= KickStart.EnemyBlockDropChance )
                     {
                         if (ManNetwork.IsNetworked)
@@ -319,6 +338,7 @@ namespace TAC_AI.AI.Enemy
                     }
                 }
             }
+            // REVISED: failures now logged once-per-key (was a silent catch{})
             catch (Exception e)
             {
                 DebugTAC_AI.LogWarnPlayerOncePerKey(
@@ -327,6 +347,8 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
+        // REVISED: a forced call now overrides an existing KeepEnemyFocus lock (was blocked whenever focus was held) and
+        // the pursuit is set with force:true so SetPursuit replaces the locked target instead of no-opping.
         public void GetRevengeOn(Visible target = null, bool forced = false)
         {
             if ((forced || !AIControl.KeepEnemyFocus) && (forced || CommanderAttack != EAttackMode.Safety))
@@ -349,6 +371,8 @@ namespace TAC_AI.AI.Enemy
                 AIControl.SetPursuit(target, forced);
             }
         }
+        // REVISED: the calm-down re-role (back to Miner/Junker) is now gated on the target being gone or out of MaxCombatRange,
+        // so a still-in-range target no longer gets its attitude flipped; EndPursuit still always runs when focus was held.
         public void EndAggro()
         {
             if (AIControl.KeepEnemyFocus)

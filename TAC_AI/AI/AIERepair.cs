@@ -55,6 +55,9 @@ namespace TAC_AI.AI
 
         private static StringBuilder SB = new StringBuilder();
 
+        /// REVISED (overview): on Initiate, the repair blueprint can now be restored from a persisted string on ModuleAIExtension (TryRestoreFromPersistedBlueprint),
+        /// and a saved blueprint with fewer blocks than the live tech is treated as stale, discarded, and re-snapped.
+        /// Added Serialize/Deserialize/HasSavedTech blueprint-string helpers to back that persistence.
         public class DesignMemory : MonoBehaviour
         {   // Save the design on load!
             private Tank tank;
@@ -84,11 +87,13 @@ namespace TAC_AI.AI
                 Helper.PendingDamageCheck = true;
                 blockIntegrityDirty = true;
                 purchaseOp = EnemyPurchase;
+                // REVISED: seed SavedTech from any persisted blueprint on the tech before deciding whether to snapshot
                 TryRestoreFromPersistedBlueprint();
                 if (DoFirstSave)
                 {
                     if (SavedTech.Any() || BookmarkBuilder.TryGet(tank, out BookmarkBuilder BB))
                     {
+                        // REVISED: a restored blueprint with fewer blocks than the live tech is stale - discard and re-snap from the current build
                         if (SavedTech.Any() && SavedTech.Count < tank.blockman.blockCount)
                         {
                             DebugTAC_AI.LogTagged("MemStale",
@@ -577,6 +582,7 @@ namespace TAC_AI.AI
                 MemoryToTech(mem);
             }
 
+            // REVISED: new - blueprint persistence helpers; Serialize/Deserialize pack SavedTech to a '|'-delimited JSON string for storage on ModuleAIExtension
             internal bool HasSavedTech() => SavedTech.Count > 0;
 
             internal string SerializeBlueprintToString()
@@ -611,6 +617,7 @@ namespace TAC_AI.AI
                 rejectSaveAttempts = true;
             }
 
+            // REVISED: new - if no snapshot yet, scan the tech's ModuleAIExtension blocks for a stored blueprint string and load it into SavedTech
             private void TryRestoreFromPersistedBlueprint()
             {
                 if (SavedTech.Count > 0)

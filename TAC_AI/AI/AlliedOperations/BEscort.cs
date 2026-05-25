@@ -51,6 +51,7 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.DelayedAnchorClock = 0;
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Giving the player some room...");
                 direct.DriveAwayFacingTowards();
+                // REVISED: unanchorCountdown decrement removed at the room/depart branches; the if-guard now no-ops so the countdown only resets on Unanchor, no longer ticks down here
                 if (helper.unanchorCountdown > 0)
                     {  }
                 if (helper.IsAutoAnchored)

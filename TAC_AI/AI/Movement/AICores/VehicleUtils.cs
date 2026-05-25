@@ -9,6 +9,9 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
+    /// REVISED (overview): shared Land/Sea/Space steering+pathing helpers, renamed/extracted from the old VehicleAICore.
+    /// Turner's Lazy/default branch now also writes helper.DriveControl (was steer-only); the *Enemy path resolvers now
+    /// write core.lastDestination = the resolved pos, cache theGuardedAlly, and the enemy guard path calls TryAdjustForCombatEnemy.
     internal static class VehicleUtils
     {
         internal static FieldInfo controlGet = typeof(TankControl).GetField("m_ControlState", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -114,6 +117,8 @@ namespace TAC_AI.AI.Movement.AICores
                         if (turnVal < 0 || turnVal > 1 || float.IsNaN(turnVal))
                             DebugTAC_AI.Exception("Invalid Turnval  NaN " + float.IsNaN(turnVal) + "  negative " + (turnVal < 0));
                     }
+                    // REVISED: the Lazy/default branch now writes helper.DriveControl (was steer-only), so a Lazy-strictness
+                    // turn applies its computed drive instead of leaving the throttle at whatever the previous branch set.
                     helper.DriveControl = drive;
                     if (helper.FixControlReversal(drive))
                         helper.SteerControl(new Vector3(-destVec.x, destVec.y, -destVec.z), turnVal);
@@ -397,6 +402,8 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.Log(KickStart.ModID + ": Missing variable(s)");
                 }
             }
+            // REVISED: combat lastDestination now records the resolved aim pos (was controller.GetDestination()), so the
+            // Maintainer's lastDestinationCore matches where this resolver actually steered.
             core.lastDestination = pos;
             return true;
         }
@@ -517,6 +524,7 @@ namespace TAC_AI.AI.Movement.AICores
                         core.DrivePathing = EDrivePathing.Path;
                     helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(controller.Tank.Team),
                         controller.Tank.boundsCentreWorldNoCheck, Mathf.Pow(helper.MaxCombatRange * 2, 2), out float bestval, helper)?.visible;
+                    // REVISED: Aegis guard target now also published to helper.theGuardedAlly for downstream consumers.
                     helper.theGuardedAlly = helper.theResource;
                     if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombat(true, ref pos, ref core))
                     {
@@ -622,6 +630,8 @@ namespace TAC_AI.AI.Movement.AICores
                     DebugTAC_AI.Log(KickStart.ModID + ": Missing variable(s)");
                 }
             }
+            // REVISED: lastDestination now records the resolved aim pos (was controller.GetTargetDestination()), keeping
+            // the Maintainer's lastDestinationCore in step with where this resolver steered.
             core.lastDestination = pos;
             return true;
         }
@@ -706,6 +716,8 @@ namespace TAC_AI.AI.Movement.AICores
                     helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(controller.Tank.Team),
                         controller.Tank.boundsCentreWorldNoCheck, Mathf.Pow(helper.MaxCombatRange * 2, 2),
                         out float bestval, helper)?.visible;
+                    // REVISED: Guardian path now publishes theGuardedAlly and calls the ENEMY combat adjuster
+                    // (TryAdjustForCombatEnemy) - it had been calling the allied TryAdjustForCombat on an enemy mind.
                     helper.theGuardedAlly = helper.theResource;
                     if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core))
                     {

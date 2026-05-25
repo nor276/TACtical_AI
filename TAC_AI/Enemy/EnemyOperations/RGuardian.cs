@@ -7,6 +7,7 @@ using TAC_AI.AI;
 using TAC_AI.AI.Enemy;
 using TAC_AI.AI.Movement;
 
+// REVISED: namespace corrected from TAC_AI.Enemy.EnemyOperations to TAC_AI.AI.Enemy.EnemyOperations to match siblings.
 namespace TAC_AI.AI.Enemy.EnemyOperations
 {
     internal class RGuardian
@@ -40,6 +41,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             if ((bool)helper.lastEnemyGet && !helper.Retreat && helper.lastOperatorRange <= helper.MaxCombatRange)
             {   // combat pilot will take care of the rest
                 //OBSTRUCTION MANAGEMENT
+                // REVISED: speed-threshold divisor switched from PlayerAISpeedPanicDividend to EnemyAISpeedPanicDividend
+                // here and in the other obstruction check below (this is an enemy-side handler).
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend))
                 {
                     helper.TryHandleObstruction(hasMessaged, dist, true, true, ref direct);
@@ -59,6 +62,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     direct.DriveAwayFacingTowards();
                     helper.ThrottleState = AIThrottleState.ForceSpeed;
                     helper.DriveVar = -1;
+                    // REVISED: the helper.unanchorCountdown-- decrement was removed here (and in the other branch below);
+                    // the countdown is no longer ticked down inside MotivateDefend.
                     if (helper.unanchorCountdown > 0)
                         {  }
                     if (mind.CommanderSmarts >= EnemySmarts.Meh && tank.Anchors.NumPossibleAnchors >= 1)

@@ -9,8 +9,14 @@ using UnityEngine;
 
 namespace TAC_AI.AI
 {
+    /// REVISED (overview): now derives from MovementControllerBase instead of implementing
+    /// MonoBehaviour + IMovementAIController directly. Tank/Helper/AICore/EnemyMind/GetDrive/Recycle
+    /// boilerplate moved to the base; the old monolithic Initiate is split into the base template hooks
+    /// OnPreInitiate / SelectCore / OnPostInitiate / OnRecycle, with core selection (Helicopter/VTOL/
+    /// Airplane) consolidated into SelectCore by thrust-bias ladder. Drive* members are now overrides.
     internal class AIControllerAir : MovementControllerBase
     {
+        // REVISED: reflection target changed from BoosterJet to Thruster for the m_Force field.
         internal static FieldInfo boostGet = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
 
         public enum FlightType
@@ -20,6 +26,8 @@ namespace TAC_AI.AI
             VTOL,       // Both Horizontal and vertical flight
         }
 
+        // REVISED: FlyStyle is now internal (was public) controller-only state; air sub-type is exposed
+        // across pipelines via IAirMovementAICore (IsRotorcraft/IsFixedWing), not this field.
         internal FlightType FlyStyle;             // Dictates the way the AI should fly the Tech
 
         //Manuvering (Post-Pathfinding)
@@ -100,6 +108,8 @@ namespace TAC_AI.AI
             DebugTAC_AI.Info(KickStart.ModID + ": (2) Tech " + Tank.name + " PropBias " + PropBias + ", BoostBias " + BoostBias);
         }
 
+        // REVISED: core selection consolidated here from the old player/enemy if/else trees in Initiate.
+        // Single thrust-bias ladder for both alignments; no longer assigns mind.EvilCommander as a side effect.
         protected override IMovementAICore SelectCore(Enemy.EnemyMind mind)
         {
             Vector3 bias = NoProps ? BoostBias : PropBias;
@@ -147,6 +157,8 @@ namespace TAC_AI.AI
                     float thrustRev = (float)RawTechBase.fanThrustRateRev.GetValue(jet);
                     Vector3 localFwd = jet.LocalThrustDirection;
                     Vector3 rawVec = localFwd * thrust;
+                    // REVISED: rearward-facing jets now count full reverse thrust (-localFwd.* * thrustRev);
+                    // previously Mathf.Max(localFwd.* * thrustRev, 0) zeroed it since the component was negative.
                     if (localFwd.z < 0)
                         FwdThrust += -localFwd.z * thrustRev;
                     else
@@ -346,6 +358,7 @@ namespace TAC_AI.AI
             }
             else if (helper.AIAlign == AIAlignment.NonPlayer) //enemy
             {
+                // REVISED: RTS enemy path now calls DriveDirectorEnemyRTS, changed from DriveDirectorEnemy.
                 this.AICore.DriveDirectorEnemyRTS(EnemyMind, ref core);
             }
             return;

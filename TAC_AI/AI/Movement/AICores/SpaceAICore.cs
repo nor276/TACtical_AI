@@ -8,6 +8,10 @@ using TerraTechETCUtil;
 namespace TAC_AI.AI.Movement.AICores
 {
     /// <summary> Handles Space AI Directors & Maintainers </summary>
+    /// REVISED (overview): per-type core split out of the old VehicleAICore; selected via MovementDispatch.
+    /// NO-YAW fix: the no-enemy Forwards branch now feeds Navi3DDirect = PathPoint - pos so thruster hover/space
+    /// craft yaw toward their goal (was a TurnerHovership call that left them translating but never yawing).
+    /// Broadside/backwards no-enemy steering now passes -distDiff to TurnerHovership, and LightBoost feathers via lightBoostFeatherTimer.
     internal class SpaceAICore : IMovementAICore
     {
         private AIControllerDefault controller;
@@ -134,6 +138,8 @@ namespace TAC_AI.AI.Movement.AICores
             controller.PathPointSet = AIEPathing.ModerateMaxAlt(Target, helper);
 
             // Planned pathing
+            // REVISED: planned pathing now skipped when Attempt3DNavi (was unconditional), so 3D-navigating craft
+            // fall straight to immediate steering instead of being held by the ground-pather.
             if (!helper.Attempt3DNavi && PlanningPathing(Target, core.DrivePathing))
                 return true;
 
@@ -295,6 +301,7 @@ namespace TAC_AI.AI.Movement.AICores
                     else
                     {
                         //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Z-tilt active");
+                        // REVISED: now reads turnVal.z (was turnVal.x) so the broadside tilt clamps the Z (roll) axis it sets just above.
                         turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.z) / 60f, -1, 1);
                     }
                     turnVal.x = turnValUp.x;
@@ -322,6 +329,7 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         else
                         {
+                            // REVISED: no-enemy broadside while moving-away now steers -distDiff (was distDiff) to keep the broadside facing.
                             VehicleUtils.TurnerHovership(tank.control, helper, -distDiff, ref core);
                         }
                     }
@@ -386,6 +394,8 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         else
                         {
+                            // REVISED (NO-YAW): feed the heading toward the path goal so a no-enemy craft yaws to face its destination.
+                            // Was a TurnerHovership(distDiff) call that had been disabled, leaving thruster craft translating but never yawing.
                             helper.Navi3DDirect = controller.PathPoint - tank.boundsCentreWorldNoCheck;
                         }
                     }
@@ -485,6 +495,7 @@ namespace TAC_AI.AI.Movement.AICores
                     float range = helper.lastOperatorRange;
                     if (range < helper.AutoSpacing - 1)
                     {
+                        // REVISED: too-close back-off now normalizes distDiff so the 0.3 nudge is range-independent (was raw distDiff).
                         driveVal = InertiaTranslation(tank.rootBlockTrans.InverseTransformVector(InvertHorizontalPlane(distDiff.normalized)) * 0.3f);
                     }
                     else if (range > helper.AutoSpacing + 1)
@@ -528,6 +539,7 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (helper.LightBoost)
                     {
+                        // REVISED: LightBoost feathering moved from the LightBoostFeatheringClock frame counter to lightBoostFeatherTimer (0.5s).
                         if (helper.lightBoostFeatherTimer.Due)
                         {
                             if (helper.IsMultiTech || Vector3.Dot(driveVal, tank.rootBlockTrans.forward) > 0.75f)
@@ -608,6 +620,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
+            // REVISED: combat-engage gate dropped the IsDirectedMoving clause; now just ChaseThreat && !Retreat.
             if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
             {
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);

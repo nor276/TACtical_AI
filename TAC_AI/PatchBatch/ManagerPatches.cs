@@ -100,6 +100,7 @@ namespace TAC_AI
             }
         }
 
+        // REVISED: new patch — suppresses vanilla camera-distance sleep for enemy-base teams within AIGlobals.EnemyKeepAwakeRange (returns false to keep them ticking); beyond that range, or for non-enemy/sleeping/non-BetterAI techs, falls through to vanilla
         internal static class ManTechsSleepPatches
         {
             internal static Type target = typeof(ManTechs);

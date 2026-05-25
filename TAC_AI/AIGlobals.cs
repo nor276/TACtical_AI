@@ -91,6 +91,7 @@ namespace TAC_AI
         public const float SleepRangeSpacing = 16;
         public static bool IsInSleepRange(Vector3 posScene)
         {
+            // REVISED: null-guards rangeOverride, falling back to vanilla 200 if the reflection field is missing.
             float sleepRange = TankAIManager.rangeOverride != null
                 ? (float)TankAIManager.rangeOverride.GetValue(ManTechs.inst) : 200f;
             return !ManNetwork.IsNetworked &&
@@ -170,12 +171,14 @@ namespace TAC_AI
         // GENERAL AI PARAMETERS
         public const float DefaultMaxObjectiveRange = 750;
         public const float TargetVelocityLeadPredictionMulti = 0.01f; // for projectiles of speed 100
+        // REVISED: NEW — caps aim-lead time-of-flight so far-target solutions don't over-lead.
         public const float LeadPredictionMaxTOF = 3f;
         public const float StationaryMoveDampening = 6;
         public const int TeamRangeStart = 256;
         public const short NetAIClockPeriod = 30;
 
         public const float TargetCacheRefreshInterval = 1.5f;  // Seconds until we try to gather enemy Techs within range
+        // REVISED: NEW — faster enemy-scan cache refresh while in combat (idle still uses the 1.5s interval).
         public const float TargetCacheRefreshIntervalCombat = 0.4f;
 
         internal static GUIButtonMadness ModularMenu;
@@ -317,8 +320,10 @@ namespace TAC_AI
         public const float AirborneDodgeStrengthMultiplier = 0.4f;  // The motivation in trying to move away from a tech in the way
         public const float FindItemScanRangeExtension = 50;
         public const float FindBaseScanRangeExtension = 500;
+        // REVISED: retuned reverse-away holds; these are now actionPause tick set-values read at 500 ticks/sec (ReverseDelay 500 = 1.0s, ReverseFromResourceDelay 300 = 0.6s) via the AITimer shim.
         public const int ReverseDelay = 500;
         public const int ReverseFromResourceDelay = 300;
+        // REVISED: NEW — seconds the 3D-navi tech must stay tipped over before firing a build beam to flip upright.
         public const float BeamFlipTippedHoldSecs = 1.5f;
         public const float PlayerAISpeedPanicDividend = 8;
         public const float EnemyAISpeedPanicDividend = 9;
@@ -382,19 +387,23 @@ namespace TAC_AI
 
         // Combat Parameters
         public const float TargetValidationDelay = 0.6f;//1.5f;
+        // REVISED: default targeting range widened from 150 to 1500.
         public const int DefaultMaxTargetingRange = 1500;
 
         // Combat target switching
         public const int ProvokeTime = 200;         // Roughly around 200/40 = 5 seconds
         public const int ProvokeTimeShort = 80;
+        // REVISED: NEW — seconds a target stays held after LOS is lost (behind cover) before pursuit ends.
         public const float LOSLostGraceTime = 3.0f;
         public const int DamageAlertThreshold = 45;// Above this damage we react to the threat
+        // REVISED: NEW — cumulative damage-alert model: damage sums toward DamageAlertCumulativeThreshold and decays at DamageAlertDecayPerSec, so steady chip damage eventually trips the alert.
         public const float DamageAlertCumulativeThreshold = 60f;
         public const float DamageAlertDecayWindowSeconds = 3.0f;
         public const float DamageAlertDecayPerSec = DamageAlertCumulativeThreshold / DamageAlertDecayWindowSeconds;
         public const float ScanDelay = 0.5f;        // Seconds until we try to find a appropreate target
         public const float PestererSwitchDelay = 12.5f; // Seconds before Pesterers find a new random target
 
+        // REVISED: NEW flicker controls — keep a held target until past 1.5x range, require 2 blocked-LOS checks before asserting cover, and cap RTS-locked targets at 2.5x range.
         public const float CombatRangeRetentionMult = 1.5f;
         public const float CombatRangeRetentionMultSqr = CombatRangeRetentionMult * CombatRangeRetentionMult;
         public const int LosBlockedStreakThreshold = 2;
@@ -405,6 +414,7 @@ namespace TAC_AI
         // Active Enemy AI Techs
         public const float EnemyTeamAwarenessUpdateDelay = 6;
         public const float DamageAngerDropRelations = 2500;//2500
+        // REVISED: renamed from DamageAngerCoolPerSec and now a true per-second rate (25), no longer pre-multiplied by EnemyTeamAwarenessUpdateDelay — the per-tick decay is computed at the consumer.
         public const float DamageAngerCoolRatePerSec = 25;
         public const int DefaultEnemyScanRange = 150;
         public const int TileFringeDist = 96;
@@ -425,6 +435,7 @@ namespace TAC_AI
         public const float SpacingRangeAircraft = 24;
         public const float SpacingRangeChopper = 12;
         public const float SpacingRangeHoverer = 18;
+        // REVISED: NEW spacing params — bomber drop-zone alignment tolerance, and a negative spacer that drives ramming units to close inside the target.
         public const float BomberDropZoneTolerance = 8;
         public const float GCRamSpacer = -32f;
 
@@ -442,14 +453,17 @@ namespace TAC_AI
         public const int EnemyBaseMiningMaxRange = 250;
         public const int EnemyExtendActionRangeShort = 500;
         public const int EnemyExtendActionRange = EnemyExtendActionRangeShort + 32; //the extra 32 to account for tech sizes
+        // REVISED: NEW — extra range past sleep cutoff within which enemies are kept active so combat doesn't freeze at the edge.
         public const float EnemyKeepAwakeRange = 700f;
 
+        // REVISED: NEW dive-attack FSM tunables — MinDiveAGL gates Approach->Commit (x0.4 = commit->recover); Min/MaxRecoverHold are the Recover dwell floor/escape; CommitRecoverAltHysteresis debounces terrain-column jitter before aborting a dive; PostRecoverCooldown is the minimum gap before a new dive (kills the climb-dive yo-yo); DiveCachedAimMaxRange caps cached-aim reuse.
         public const float MinDiveAGL = 60f;
         public const float MinRecoverHold = 1.5f;
         public const float MaxRecoverHold = 8f;
         public const float CommitRecoverAltHysteresis = 0.3f;
         public const float PostRecoverCooldown = 2.0f;
         public const float DiveCachedAimMaxRange = 2000f;
+        // REVISED: NEW — minimum distance from the player a raid spawn may appear.
         public const int RaidMinSpawnDistance = 96;
         public const float RetreatBelowTechDamageThreshold = 50;
         public const float RetreatBelowTeamDamageThreshold = 30;
@@ -463,6 +477,7 @@ namespace TAC_AI
         public const float SLDBeforeBuilding = 90;
         public const float DelayBetweenBuilding = 30;
 
+        // REVISED: now a real squared distance (175^2); was written 75 ^ 2 which is integer XOR (= 73), not 75 squared.
         public const float MaximumNeutralMonitorSqr = 175f * 175f;
 
         // Colors
@@ -709,6 +724,7 @@ namespace TAC_AI
                 return true;
             return false;
         }
+        // REVISED: split throttle now a Time.unscaledTime deadline instead of a bool flag reset by a scheduled Invoke; self-clears with no callback.
         private static float nextSplitAllowedTime = 0f;
         public static bool CanSplitTech(float delay = TechSplitDelay)
         {
@@ -1017,6 +1033,7 @@ namespace TAC_AI
             AltUI.PopupCustomInfo(text, pos, AllyOverEdit);
         }
 
+        // REVISED: NEW — clears the cached team-popup overlay objects/flags so DeInit doesn't leave stale popup references across mode reloads.
         internal static void ResetPopupCache()
         {
             playerSavedOver = enemySavedOver = subNeutralSavedOver = neutralSavedOver = AllySavedOver = false;
@@ -1571,6 +1588,7 @@ namespace TAC_AI
                         if (!block.damage.AboutToDie)
                             block.damage.SelfDestruct(0.5f);
                     }
+                    // REVISED: block self-destruct failure now warned once instead of silently swallowed.
                     catch (Exception eDest) { DebugTAC_AI.LogWarnPlayerOnce("[TAC_AI:catch:Globals] eradicate block self-destruct", eDest); }
                 }
                 tech.blockman.Disintegrate();

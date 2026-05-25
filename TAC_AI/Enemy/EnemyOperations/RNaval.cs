@@ -15,10 +15,15 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
         public static void AttackWhish(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             //The Handler that tells the Tank (Naval) what to do movement-wise. REVISED: "(Escort)" label was a copy-paste from the shared handler template.
+            // REVISED (overview): null-target idle case hoisted out to the controller (no longer handled here).
+            // ObjectiveRange = spacer + range is now written once before the if/else chain (was not set at all),
+            // bucket transitions mark advance/retreat hysteresis, and a mind.MinCombatRange writeback was added at the end.
             BGeneral.ResetValues(helper, ref direct);
             helper.Attempt3DNavi = true;
             helper.AvoidStuff = true;
 
+            // REVISED: the lastEnemyGet == null -> LollyGag early-return was removed; no-target idle is now handled
+            // upstream in the controller (target guaranteed live here), so the Homing null-guard is gone too.
             if (mind.CommanderMind == EnemyAttitude.Homing)
             {
                 if ((helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).magnitude > mind.MaxCombatRange)
@@ -174,6 +179,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                 }
             }
+            // REVISED: writes the chosen range back to the mind for downstream weapon checks (was not written before);
+            // subtracts lastTechExtents because naval range was inflated by it above.
             mind.MinCombatRange = range - helper.lastTechExtents;
         }
     }

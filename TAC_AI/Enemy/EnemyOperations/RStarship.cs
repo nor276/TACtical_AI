@@ -21,6 +21,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
         public static void AttackZoom(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             //The Handler that tells the Tank (Starship) what to do movement-wise. REVISED: "(Escort)" label was a copy-paste from the shared handler template.
+            // REVISED (overview): null-target idle case hoisted out to the controller (the old !lastEnemyGet?.tank
+            // else-return is gone; target guaranteed live here). Ranged/default bucket transitions now mark
+            // advance/retreat hysteresis (MarkRetreating/MarkAdvancing).
             BGeneral.ResetValues(helper, ref direct);
             helper.Attempt3DNavi = true;
             helper.AvoidStuff = true;

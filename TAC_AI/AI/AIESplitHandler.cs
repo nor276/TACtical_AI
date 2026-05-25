@@ -180,6 +180,7 @@ namespace TAC_AI.AI
                 {
                     int wheelCount = BM.IterateBlockComponents<ModuleWheels>().Count();
                     int hoverCount = BM.IterateBlockComponents<ModuleHover>().Count();
+                    // REVISED: split-off is mobile (Escort) when it has any wheel or more than one hover; a single hover now falls through to the MultiTech branch
                     if (wheelCount > 0 || hoverCount > 1)
                         helper.DediAI = AIType.Escort;
                     else

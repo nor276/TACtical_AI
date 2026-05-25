@@ -47,6 +47,7 @@ namespace TAC_AI
                     TerraTechETCUtil.ModStatusChecker.EncapsulateSafeInit(KickStart.ModID,
                         KickStart.MainOfficialInit, KickStart.DeInitALL);
                 }
+                // REVISED: init failure now logged via LogError instead of silently swallowed.
                 catch (Exception e)
                 {
                     DebugTAC_AI.LogError(KickStart.ModID + ": KickStartTAC_AI.Init - MainOfficialInit failed: " + e);

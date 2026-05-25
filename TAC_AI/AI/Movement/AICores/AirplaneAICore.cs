@@ -7,6 +7,13 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
+    /// REVISED (overview): now implements IAirMovementAICore (IsFixedWing => true). The scattered
+    /// PerformDiveAttack integer writes are replaced by a real 4-state dive FSM (DiveState
+    /// Idle/Approach/Commit/Recover) ticked once per DriveMaintainer; PerformDiveAttack is now a
+    /// read-only HUD shim derived from diveState. Aim point comes from a priority resolver
+    /// (ResolveAimPos) and dive entry/commit is gated by altitude advantage with Recover hold/escape
+    /// timers and a post-recover cooldown. Combat now backs off facing the enemy (DriveAwayFacingTowards),
+    /// gates on WantsToFight (was AttackEnemy), and U-Turn gained a roll-level stage 4.
     internal class AirplaneAICore : IAirMovementAICore
     {
         public static bool DoPlayerAutopilotAirLogging = false;
@@ -15,10 +22,14 @@ namespace TAC_AI.AI.Movement.AICores
         internal TankAIHelper Helper => pilot.Helper;
         private float groundOffset => AIGlobals.GroundOffsetAircraft + Helper.lastTechExtents;
         public float GetDrive => pilot.CurrentThrottle;
+        // REVISED: IAirMovementAICore identity exposed for cross-pipeline fixed-wing branching.
         public bool IsRotorcraft => false;
         public virtual bool IsFixedWing => true;
         public bool BankOnly = false;
 
+        // REVISED: dive logic is now a proper FSM. diveState is the only persisted dive state (writer:
+        // TransitionTo); nextApproachAllowedTime/commitAltLowSince/diveStateEnteredAt drive cooldown,
+        // commit alt-low hysteresis, and Recover hold/escape timers. PerformDiveAttack became a HUD shim.
         internal enum DiveState { Idle, Approach, Commit, Recover }
         internal DiveState diveState = DiveState.Idle;
         private float nextApproachAllowedTime = 0f;
@@ -74,6 +85,8 @@ namespace TAC_AI.AI.Movement.AICores
                     DriveMaintainerEmergLand(helper, tank, ref core);
                     return false;
                 }
+                // REVISED: downed (above-height) plane now resets the dive FSM to Idle, cuts throttle and
+                // glides nose-down forward instead of the previous behaviour.
                 if (diveState != DiveState.Idle) TransitionTo(DiveState.Idle);
                 pilot.MainThrottle = 0;
                 PerformUTurn = 0;
@@ -114,6 +127,9 @@ namespace TAC_AI.AI.Movement.AICores
             }
             else
             {
+                // REVISED: normal flight now ticks the dive FSM (when dive-eligible or mid-dive) and lets it
+                // own the tick while non-Idle; falls through to shared U-turn / cruise otherwise. Replaces the
+                // old inline PerformDiveAttack==1/2 + UTurn branching.
                 Vector3? aimPosOpt = ResolveAimPos(helper, tank);
                 bool diveEligible = pilot.TargetGrounded && aimPosOpt.HasValue;
                 if (diveEligible || diveState != DiveState.Idle)
@@ -141,6 +157,10 @@ namespace TAC_AI.AI.Movement.AICores
             diveStateEnteredAt = Time.time;
         }
 
+        /// REVISED: dive aim-point priority resolver (enemy -> resource -> base -> cached lastDestinationOp).
+        /// Reads lastDestinationOp (operator intent), NOT lastDestinationCore which DriveDirector overwrites
+        /// and can default to zero. Cached fallback is gated on !IsControlOperatorStale and bounded by
+        /// DiveCachedAimMaxRange so a stale, map-distant goal can't spin up an Approach. Null => no dive.
         private Vector3? ResolveAimPos(TankAIHelper helper, Tank tank)
         {
             if (helper.lastEnemyGet?.tank != null)
@@ -167,6 +187,8 @@ namespace TAC_AI.AI.Movement.AICores
             return tank.boundsCentreWorldNoCheck.y - aimPosWorld.y;
         }
 
+        /// REVISED: shared U-turn / reorient dispatch extracted from the old inline branches. PerformUTurn>0
+        /// runs UTurn; ==-1 reorients toward PathPointSet. Returns true when the tick was consumed.
         private bool TryRunUTurn(TankAIHelper helper, Tank tank)
         {
             if (PerformUTurn > 0)
@@ -187,6 +209,12 @@ namespace TAC_AI.AI.Movement.AICores
             return false;
         }
 
+        /// REVISED: the dive FSM proper (replaces the scattered PerformDiveAttack int logic). Idle->Approach
+        /// needs a grounded target ahead, staged distance, and the post-recover cooldown elapsed;
+        /// Approach->Commit requires nose-on (hNorm.z>=0.92) AND altAdvantage>=MinDiveAGL; Commit->Recover on
+        /// nose-up/too-close/ForcePitchUp or sustained low altitude (CommitRecoverAltHysteresis); Recover holds
+        /// MinRecoverHold..MaxRecoverHold then re-arms with a cooldown. Lost target mid-dive forces Recover with
+        /// a synthetic 500m climb-out. U-turn runs except in Recover (climb-out wins).
         private void TickDiveStateMachine(TankAIHelper helper, Tank tank, Vector3? aimPosNullable)
         {
             if (!aimPosNullable.HasValue)
@@ -304,6 +332,7 @@ namespace TAC_AI.AI.Movement.AICores
             control3D.m_State.m_InputRotation = Vector3.zero;
             control3D.m_State.m_InputMovement = Vector3.zero;
             VehicleUtils.controlGet.SetValue(tank.control, control3D);
+            // REVISED: steer reference is now lastDestinationCore, changed from lastDestinationOp.
             Vector3 destDirect = helper.lastDestinationCore - tank.boundsCentreWorldNoCheck;
             // DEBUG FOR DRIVE ERRORS
             if (AIGlobals.ShowDebugFeedBack)
@@ -428,6 +457,7 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     break;
                 case AIThrottleState.FullSpeed:
+                    // REVISED: FullSpeed now always drives 1; dropped the FullBoost/LightBoost gate.
                     helper.DriveControl = 1;
                     break;
                 case AIThrottleState.ForceSpeed:
@@ -466,6 +496,8 @@ namespace TAC_AI.AI.Movement.AICores
                     core.DriveDir = EDriveFacing.Forwards;
                     pilot.PathPointSet = Helper.AvoidAssistPrecise(Helper.lastBasePos.position);
                 }
+                // REVISED: when within DestSuccessRad, sidestep to orbit; dropped the else-branch that
+                // overwrote PathPointSet with lastDestinationOp (same removal applies in ToMine/Aegis below).
                 if ((pilot.PathPointSet - pilot.Tank.boundsCentreWorldNoCheck).magnitude < pilot.DestSuccessRad)
                 {
                     pilot.PathPointSet += (-pilot.Tank.rootBlockTrans.right.SetY(0).normalized * 129);
@@ -538,6 +570,9 @@ namespace TAC_AI.AI.Movement.AICores
                 Helper.theResource = AIEPathing.ClosestUnanchoredAllyAegis(TankAIManager.GetTeamTanks(pilot.Tank.Team),
                     pilot.Tank.boundsCentreWorldNoCheck, Helper.MaxCombatRange * Helper.MaxCombatRange, out _,
                     pilot.Helper).visible;
+                // REVISED: Aegis guard now records theGuardedAlly and only falls back to escort positioning
+                // when out of operator range OR TryAdjustForCombat declines (was: always combat-adjust, then
+                // clamp by lastCombatRange afterward). Out-of-range ignores enemy distance.
                 Helper.theGuardedAlly = Helper.theResource;
                 bool aegisOutOfRange = Helper.lastOperatorRange > Helper.MaxCombatRange;
                 if (aegisOutOfRange || !TryAdjustForCombat(true, ref pilot.PathPointSet, ref core))
@@ -607,6 +642,8 @@ namespace TAC_AI.AI.Movement.AICores
             bool unresponsiveAir = pilot.LargeAircraft || BankOnly;
 
             bool NoRamOrTargetNotInPath;
+            // REVISED: melee ram-gate now keys off Helper.WantsToFight, changed from Helper.AttackEnemy
+            // (same swap recurs in the other DriveDirector variants and the LikelyMelee enemy branch).
             if (Helper.FullMelee && Helper.WantsToFight)
             {
                 if (Helper.lastEnemyGet?.tank && pilot.Tank.rootBlockTrans.InverseTransformVector(Helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - pilot.Tank.boundsCentreWorldNoCheck).z > 0.75f)
@@ -911,6 +948,7 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 output = true;
                 Vector3 targPos = Helper.RoughPredictTarget(Helper.lastEnemyGet.tank);
+                // REVISED: real null check (IsNotNull on resource + its tank) replaces the truthy theResource?.tank.
                 if (between && Helper.theResource.IsNotNull() && Helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, Helper.theResource.tank.boundsCentreWorldNoCheck);
@@ -1038,6 +1076,8 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (driveDyna < 0)
                     {
+                        // REVISED: too-close now backs off while keeping the front on target
+                        // (DriveAwayFacingTowards), changed from DriveAwayFacingAway.
                         core.DriveAwayFacingTowards();
                         pos = Helper.AvoidAssistPrediction(Helper.RoughPredictTarget(Helper.lastEnemyGet.tank), pilot.AerofoilSluggishness);
                     }
@@ -1086,6 +1126,8 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 Tank lastCloseAlly;
                 float lastAllyDist;
+                // REVISED: dropped the "predictionOffset /= Responsiveness" rescale; the prediction offset
+                // is now used as-is for ally-avoidance spacing.
                 float moveSpace = (predictionOffset - pilot.Tank.boundsCentreWorldNoCheck).magnitude;
                 HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
                 if (helper.SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
@@ -1195,12 +1237,14 @@ namespace TAC_AI.AI.Movement.AICores
                 AngleTowards(helper, tank, pilot, pilot.PathPointSet.SetY(tank.boundsCentreWorldNoCheck.y));
                 if (Vector3.Dot((pilot.PathPointSet - tank.boundsCentreWorldNoCheck).normalized, tank.rootBlockTrans.forward) > 0.1f)
                 {
+                    // REVISED: stage 3 (aim-back) now advances to the new roll-level stage 4 instead of
+                    // completing at 0; no longer pokes PerformDiveAttack (the dive FSM owns that now).
                     pilot.ErrorsInUTurn = 0;
                     PerformUTurn = 4;
                 }
             }
             else if (PerformUTurn == 4)
-            {
+            {   // REVISED: new roll-level stage; holds heading until upright (up.y > 0.5), then completes.
                 if (DoPlayerAutopilotAirLogging)
                     DebugTAC_AI.LogSpecific(tank, KickStart.ModID + ": Tech " + tank.name + " Executing U-Turn[4 roll-level]...");
                 AngleTowards(helper, tank, pilot, pilot.PathPointSet.SetY(tank.boundsCentreWorldNoCheck.y));
@@ -1228,7 +1272,7 @@ namespace TAC_AI.AI.Movement.AICores
                 upright = Vector3.down;
             }
             else if (PerformUTurn == 4)
-            {
+            {   // REVISED: roll-level stage forces upright (Vector3.up) to roll out of the inverted stage 3.
                 upright = Vector3.up;
             }
             else if (tank.rootBlockTrans.up.y < -0.4f)

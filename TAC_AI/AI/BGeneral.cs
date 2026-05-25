@@ -3,11 +3,14 @@ using TAC_AI.World;
 
 namespace TAC_AI.AI
 {
+    /// REVISED (overview): ResetValues now preserves a live player-RTS hold-fire command instead of always clearing FIRE_ALL;
+    /// the AimDefend helper was removed; GetMineableScenery now branches on the success case (foundGoal) and records theResourceNode.
     internal static class BGeneral
     {
         public static void ResetValues(TankAIHelper helper, ref EControlOperatorSet direct)
         {
             helper.ThrottleState = AIThrottleState.FullSpeed;
+            // REVISED: skip clearing FIRE_ALL when a local non-networked player RTS fire command is holding it on
             if (!(helper.AIAlign == AIAlignment.Player && !ManNetwork.IsNetworked &&
                   ManWorldRTS.inst != null && AIGlobals.PlayerClientFireCommand() &&
                   ManWorldRTS.inst.LocalPlayerTechsControlled.Contains(helper)))
@@ -43,6 +46,8 @@ namespace TAC_AI.AI
                 return helper.lastEnemyGet;
             }
         }
+
+        // REVISED: removed the AimDefend helper (aim-gate by dot product / WeaponDelayClock); no callers remained
 
         public static void SelfDefend(TankAIHelper helper, Tank tank)
         {
@@ -87,6 +92,7 @@ namespace TAC_AI.AI
                 AIGlobals.FindItemScanRangeExtension, helper.lastTechExtents * AIGlobals.WaterDepthTechHeightPercent,
                 out var tmpRes);
             helper.theResource = tmpRes;
+            // REVISED: now takes the "Found a Resource Node" path on success (foundGoal) instead of on failure, and stamps theResourceNode
             if (helper.foundGoal) helper.theResourceNode = tmpRes;
             if (helper.foundGoal)
             {

@@ -1288,6 +1288,7 @@ namespace TAC_AI
 
             set.GUIDisplay(lim, ref delta);
 
+            // REVISED: slider range is now Circle..Safety (was AutoSet..Ranged) - drops AutoSet, adds Safety as a pickable attack mode
             lastTank.AttackMode = (EAttackMode)Mathf.RoundToInt(GUI.HorizontalSlider(new Rect(25, 235, 150, 30), (int)lastTank.AttackMode, (int)EAttackMode.Circle, (int)EAttackMode.Safety));
             StatusLabel(new Rect(20, 235, 160, 30), "Mode: " + lastTank.AttackMode, LOC_AttackMethod);
 

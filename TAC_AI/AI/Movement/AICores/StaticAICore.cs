@@ -7,6 +7,10 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
+    /// REVISED (overview): per-type core split out of the old VehicleAICore; selected via MovementDispatch (anchored techs).
+    /// TURRET-AIM fix: the land path now steers with the purpose-built StaticTurner (decays to 0 at a StaticAimDeadband ~2 deg)
+    /// instead of the mobile VehicleUtils.Turner, zeroes InputLineVal.z, and wraps SteerControl in FixControlReversal so recoil/
+    /// anchor jitter can't flip the aim (the intermittent "tracks backwards" bug). Idle turrets now hold their mounted RestFacing.
     internal class StaticAICore : IMovementAICore
     {
         private AIControllerStatic controller;
@@ -42,6 +46,8 @@ namespace TAC_AI.AI.Movement.AICores
 
                 if (!TryAdjustForCombat(true, ref controller.AimTarget, ref core))
                 {
+                    // REVISED: idle (no combat) now aims along the mounted RestFacing (was helper.lastDestinationCore, which
+                    // could be Vector3.zero / a stale far goal and swing the turret away from rest).
                     controller.AimTarget = tank.boundsCentreWorldNoCheck + controller.RestFacing * 100f;
                     core.DriveDir = EDriveFacing.Forwards;
                 }
@@ -79,6 +85,8 @@ namespace TAC_AI.AI.Movement.AICores
         public bool DriveDirectorEnemyRTS(EnemyMind mind, ref EControlCoreSet core)
         {
             var helper = controller.Helper;
+            // REVISED: new RTS positional-aim branch - when ordered to a world point, an anchored turret aims at the
+            // RTSDestination instead of running the enemy combat director.
             if (helper.IsGoingToPositionalRTSDest)
             {
                 helper.ThrottleState = AIThrottleState.PivotOnly;
@@ -108,6 +116,7 @@ namespace TAC_AI.AI.Movement.AICores
 
             if (!TryAdjustForCombatEnemy(mind, ref controller.AimTarget, ref core))
             {
+                // REVISED: idle enemy turret now aims along its own forward (was the IdleFacingDirect XZ vector), null-guarded.
                 if (tank.rootBlockTrans != null)
                     controller.AimTarget = tank.boundsCentreWorldNoCheck + tank.rootBlockTrans.forward * 200f;
             }
@@ -130,6 +139,9 @@ namespace TAC_AI.AI.Movement.AICores
                 helper.DriveControl = 0;
                 if (helper.DoSteerCore)
                 {
+                    // REVISED (TURRET-AIM): steers via StaticTurner (returns false inside the deadband so the turret holds still)
+                    // instead of the mobile VehicleUtils.Turner; SteerControl is wrapped in FixControlReversal so recoil/jitter
+                    // that flips the drive sign can't invert the aim into tracking backwards.
                     if (StaticTurner(tank.control, helper, destDirect, ref core, out float staticTurn))
                     {
                         if (helper.FixControlReversal(tank.control.CurState.m_InputMovement.z))
@@ -146,7 +158,7 @@ namespace TAC_AI.AI.Movement.AICores
                 {
                     InputLineVal = tank.rootBlockTrans.InverseTransformVector(tank.boundsCentreWorldNoCheck - controller.PathPoint);
                     InputLineVal /= AIGlobals.StationaryMoveDampening;
-                    InputLineVal.z = 0f;
+                    InputLineVal.z = 0f; // REVISED (TURRET-AIM): zero forward/back drive input so an anchored turret never lurches off-aim.
                 }
 
                 if (tank.control.AnyThrottleInAxes(Vector3.one))
@@ -221,6 +233,7 @@ namespace TAC_AI.AI.Movement.AICores
                 else
                 {
                     //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Z-tilt active");
+                    // REVISED: now reads turnVal.z (was turnVal.x) so the broadside tilt clamps the Z (roll) axis it sets just above.
                     turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.z) / 60f, -1, 1);
                 }
                 turnVal.x = turnValUp.x;
@@ -244,6 +257,7 @@ namespace TAC_AI.AI.Movement.AICores
                 }
                 else
                 {
+                    // REVISED: steers along the delta to the aim point (was the raw world AimTarget, a position not a direction).
                     helper.SteerControl(controller.AimTarget - tank.boundsCentreWorldNoCheck, 1);
                 }
             }
@@ -422,16 +436,20 @@ namespace TAC_AI.AI.Movement.AICores
         private const float ignoreTurning = 0.875f;
         private const float MinThrottleToTurnFull = 0.75f;
         private const float MaxThrottleToTurnAccurate = 0.25f;
+        // REVISED (TURRET-AIM): StaticAimDeadband (~2 deg of alignment) - StaticTurner returns false once the turret is
+        // this close to on-target so it stops issuing steer and holds, killing the at-alignment recoil/jitter twitch.
         private const float StaticAimDeadband = 0.9994f;
         public static bool StaticTurner(TankControl thisControl, TankAIHelper helper, Vector3 destinationVec, ref EControlCoreSet core, out float turnVal)
         {
             turnVal = 1;
+            // REVISED: guard degenerate vectors (zero dest or forward) so the dot/normalize can't produce NaN steering.
             Vector2 destXZ = destinationVec.ToVector2XZ();
             Vector2 forwardXZ = helper.tank.rootBlockTrans.forward.ToVector2XZ();
             if (destXZ.sqrMagnitude < 1e-6f || forwardXZ.sqrMagnitude < 1e-6f)
                 return false;
             float forwards = Vector2.Dot(destXZ.normalized, forwardXZ.normalized);
 
+            // REVISED: inside the deadband, stop steering entirely (hold aim).
             if (forwards >= StaticAimDeadband)
                 return false;
             if (forwards > ignoreTurning && thisControl.CurState.m_InputMovement.z >= MinThrottleToTurnFull)

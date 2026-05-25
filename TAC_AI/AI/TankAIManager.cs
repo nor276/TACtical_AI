@@ -11,6 +11,10 @@ using UnityEngine;
 
 namespace TAC_AI.AI
 {
+    /// REVISED (overview): manager no longer creates AIEPathMapper (it self-instantiates; lifecycle driven via AIEPathMapper.ResetAll).
+    /// Initiate/DeInit null-guard the reflected vanilla fields (rangeOverride, liveSetPieces) with FatalError fallbacks instead of dereferencing.
+    /// Director/Operations staggering now resumes by helper instance-ID (survives list reordering) with a one-time warm-start; ops clock starts at 0.
+    /// FocusFire dispatch unified into one roster+switch with per-tank exception isolation; error logging routed through LogWarnPlayerOncePerKey.
     internal class TankAIManager : MonoBehaviour
     {
         internal static FieldInfo rangeOverride = typeof(ManTechs).GetField("m_SleepRangeFromCamera", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -55,6 +59,7 @@ namespace TAC_AI.AI
             if (inst)
                 return;
             inst = new GameObject("AIManager").AddComponent<TankAIManager>();
+            // REVISED: no longer adds an AIEPathMapper component here; it self-instantiates now
             AIECore.Minables = new List<Visible>();
             AIECore.Depots = new List<ModuleHarvestReciever>();
             AIECore.BlockHandlers = new List<ModuleHarvestReciever>();
@@ -71,6 +76,7 @@ namespace TAC_AI.AI
             DebugTAC_AI.Log(KickStart.ModID + ": Created AIECore Manager.");
 
             // Only change if no other mod changed
+            // REVISED: both reflected fields are now null-guarded; missing field logs FatalError and skips the range bump / falls back to an empty SetPieces list rather than throwing
             if (rangeOverride == null)
             {
                 DebugTAC_AI.FatalError(KickStart.ModID + ": TankAIManager - ManTechs.m_SleepRangeFromCamera field not found (vanilla API change?). Enemy interaction range will stay at vanilla 200m; far-range AI engagements will not work.");
@@ -114,6 +120,7 @@ namespace TAC_AI.AI
             Singleton.Manager<ManTechs>.inst.TankTeamChangedEvent.Unsubscribe(OnTankChange);
             Singleton.Manager<ManTechs>.inst.PlayerTankChangedEvent.Unsubscribe(OnPlayerTechChange);
             Singleton.Manager<ManVisible>.inst.OnStoppedTrackingVisible.Unsubscribe(OnVisibleNoLongerTracked);
+            // REVISED: now also unsubscribes ModeStartEvent (paired with the OnStartup subscribe in Initiate)
             Singleton.Manager<ManGameMode>.inst.ModeStartEvent.Unsubscribe(OnStartup);
             teamsIndexed = null;
             AIECore.RetreatingTeams = null;
@@ -170,6 +177,7 @@ namespace TAC_AI.AI
 
         private static void OnTankAddition(Tank tonk)
         {
+            // REVISED: duplicate helpers are now collapsed via EnforceSingleComponent (extras destroyed) instead of throwing; RunState is no longer forced to Advanced here
             var helper = tonk.gameObject.EnforceSingleComponent<TankAIHelper>("OnTankAddition")
                           ?? tonk.GetHelperInsured();
 
@@ -188,6 +196,7 @@ namespace TAC_AI.AI
             var helper = tonk.GetHelperInsured();
             RemoveTech(tonk);
             helper.OnTechTeamChange();
+            // REVISED: drops the tech from MissionTechs on team change; dirty/enabled flags are now set unconditionally (was gated on FirstUpdateAfterSpawn, and no longer forces RunState=Advanced) - only the spawn log stays gated
             if (tonk.visible != null)
                 MissionTechs.Remove(tonk.visible.ID);
             helper.dirtyExtents = true;
@@ -237,6 +246,7 @@ namespace TAC_AI.AI
                             loss = ALossReact.Space;
                             break;
                     }
+                    // REVISED: reports the loss for recycledTech (the tech this handler fired on) rather than tonk
                     AnimeAICompat.RespondToLoss(recycledTech, loss);
 #endif
             }
@@ -436,6 +446,7 @@ namespace TAC_AI.AI
         }
         internal static ManTechs.TechIterator TeamActiveMobileTechsInCombat(int Team)
         {
+            // REVISED: combat-roster gate now keys off helper.WantsToFight instead of the old AttackEnemy flag
             return ManTechs.inst.IterateTechsWhere(x => x.Team == Team && !x.IsBase() &&
             x.GetHelperInsured() is TankAIHelper helper && helper && helper.WantsToFight && helper.lastEnemyGet);
         }
@@ -447,6 +458,9 @@ namespace TAC_AI.AI
             }
             targetingRequests.Clear();
         }
+        // REVISED: four per-severity loops folded into one roster pick + per-tech engage switch over a .ToList() snapshot.
+        // Adds a null-Target guard, uses GetHelperInsured (null-safe) instead of GetComponent, and isolates failures
+        // per-tech (one bad teammate no longer aborts the rest); both layers log via LogWarnPlayerOncePerKey instead of the old silent catch{}.
         private static void ProcessFocusFireRequestAllied(int requestingTeam, Visible Target, RequestSeverity Priority)
         {
             if (Target == null || Target.tank == null)
@@ -627,6 +641,8 @@ namespace TAC_AI.AI
         }
 
         private List<TankAIHelper> helpersActive = new List<TankAIHelper>();
+        // REVISED: stagger cursors now track the last-served helper by instance-ID (lastDirectorHelperId / lastOpHelperId) instead of a raw list index,
+        // so the round-robin resumes at the correct helper even when helpersActive is rebuilt/reordered between frames; FindResumeIndex maps the id back to the next slot.
         private int lastDirectorHelperId = 0;
         private int lastOpHelperId = 0;
         private static int FindResumeIndex(List<TankAIHelper> list, int lastId)
@@ -641,6 +657,7 @@ namespace TAC_AI.AI
         }
 
         private float DirectorUpdateClock = 0;
+        // REVISED: Operations clock now starts at 0 (was 500); warmStartOperations makes the very first Operations pass service every active helper once, then the per-frame budget steps normally
         private float OperationsUpdateClock = 0;
         private bool warmStartOperations = true;
         private int DirectorsToUpdateThisFrame()
@@ -693,6 +710,7 @@ namespace TAC_AI.AI
         {
             int numDirUpdate = Mathf.Min(helpersActive.Count, DirectorsToUpdateThisFrame());
             int numOpUpdate = Mathf.Min(helpersActive.Count, OperationsToUpdateThisFrame());
+            // REVISED: each loop now walks a budget-count window starting at the resume index (modulo Count) and stamps the last-served instance-ID; replaces the old index-cursor while-loops
             int dirStart = FindResumeIndex(helpersActive, lastDirectorHelperId);
             int opStart = FindResumeIndex(helpersActive, lastOpHelperId);
             if (ManNetwork.IsHost)
@@ -768,6 +786,7 @@ namespace TAC_AI.AI
                 }
                 catch (Exception e)
                 {
+                    // REVISED: dedups via LogWarnPlayerOncePerKey instead of the one-shot TankAIHelper.updateErrored flag, so the warning is keyed/repeatable per error site
                     DebugTAC_AI.LogWarnPlayerOncePerKey(
                         "TankAIManager.FixedUpdate",
                         "TankAIManager.FixedUpdate() Critical error", e);

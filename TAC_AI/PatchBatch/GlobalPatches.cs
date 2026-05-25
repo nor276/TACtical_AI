@@ -11,6 +11,9 @@ using Snapshots;
 
 namespace TAC_AI
 {
+    /// REVISED (overview): TankBeam push is now heading-aware instead of hardcoded world-east and runs in networked games too;
+    /// CopySchemesFrom split-handler now attaches to __instance with reordered Setup args; ObjectSpawner.TrySpawn override
+    /// now swallows-and-logs spawn-override exceptions and falls back to vanilla instead of rethrowing a fatal error.
     internal class GlobalPatches
     {
         // GAME
@@ -136,6 +139,7 @@ namespace TAC_AI
                     "tech-split splice point — wires AIESplitHandler onto every fragment");
                 try
                 {
+                    // REVISED: handler now attaches to __instance (and Setup args ordered __instance/other); changed from attaching to other with swapped args
                     __instance.gameObject.AddComponent<AIESplitHandler>().Setup(__instance.Tech, other.Tech);
                 }
                 catch
@@ -150,6 +154,7 @@ namespace TAC_AI
             static readonly FieldInfo beamRot = typeof(TankBeam).GetField("m_NudgeRotate", BindingFlags.NonPublic | BindingFlags.Instance);
 
             //PatchTankBeamToHelpAI - Give the AI some untangle help
+            // REVISED: beam push is now heading-aware (uses headingVec toward lastDestinationCore via ToVector3XZ) instead of hardcoded world-east (new Vector2(1,0)); also now runs in networked sessions (dropped the !ManNetwork.IsNetworked gate) and bails early if the m_NudgeStrafe/m_NudgeRotate reflection fields are missing
             private static void OnUpdate_Postfix(TankBeam __instance)
             {
                 if (beamPush == null || beamRot == null)
@@ -321,6 +326,7 @@ namespace TAC_AI
                         }
                         catch (Exception e)
                         {
+                            // REVISED: now logs once and falls through to vanilla spawn; changed from FatalError + rethrow (which aborted the whole spawn)
                             DebugTAC_AI.LogWarnPlayerOnce("Advanced AI spawn override threw — falling back to vanilla spawn for this attempt", e);
                         }
                     }

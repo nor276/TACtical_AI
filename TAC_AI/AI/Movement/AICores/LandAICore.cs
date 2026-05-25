@@ -9,6 +9,10 @@ namespace TAC_AI.AI.Movement.AICores
 {
     /// <summary> Handles Land AI Directors & Maintainers </summary>
     // REVISED: summary read "Space" - a copy-paste from SpaceAICore; this is the Land core.
+    /// REVISED (overview): per-type core split out of the old VehicleAICore; selected via MovementDispatch.
+    /// Combat orbit now faces the enemy (Perpendicular hold steers toward destDirect, not -destDirect) and the
+    /// circle-vs-face choice is gated on CombatWantsCircleNow() so front-fixed weapons bear during the face phase.
+    /// FullSpeed/ForceSpeed boost now picks forward/reverse thrust by DriveControl sign and feathers via lightBoostFeatherTimer.
     internal class LandAICore : IMovementAICore
     {
         private AIControllerDefault controller;
@@ -143,6 +147,8 @@ namespace TAC_AI.AI.Movement.AICores
             }
             controller.PathPointSet = Target;
 
+            // REVISED: planned pathing now skipped when Attempt3DNavi; falls to the enemy-tagged immediate path
+            // (was unconditional PlanningPathing then the allied ImmedeatePathing).
             if (!helper.Attempt3DNavi && PlanningPathing(Target, core.DrivePathing))
                 return true;
 
@@ -271,11 +277,11 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 case EDriveFacing.Stop:
                     helper.DriveControl = 0;
-                    lastDrive = 0;
+                    lastDrive = 0; // REVISED: now mirrors the early-return drive into lastDrive so GetDrive/HUD reports stop/neutral
                     return true;
                 case EDriveFacing.Neutral:
                     helper.DriveControl = 0.001f;
-                    lastDrive = 0.001f;
+                    lastDrive = 0.001f; // REVISED: see Stop - was left stale on the early return
                     return true;
                 case EDriveFacing.Forwards:
                     if (core.DriveDest >= EDriveDest.ToLastDestination)
@@ -348,6 +354,7 @@ namespace TAC_AI.AI.Movement.AICores
                 case AIThrottleState.Yield:
                     if (DriveControl < 0)
                     {
+                        // REVISED: reverse-yield now tests recentSpeedSigned (direction-aware) instead of recentSpeed (magnitude)
                         if (helper.recentSpeedSigned < -AIGlobals.YieldSpeed)
                             DriveControl = 0.2f;
                         else
@@ -362,6 +369,10 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     break;
                 case AIThrottleState.FullSpeed:
+                    // REVISED: boost is now thrust-aware - forward-boosts along destDirect only when DriveControl>0,
+                    // reverse-boosts along -destDirect when DriveControl<0 (was always forward, even while reversing).
+                    // LightBoost feathering moved from the LightBoostFeatheringClock frame counter to lightBoostFeatherTimer (0.5s).
+                    // Same shape repeats in the ForceSpeed case below.
                     if (helper.FullBoost)
                     {
                         if (DriveControl > 0.01f)
@@ -443,6 +454,8 @@ namespace TAC_AI.AI.Movement.AICores
                         {
                             if (range < helper.AutoSpacing + 2)
                             {
+                                // REVISED (FACE-ENEMY): at/inside the orbit radius now steers toward destDirect (front on target)
+                                // instead of -destDirect, which had pointed the rear at the enemy and drove circling techs rear-first.
                                 VehicleUtils.Turner(helper, destDirect, DriveControl, ref core);
                             }
                             else if (range > helper.AutoSpacing + 22)
@@ -520,6 +533,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
+            // REVISED: combat-engage gate dropped the IsDirectedMoving clause; now just ChaseThreat && !Retreat.
             if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
             {
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
@@ -527,6 +541,8 @@ namespace TAC_AI.AI.Movement.AICores
                 core.DriveDir = EDriveFacing.Forwards;
                 helper.UpdateEnemyDistance(targPos);
                 float driveDyna = Mathf.Clamp((helper.lastCombatRange - helper.MinCombatRange) / 3f, -1, 1);
+                // REVISED: circle-vs-face is now gated on CombatWantsCircleNow() (turret-fraction duty cycle); SideToThreat
+                // alone no longer forces the Perpendicular broadside, so the FACE (Forwards) branch runs during the face phase.
                 if ((helper.SideToThreat && helper.CombatWantsCircleNow()) || (helper.BlockedLineOfSight && helper.AdvancedAI))
                 {
                     core.DriveDir = EDriveFacing.Perpendicular;
@@ -623,6 +639,8 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (driveDyna < 0)
                     {
+                        // REVISED (FACE-ENEMY): too-close now backs off via DriveAwayFacingTowards (front stays on target)
+                        // instead of setting DriveDest=FromLastDestination alone (which left facing rear-out).
                         core.DriveAwayFacingTowards();
                         pos = helper.AvoidAssist(targPos);
                     }
@@ -641,6 +659,7 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (helper.IsDirectedMovingToDest && mind.LikelyMelee)
                     {
+                        // REVISED: dropped the inner if (mind.LikelyMelee) else - the guard above already requires it, so the else was dead.
                         core.DriveDir = EDriveFacing.Forwards;
                         pos = helper.AvoidAssist(targPos);
                         helper.AutoSpacing = 0.5f;

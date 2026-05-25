@@ -2,6 +2,7 @@ using System;
 
 namespace TAC_AI.AI.Enemy
 {
+    // REVISED: NEW flags enum — reports how far mission-tech setup got (None / PartialMind / FullyConfigured).
     [Flags]
     public enum MissionSetupResult
     {

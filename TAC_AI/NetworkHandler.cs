@@ -10,6 +10,13 @@ using UnityEngine.Networking;
 
 namespace TAC_AI
 {
+    /// REVISED (overview): the RTS/AI/retreat TryBroadcast helpers are now bi-directional. Each
+    /// gates on !ManNetwork.IsNetworked (SP short-circuit) instead of HostExists, then branches on
+    /// IsHost: host fans out via SendToAllExceptClient, client sends upstream via SendToServer. The
+    /// matching OnServer* receive handlers now echo the payload to all clients except the sender
+    /// (SendToAllExceptClient(netMsg.conn.connectionId,...)) so a client's order propagates host->others.
+    /// AIEnemySet and AIEnemyStagedSiege gained their Serialize/Deserialize overrides (were missing),
+    /// and the two host-only enemy/siege broadcasts now send on AIEnemyType / AIEnemySiege (were AIRetreatRequest).
     internal static class NetworkHandler
     {
         static NetworkInstanceId Host;
@@ -152,6 +159,7 @@ namespace TAC_AI
                 this.netTechID = netTechID;
                 this.enemyType = (int)EnemyType;
             }
+            // REVISED: wire serialization added (read/write order must mirror); was missing, so the message never crossed the wire
             public override void Deserialize(NetworkReader reader)
             {
                 netTechID = reader.ReadUInt32();
@@ -178,6 +186,7 @@ namespace TAC_AI
                 MaxHP = totalHP;
                 Starting = start;
             }
+            // REVISED: wire serialization added (read/write order must mirror); was missing, so the message never crossed the wire
             public override void Deserialize(NetworkReader reader)
             {
                 Team = reader.ReadInt32();
@@ -204,6 +213,9 @@ namespace TAC_AI
 
 
         // AIRTSCommandMessage
+        // REVISED: now bi-directional (same shape across all TryBroadcast* below). Gates on
+        // !ManNetwork.IsNetworked (was HostExists); host fans out to clients via SendToAllExceptClient,
+        // client sends upstream to host via SendToServer.
         public static void TryBroadcastRTSCommand(uint netTechID, Vector3 Pos)
         {
             if (!ManNetwork.IsNetworked) return;
@@ -247,6 +259,8 @@ namespace TAC_AI
                 NetTech find = ManNetTechs.inst.FindTech(reader.netTechID);
                 find.tech.GetHelperInsured().DirectRTSDest(reader.Position);
                 DebugTAC_AI.LogNet(KickStart.ModID + ": Received new OnServerAcceptRTSCommand update, ordering tech " + find.name + " to " + reader.Position);
+                // REVISED: server echo (same shape across all OnServer* handlers below) - host re-broadcasts the
+                // client's payload to every client except the sender so the order propagates host->others
                 Singleton.Manager<ManNetwork>.inst.SendToAllExceptClient(netMsg.conn.connectionId, AIRTSPosCommand, reader, Host);
             }
             catch
@@ -486,6 +500,7 @@ namespace TAC_AI
             if (HostExists && ManNetwork.IsHost) try
                 {
                     DebugTAC_AI.LogNet("Sent new TryBroadcastNewEnemyState update to all");
+                    // REVISED: now sends on AIEnemyType (was AIRetreatRequest) - routes to the enemy-AI handler, not the retreat one
                     Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIEnemyType, new AIEnemySet(netTechID, smartz));
                 }
                 catch { DebugTAC_AI.LogNet(KickStart.ModID + ": Failed to send TryBroadcastNewEnemyState update, shouldn't be too bad in the long run"); }
@@ -516,6 +531,7 @@ namespace TAC_AI
             if (HostExists && ManNetwork.IsHost) try
                 {
                     DebugTAC_AI.LogNet("Sent new TryBroadcastNewEnemySiege update to all but host");
+                    // REVISED: now sends on AIEnemySiege (was AIRetreatRequest) - routes to the siege handler, not the retreat one
                     Singleton.Manager<ManNetwork>.inst.SendToAllExceptHost(AIEnemySiege,
                         new AIEnemyStagedSiege(Team, TeamTargeted, HP, starting));
                 }

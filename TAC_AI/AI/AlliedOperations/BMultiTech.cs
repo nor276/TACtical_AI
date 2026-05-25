@@ -4,6 +4,9 @@ using TAC_AI.AI.Movement.AICores;
 
 namespace TAC_AI.AI.AlliedOperations
 {
+    /// REVISED (overview): MTStatic now pivots the chassis toward the enemy (SetLastDest) or explicitly STOPs instead of just
+    /// clearing the fire flag; the MT host tech is now cached on helper.theHostTech alongside theResource; MimicDefend acquires
+    /// the player's manual target through SetPursuit (with null/active guards) rather than poking lastEnemy directly.
     internal static class BMultiTech
     {
         // Check MultiTechUtils for the Director
@@ -14,6 +17,7 @@ namespace TAC_AI.AI.AlliedOperations
 
             BGeneral.ResetValues(helper, ref direct);
 
+            // REVISED: face the enemy by writing its position as the drive destination, else STOP; was a bare fire-flag clear
             if (helper.lastEnemyGet != null)
             {
                 direct.SetLastDest(helper.lastEnemyGet.transform.position);
@@ -68,7 +72,7 @@ namespace TAC_AI.AI.AlliedOperations
                         return;
                     }
                     helper.theResource = hostTech.visible;
-                    helper.theHostTech = hostTech.visible;
+                    helper.theHostTech = hostTech.visible; // REVISED: also cache the MT host tech (mirrored at every host resolve below)
                     copyTargVis = hostTech;
                     dist = Mathf.Sqrt(distSqr);
                 }
@@ -206,6 +210,7 @@ namespace TAC_AI.AI.AlliedOperations
             if (helper.theResource?.tank)
             {   //Get the tech the player is aiming at
                 Visible playerTarget = helper.theResource.tank.Weapons.GetManualTarget();
+                // REVISED: adopt the player's manual target via SetPursuit (clears Provoked + releases prior target) with null/active guards; was a direct lastEnemy assignment
                 if (playerTarget != null && playerTarget.tank != null && playerTarget.isActive)
                 {
                     helper.Provoked = 0;

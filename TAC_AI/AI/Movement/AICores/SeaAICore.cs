@@ -8,6 +8,9 @@ using TerraTechETCUtil;
 namespace TAC_AI.AI.Movement.AICores
 {
     /// <summary> Handles Sea AI Directors & Maintainers </summary>
+    /// REVISED (overview): per-type core split out of the old VehicleAICore; selected via MovementDispatch.
+    /// DriveMaintainer now wraps the final output in FixControlReversal so reverse-driving boats flip their steer/yaw,
+    /// the broadside Z-tilt clamps the correct axis, no-enemy broadside steers -distDiff, and LightBoost feathers via lightBoostFeatherTimer.
     internal class SeaAICore : IMovementAICore
     {
         private AIControllerDefault controller;
@@ -107,6 +110,8 @@ namespace TAC_AI.AI.Movement.AICores
             if (!AIEAutoPather.IsFarEnough(tank.boundsCentreWorldNoCheck, Target))
                 return false;
             var helper = controller.Helper;
+            // REVISED: pathfinder start-up (StayInWater + SetAutoPathfinding(true)) now runs only on the !AutoPathfind
+            // transition (was re-asserted every call); TargetDestination is set up-front before the aim switch.
             if (!controller.AutoPathfind)
             {
                 DebugTAC_AI.LogPathing(tank.name + ": PlanningPathing - Started pathfinding!");
@@ -315,6 +320,7 @@ namespace TAC_AI.AI.Movement.AICores
                     else
                     {
                         //DebugTAC_AI.Log(KickStart.ModID + ": Broadside Z-tilt active");
+                        // REVISED: now reads turnVal.z (was turnVal.x) so the broadside tilt clamps the Z (roll) axis it sets just above.
                         turnVal.z = Mathf.Clamp(-AIGlobals.AngleUnsignedToSigned(turnVal.z) / 60f, -1, 1);
                     }
                     turnVal.x = turnValUp.x;
@@ -343,6 +349,7 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         else
                         {
+                            // REVISED: no-enemy broadside while moving-away now steers -distDiff (was distDiff) to keep the broadside facing.
                             VehicleUtils.TurnerHovership(tank.control, helper, -distDiff, ref core);
                         }
                     }
@@ -548,6 +555,7 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (helper.LightBoost)
                     {
+                        // REVISED: LightBoost feathering moved from the LightBoostFeatheringClock frame counter to lightBoostFeatherTimer (0.5s).
                         if (helper.lightBoostFeatherTimer.Due)
                         {
                             if (helper.IsMultiTech || Vector3.Dot(driveVal, tank.rootBlockTrans.forward) > 0.75f)
@@ -616,6 +624,8 @@ namespace TAC_AI.AI.Movement.AICores
                 }
             }
             lastDrive = DriveVal.z;
+            // REVISED: final output now routed through FixControlReversal - when reverse-driving, the yaw (TurnVal.y) is
+            // inverted so the boat still steers the right way (was an unconditional ProcessControl).
             if (helper.FixControlReversal(DriveVal.z))
                 helper.ProcessControl(DriveVal, TurnVal.SetY(-TurnVal.y), Vector3.zero, false, false);
             else
@@ -627,6 +637,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
+            // REVISED: combat-engage gate dropped the IsDirectedMoving clause; now just ChaseThreat && !Retreat.
             if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
             {
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
@@ -638,6 +649,8 @@ namespace TAC_AI.AI.Movement.AICores
                 }
                 helper.UpdateEnemyDistance(targPos);
                 float driveDyna = Mathf.Clamp((helper.lastCombatRange - helper.MinCombatRange) / 3f, -1, 1);
+                // REVISED: broadside now also triggers on blocked line-of-sight for AdvancedAI (was SideToThreat only); each
+                // orbit sub-branch now sets core.DriveDest explicitly (To/FromLastDestination) so DriveMaintainer spaces correctly.
                 if (helper.SideToThreat || (helper.BlockedLineOfSight && helper.AdvancedAI))
                 {
                     core.DriveDir = EDriveFacing.Perpendicular;
@@ -746,6 +759,7 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (helper.IsDirectedMovingToDest && mind.LikelyMelee)
                     {
+                        // REVISED: dropped the inner if (mind.LikelyMelee) else - the guard above already requires it, so the else was dead.
                         core.DriveDir = EDriveFacing.Forwards;
                         pos = helper.AvoidAssist(targPos);
                         helper.AutoSpacing = 0.5f;

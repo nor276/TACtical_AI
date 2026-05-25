@@ -44,6 +44,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {   // BRANCH - Reverse from Resources
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Reversing from resources...");
                     direct.Reverse(helper);
+                    // REVISED: no longer decrements actionPause on arrival/reverse states (same removal repeated throughout this method)
                     {  }
                     return;
                 }
@@ -200,6 +201,7 @@ namespace TAC_AI.AI.AlliedOperations
                 helper.WeaponDelayClock += KickStart.AIClockPeriod;
                 if (helper.SideToThreat)
                 {
+                    // REVISED: dropped the always-true "|| magnitude > -0.15f" clause; now fires only when actually aligned (< 0.15f) or the clock maxes
                     if (Mathf.Abs((tank.rootBlockTrans.right - aimTo).magnitude) < 0.15f || helper.WeaponDelayClock >= 150)
                     {
                         helper.WantsToFight = true;

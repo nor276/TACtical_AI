@@ -5,8 +5,12 @@ using TAC_AI.AI.Movement;
 
 namespace TAC_AI.AI
 {
+    /// REVISED (overview): beam release now actively disables the beam and clears ForceSetBeam when the tech rights itself or times out, then early-returns.
+    /// On beam activation, AlignBeamToGoal rotates the hover orientation toward the destination so the tech faces its goal while righting.
+    /// Tipped-over flip retry replaced the actionPause counter ramp with a beamFlipTimer hold.
     internal static class AIEBeam
     {
+        // REVISED: reflection handle to TankBeam.m_HoverOrient, used by AlignBeamToGoal to steer the beam-righting orientation
         private static readonly FieldInfo hoverOrient = typeof(TankBeam).GetField(
             "m_HoverOrient", BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -30,6 +34,7 @@ namespace TAC_AI.AI
                 bool releasedThisTick = false;
                 if (helper.BeamTimeoutClock > 0)
                 {
+                    // REVISED: on first activation, orient the beam toward the destination before righting
                     bool justActivated = !tank.beam.IsActive;
                     if (justActivated)
                     {
@@ -39,6 +44,7 @@ namespace TAC_AI.AI
                     helper.FullBoost = false;
                     helper.LightBoost = false;
                     thisControl.BoostControlJets = false;
+                    // REVISED: when upright again OR timed out, now actively disables the beam and clears ForceSetBeam, then early-returns this tick
                     if (tank.rootBlockTrans.up.y > 0.95f)
                     {
                         helper.BeamTimeoutClock = 0;
@@ -81,7 +87,7 @@ namespace TAC_AI.AI
                 else if (!helper.IsMultiTech && IsTechTippedOver(tank, helper) && helper.RequestBuildBeam)
                 {
                     if (helper.Attempt3DNavi)
-                    {
+                    {   // REVISED: flip retry now gated by beamFlipTimer.Due (was an actionPause counter ramp); 3D-navi techs wait out the hold before re-beaming
                         if (helper.beamFlipTimer.Due)
                             helper.BeamTimeoutClock = 1;
                     }
@@ -92,6 +98,7 @@ namespace TAC_AI.AI
                 }
                 else
                 {
+                    // REVISED: while upright, arm the flip-hold timer (was actionPause = 0) so the next tip-over honors BeamFlipTippedHoldSecs
                     if (helper.Attempt3DNavi)
                         helper.beamFlipTimer.Set(AIGlobals.BeamFlipTippedHoldSecs);
                     if (helper.MTLockedToTechBeam && helper.IsMultiTech)
@@ -128,6 +135,7 @@ namespace TAC_AI.AI
             return false;
         }
 
+        // REVISED: new - on beam activation, points the beam-hover orientation at the horizontal heading to lastDestinationCore so the tech rights itself facing its goal; no-ops if the API field is gone, no goal set, or goal is too close
         private static void AlignBeamToGoal(TankAIHelper helper, Tank tank)
         {
             if (hoverOrient == null) { LogHoverOrientNullOnce(); return; }

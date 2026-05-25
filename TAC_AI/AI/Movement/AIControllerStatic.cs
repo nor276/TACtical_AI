@@ -11,6 +11,10 @@ namespace TAC_AI.AI
     /// <summary>
     /// Handles all anchored operations
     /// </summary>
+    /// REVISED (overview): now derives from MovementControllerBase instead of implementing IMovementAIController
+    /// directly — the Tank/Helper/AICore/EnemyMind plumbing, GetDrive, UpdateEnemyMind and Recycle moved to the
+    /// base. Init moved out of Initiate into the OnPreInitiate/OnPostInitiate hooks; SelectCore unconditionally
+    /// returns a StaticAICore.
     internal class AIControllerStatic : MovementControllerBase
     {
         public Vector3 AimTarget = Vector3.zero;
@@ -19,6 +23,7 @@ namespace TAC_AI.AI
 
         public override Vector3 PathPoint => SceneStayPos.ScenePosition.SetY(HoldHeight);
         public Vector2 IdleFacingDirect = Vector2.up;
+        // REVISED: new — caches the root-block forward at anchor time so the rest/idle facing is preserved.
         public Vector3 RestFacing = Vector3.forward;
 
         protected override IMovementAICore SelectCore(EnemyMind mind) => new StaticAICore();
@@ -28,6 +33,7 @@ namespace TAC_AI.AI
             HoldHeight = Tank.boundsCentreWorld.y;
             SceneStayPos = WorldPosition.FromScenePosition(Tank.boundsCentreWorld);
             IdleFacingDirect = Vector2.up;
+            // REVISED: now also seeds RestFacing and a default AimTarget 100m ahead from the root-block forward.
             RestFacing = Tank.rootBlockTrans.forward;
             AimTarget = Tank.boundsCentreWorld + Tank.rootBlockTrans.forward * 100f;
         }
@@ -85,6 +91,7 @@ namespace TAC_AI.AI
             }
             else//ENEMY
             {
+                // REVISED: RTS enemy path now calls DriveDirectorEnemyRTS (was DriveDirectorEnemy, the non-RTS variant).
                 AICore.DriveDirectorEnemyRTS(EnemyMind, ref core);
             }
         }
@@ -96,6 +103,7 @@ namespace TAC_AI.AI
 
         public override void OnMoveWorldOrigin(IntVector3 move)
         {
+            // REVISED: now shifts the cached AimTarget by the world-origin move (was a no-op).
             AimTarget += move;
         }
         public override Vector3 GetDestination()

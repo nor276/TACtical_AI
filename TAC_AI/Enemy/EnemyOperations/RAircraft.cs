@@ -9,11 +9,15 @@ using TAC_AI.AI.Movement;
 
 namespace TAC_AI.AI.Enemy.EnemyOperations
 {
+    /// REVISED (overview): null-target idle case hoisted out to the controller (no longer handled here).
+    /// Null-rbody path now logs + defers Recycle one frame and bails instead of recycling inline mid-tick.
+    /// Circle gained a live broadside case (see below). Per-bucket ObjectiveRange and a mind.MinCombatRange
+    /// writeback added (were absent before).
     internal static class RAircraft
     {
         // ENEMY CONTROLLERS
         /*
-            // REVISED: Circle now has a live broadside case (gated by canBroadside: WeaponAimMod + LargeAircraft/BankOnly), changed from a commented-out [BROKEN] path.
+            // REVISED: Circle now has a live broadside case (gated by canBroadside: WeaponAimMod + LargeAircraft/BankOnly), changed from a previously commented-out path.
             Circle,     // Attack like the AC-130 Gunship, broadside while salvoing
             Grudge,     // Chase and dogfight whatever hit this aircraft last
             Coward,     // Avoid danger
@@ -27,6 +31,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
             helper.Attempt3DNavi = false;
             helper.AvoidStuff = true;
 
+            // REVISED: null rbody now logs once and defers tank.Recycle() one frame (InvokeSingle) then returns,
+            // changed from recycling inline mid-tick (which destroyed the tech while still being processed).
             if (tank.rbody.IsNull())
             {
                 DebugTAC_AI.LogWarnPlayerOncePerKey("RAircraft.AttackWoosh:NoRBody:" + tank.name,
@@ -35,6 +41,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                 return;
             }
 
+            // REVISED: the lastEnemyGet == null -> LollyGagAir early-return was removed; no-target idle is now
+            // handled upstream in the controller (target guaranteed live here). The Homing mend now routes to
+            // LollyGagAir (was RGeneral.LollyGag) so the aircraft uses the air-specific idle/heal path.
             if (mind.CommanderMind == EnemyAttitude.Homing)
             {
                 if ((helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck).magnitude > mind.MaxCombatRange)
@@ -82,6 +91,9 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     break;
                 case EAttackMode.Circle:
+                    // REVISED: live broadside-orbit case (was commented-out dead code). Only runs for large/bank-only
+                    // craft with WeaponAimMod present; otherwise falls through to default. Drives away-perp inside range,
+                    // to-perp (with FullBoost past 2x) outside, marking advance/retreat for hysteresis.
                     {
                         var pilot = helper.MovementController as AIControllerAir;
                         var planeCore = pilot?.AICore as AI.Movement.AICores.AirplaneAICore;
@@ -258,6 +270,8 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
         }
         public static void FlutterAround(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
+            // REVISED: picks a new patrol destination when the pause runs out (ActionPause <= 0) then sets a long
+            // 1000-tick pause; changed from the old ActionPause==1 pick / ==0 reset-to-30 two-step toggle.
             if (helper.ActionPause <= 0)
             {
                 if (mind.GetComponent<AIControllerAir>() && UnityEngine.Random.Range(1, 10) < 6)

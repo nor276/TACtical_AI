@@ -23,6 +23,7 @@ namespace TAC_AI.AI.AlliedOperations
 
             if (helper.AdvancedAI && helper.lastEnemyGet != null)
             {   // BRANCH - RUN!!!!!!!!
+                // REVISED: GetBase is called once and its result reused; was called twice (first result discarded)
                 bool foundBase = BGeneral.GetBase(helper, tank, false, ref dist, ref hasMessaged, ref direct);
                 if (!foundBase)
                 {
@@ -41,6 +42,7 @@ namespace TAC_AI.AI.AlliedOperations
                 {
                     hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived in safety of the base.");
                     helper.AvoidStuff = false;
+                    // REVISED: no longer decrements actionPause on arrival/reverse states (same removal repeated throughout this method)
                     {  }
                 }
                 else if (helper.recentSpeed < 3)

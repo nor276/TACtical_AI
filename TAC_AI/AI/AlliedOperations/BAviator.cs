@@ -39,6 +39,7 @@ namespace TAC_AI.AI.AlliedOperations
 
             if (tank.wheelGrounded)
             {
+                // REVISED: stuck-detect divisor changed from EnemyAISpeedPanicDividend to PlayerAISpeedPanicDividend (allied tech now uses the player panic threshold)
                 if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.PlayerAISpeedPanicDividend))
                     helper.TryHandleObstruction(!AIECore.Feedback, dist, true, true, ref direct);
                 else

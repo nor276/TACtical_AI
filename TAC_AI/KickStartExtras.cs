@@ -36,6 +36,7 @@ namespace TAC_AI
             modConfig.WriteConfigJsonFile();
         }
 
+        // REVISED: NEW config-push flow — Apply* methods write saved config values into vanilla Globals; PushAllConfigToVanilla runs both at setup. Block-drop and difficulty applies are now centralized here (callers delegate instead of inlining).
         internal static void ApplyEnemyBlockDropChance()
         {
             if (Globals.inst == null) return;
@@ -69,6 +70,7 @@ namespace TAC_AI
         internal static void PushExtModConfigHandlingConfigOnly()
         {
             KickStart.SavedDefaultEnemyFragility = Globals.inst.moduleDamageParams.detachMeterFillFactor;
+            // REVISED: also caches the vanilla m_BlockSurvivalChance default (once) so DeInit can restore it.
             if (KickStart.SavedDefaultBlockSurvivalChance < 0f)
                 KickStart.SavedDefaultBlockSurvivalChance = Globals.inst.m_BlockSurvivalChance;
 
@@ -311,6 +313,7 @@ namespace TAC_AI
                 if (KickStart.AllowPlayerRTSHUD)
                 {
                     PlayerRTSUI.Initiate();
+                    // REVISED: toggling RTS HUD / strategic AI on now rebuilds the RTS UI by running ManWorldRTS.DelayedInitiate (previously did nothing here); same call repeated for the strategic-AI toggle below.
                     ModStatusChecker.EncapsulateSafeInit("Advanced AI", ManWorldRTS.DelayedInitiate, KickStart.DeInitALL);
                 }
                 else
@@ -396,6 +399,7 @@ namespace TAC_AI
                 }
                 KickStart.enablePainMode = painfulEnemies.SavedValue;
             });
+            // REVISED: difficulty slider widened to DifficultyMin..DifficultyMax (-50..1500, step 50) with new high-end tiers (Insanity/Apocalyptic/God-tier); was capped at 150.
             diff = SuperNativeOptions.OptionRangeAutoDisplay("NPT Difficulty",
                 TACAIEnemies, KickStart.difficulty, KickStart.DifficultyMin, KickStart.DifficultyMax, 50, (float value) => {
                     string pre = Mathf.RoundToInt((value + 50) / 2).ToString();

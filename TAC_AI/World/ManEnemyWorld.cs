@@ -44,6 +44,12 @@ namespace TAC_AI.World
     ///     </list>
     ///
     /// </summary>
+    /// REVISED (overview): visible-event readiness buffering (pendingUnloaded/pendingLoaded queues drained
+    ///   by the enabledThis setter so RestoreVisible/CreateStoredVisible postfixes firing during save restore
+    ///   are not dropped); a RegisteredByID O(1) dedup index kept in lockstep with NPTTeams; strategic-move
+    ///   drift detection (TryRefindTech + RebindToTile) with criticalFail orphan eviction; ID-scan lookups
+    ///   replacing SV.Last() so a boundary-straddling AddSavedTech can't swap a unit's identity; and
+    ///   save-taint (m_FileHasBeenTamperedWith) only when state actually changed.
     public class ManEnemyWorld : MonoBehaviour
     {
         //-------------------------------------
@@ -128,6 +134,10 @@ namespace TAC_AI.World
         //-------------------------------------
         public static ManEnemyWorld inst;
 
+        // REVISED: enabledThis changed from a plain bool field to a property backed by _enabledThis.
+        //  VisibleUnloaded/VisibleLoaded postfixes can fire during save restore before this flips on; they now
+        //  enqueue into pendingUnloaded/pendingLoaded instead of being dropped. The setter drains those queues
+        //  on the off->on transition so no visible is silently left un-tracked.
         private static readonly Queue<ManSaveGame.StoredVisible> pendingUnloaded = new Queue<ManSaveGame.StoredVisible>();
         private static readonly Queue<Visible> pendingLoaded = new Queue<Visible>();
         private static bool _enabledThis = false;
@@ -327,6 +337,8 @@ namespace TAC_AI.World
             Singleton.Manager<ManTechs>.inst.TankDestroyedEvent.Unsubscribe(OnTechDestroyed);
             Singleton.Manager<ManGameMode>.inst.ModeStartEvent.Unsubscribe(OnWorldLoad);
             Singleton.Manager<ManGameMode>.inst.ModeSwitchEvent.Unsubscribe(OnWorldReset);
+            // REVISED: now also unsubscribes the tile-populate / world-load-end handlers (subscribed in OnWorldLoad)
+            //  and clears subToTiles, so a re-Initiate doesn't double-subscribe.
             if (subToTiles)
             {
                 try
@@ -345,6 +357,8 @@ namespace TAC_AI.World
             inst = null;
             setup = false;
             logEntries.Clear();
+            // REVISED: also clears NPTTeams, the RegisteredByID dedup index, QueuedUnitMoves, and the pending queues
+            //  on mod-unload so no stale state survives a reload.
             NPTTeams.Clear();
             RegisteredByID.Clear();
             QueuedUnitMoves.Clear();
@@ -369,14 +383,14 @@ namespace TAC_AI.World
         public static void OnWorldLoad(Mode mode)
         {
             NPTTeams.Clear();
-            RegisteredByID.Clear();
+            RegisteredByID.Clear();     // REVISED: dedup index cleared in lockstep with NPTTeams on every mode load
             QueuedUnitMoves.Clear();
             ManEnemySiege.EndSiege(true);
             ManEnemySiege.ResetSiegeTimer(true);
             if (!(mode is ModeMain || mode is ModeMisc || mode is ModeCoOpCreative || mode is ModeCoOpCampaign))
             {
                 enabledThis = false;
-                pendingUnloaded.Clear();
+                pendingUnloaded.Clear();    // REVISED: discard any visible events buffered before this unsupported-mode load
                 pendingLoaded.Clear();
                 return;
             }
@@ -389,11 +403,15 @@ namespace TAC_AI.World
             enabledThis = true;
             OperatorTicker = 0;
         }
+        // REVISED: new flag set once OnWorldLoadEnd has run; replaces the old unconditional m_FileHasBeenTamperedWith=true.
         public static bool WorldWasTouchedByTAC_AI { get; private set; }
 
         public static void OnWorldLoadEnd(Mode mode)
         {
             int count = 0;
+            // REVISED: the save is now only tainted (m_FileHasBeenTamperedWith) when state was actually mutated -
+            //  mutatedSave is set by the failed-restore purge, by each newly-registered tech, or by a thrown exception.
+            //  Previously the file was marked tampered every load regardless.
             bool mutatedSave = false;
             WorldWasTouchedByTAC_AI = true;
             OperatorTick = 0;
@@ -412,6 +430,8 @@ namespace TAC_AI.World
                          ManBaseTeams.IsBaseTeamDynamicOrUnregistered(ST.m_TeamID));
                     int purgeryTS = ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore.RemoveAll(x => x != null && x is ManSaveGame.StoredTech ST &&
                         ST.m_TechData?.LocalisedName != null && AIGlobals.CanPurgeTradingStation(ST.m_TeamID, ST.m_TechData.LocalisedName.m_Id));
+                    // REVISED: now triggers when either count is non-zero (was only on the enemy-tech count), and the
+                    //  three player-facing ShowErrorPopup calls are replaced by a single quiet recovery log line.
                     if (purgery != 0 || purgeryTS != 0)
                     {
                         mutatedSave = true;
@@ -454,11 +474,15 @@ namespace TAC_AI.World
         }
         public static void OnWorldReset()
         {
+            // REVISED: now clears NPTTeams, the RegisteredByID dedup index, and QueuedUnitMoves on a mode switch.
             NPTTeams.Clear();
             RegisteredByID.Clear();
             QueuedUnitMoves.Clear();
         }
 
+        // REVISED: split into a public guard wrapper + VisibleUnloadedCore. When not yet ready (no inst / not enabled),
+        //  the event is queued for later replay instead of dropped; the actual work lives in the Core method.
+        //  VisibleLoaded mirrors this split.
         public static void VisibleUnloaded(ManSaveGame.StoredVisible Vis)
         {
             if (Vis == null) return;
@@ -603,6 +627,9 @@ namespace TAC_AI.World
             var WTS = ManSaveGame.inst.GetStoredTile(coord, true);
             if (WTS.m_StoredVisibles.TryGetValue(1, out var caseL) && caseL.Any())
                 return;
+            // REVISED: per-coord seeding dedup. The coord is recorded in the [SSaveField] seededSpawnCoords set
+            //  BEFORE any FindFreeSpace/FilteredSelectFromAll can bail, so the deterministic base does not re-roll
+            //  under a fresh team on every tile-recycle revisit. Persists across save/load.
             if (ManBaseTeams.inst != null && ManBaseTeams.inst.seededSpawnCoords.Contains(coord))
                 return;
             ManBaseTeams.inst?.seededSpawnCoords.Add(coord);
@@ -618,6 +645,8 @@ namespace TAC_AI.World
             Biome biome = ManWorld.inst.GetBiomeWeightsAtScenePosition(posBase).Biome(0);
             var Terra = RawTechLoader.GetTerrain(posBase);
             var corp = EvalCorpWeight(biome.BiomeType);
+            // REVISED: passes forceNew=false so natural-base seeding can reuse an existing enemy team
+            //  (PercentChanceExisting roll) instead of always allocating a brand-new team.
             var team = AIGlobals.GetRandomEnemyBaseTeam(false);
 
             FactionLevel lvl;
@@ -643,6 +672,8 @@ namespace TAC_AI.World
             RTF.Terrain = Terra;
             RTF.TargetFactionGrade = grade;
             RTF.MaxPrice = cost;
+            // REVISED: handleFallback changed from true to false (both base + founder selects below) - a no-match
+            //  now returns null and aborts the spawn rather than substituting a fallback template.
             RawTech RTT = RawTechLoader.FilteredSelectFromAll(RTF, false, true);
             if (RTT == null)
                 return;
@@ -672,6 +703,9 @@ namespace TAC_AI.World
             return TryRefindTech(prev, tech, out found, out _);
         }
 
+        // REVISED: new overload that also returns the matched StoredVisible (was just bool + found tile). It scans
+        //  each saved tile's Vehicle list by ID and hands the hit back via `matched` so RebindToTile can adopt its
+        //  precise position. The old single-out overload forwards here for callers that don't need the hit.
         public static bool TryRefindTech(IntVector2 prev, NP_TechUnit tech, out IntVector2 found, out ManSaveGame.StoredVisible matched)
         {
             ManSaveGame.StoredTech techFind = tech.tech;
@@ -747,10 +781,14 @@ namespace TAC_AI.World
             return false;
         }
 
+        // REVISED: O(1) ID -> registered wrapper dedup index, kept in lockstep with NPTTeams and the EBUs/EMUs sets
+        //  (populated in AddToTeam, removed in StopManagingUnit, cleared in OnWorldLoad/OnWorldReset/DeInit).
         internal static Dictionary<int, NP_TechUnit> RegisteredByID = new Dictionary<int, NP_TechUnit>();
 
         public static bool TryRegisterTechUnloaded(ManSaveGame.StoredTech tech, int ID, bool hide, bool isNew, bool forceRegister)
         {
+            // REVISED: fast-path via RegisteredByID - skip the full re-build (NP_BaseUnit/NP_MobileUnit alloc, SetTracked,
+            //  radar resolve, AddToTeam) when this ID is already registered on the same team and no force was requested.
             if (!forceRegister && RegisteredByID.TryGetValue(ID, out var existing)
                 && existing != null && existing.tech != null
                 && existing.tech.m_TeamID == tech.m_TeamID)
@@ -863,6 +901,8 @@ namespace TAC_AI.World
                         return tile.m_LoadStep >= LevelToAttemptTechEntry;
         }
         private static List<int> BlockTypeCache = new List<int>();
+        // REVISED: spawn-attempt telemetry. TryMoveTechIntoTile bumps these counters per outcome; EmitSpawnAttemptSummary
+        //  logs the delta-since-last-call (the spawnLast* are the previous snapshot) under the "SpawnSummary" tag.
         internal static int spawnAttemptCount = 0;
         internal static int spawnSuccessCount = 0;
         internal static int spawnFailNoSpotCount = 0;
@@ -948,6 +988,8 @@ namespace TAC_AI.World
                 }
                 else
                 {   // Loading in an Inactive Tech
+                    // REVISED: the inactive path now reports real success via inactiveSucceeded - a misplaced/failed
+                    //  MoveTechToTileAndSetETU returns false (was an unconditional `return true` at the end).
                     bool inactiveSucceeded = false;
                     ManSaveGame.StoredTech ST = tech.tech;
                     try
@@ -1112,11 +1154,14 @@ namespace TAC_AI.World
             float partitionScale = ManWorld.inst.TileSize / partitions;
             float partDist = ManWorld.inst.TileSize;
             Vector3 tileInPosScene = ManWorld.inst.TileManager.CalcTileOriginScene(tilePos);
+            // REVISED: minimum spawn distance is now siege-aware - during a siege techs may spawn as close as
+            //  RaidMinSpawnDistance (96); otherwise the prior EnemyExtendActionRangeShort-48 (452) is kept.
             int minDist = ManEnemySiege.InProgress
                 ? AIGlobals.RaidMinSpawnDistance
                 : AIGlobals.EnemyExtendActionRangeShort - 48;
             int extActionRange = minDist * minDist;
 
+            // REVISED: null-guards the rangeOverride reflection field, falling back to 200f rather than NRE'ing.
             float sleepRangeMain = TankAIManager.rangeOverride != null
                 ? (float)TankAIManager.rangeOverride.GetValue(ManTechs.inst) : 200f;
             float sleepRange = float.MaxValue;
@@ -1200,6 +1245,10 @@ namespace TAC_AI.World
         {
             int newVisibleID = Singleton.Manager<ManSaveGame>.inst.CurrentState.GetNextVisibleID(ObjectTypes.Vehicle);
             ST.AddSavedTech(TD, posScene, AIGlobals.LookRot(forwards * Vector3.right, Vector3.up), newVisibleID, Team, bIDs, true, false, true, false, 99, false);
+            // REVISED: locates the just-added StoredTech by scanning for newVisibleID instead of assuming SV.Last()
+            //  appended it - guards against AddSavedTech routing it to a different tile (posScene boundary straddle),
+            //  which SV.Last() would silently swap for a stranger. A miss throws (fresh ID, improbable).
+            //  MoveTechToTileAndSetETU does the same ID-scan but logs+returns false on a miss.
             if (ST.m_StoredVisibles.TryGetValue((int)ObjectTypes.Vehicle, out List<ManSaveGame.StoredVisible> SV))
             {
                 ManSaveGame.StoredTech sTech = null;
@@ -1273,7 +1322,7 @@ namespace TAC_AI.World
                         EP.teamFounder = null;
                     EP.EMUs.Remove(EMU);
                 }
-                RegisteredByID.Remove(tech.ID);
+                RegisteredByID.Remove(tech.ID);     // REVISED: keep the dedup index in lockstep with the EBUs/EMUs sets
                 ManVisible.inst.StopTrackingVisible(tech.ID);
             }
             else
@@ -1340,7 +1389,7 @@ namespace TAC_AI.World
                     if (EP.EBUs.Add(EBU))
                     {
                         DebugTAC_AI.Info(KickStart.ModID + ": HandleTechUnloaded(EBUs) Added " + EBU.Name);
-                        RegisteredByID[EBU.ID] = EBU;
+                        RegisteredByID[EBU.ID] = EBU;   // REVISED: populate the dedup index on add (EMU path below mirrors this)
                     }
                     else
                         DebugTAC_AI.Assert(KickStart.ModID + ": HandleTechUnloaded(EBU) Hash Fail!");
@@ -1456,6 +1505,10 @@ namespace TAC_AI.World
                 return false;
             }
             ManSaveGame.StoredTech ST = ETU.tech;
+            // REVISED: drift recovery. When the tech is not on its recorded tile, TryRefindTech ID-scans every saved
+            //  tile: missing-everywhere sets criticalFail=true (caller StopManagingUnits the orphan); found-elsewhere
+            //  RebindToTile's it and bails this tick so no move issues along a stale direction vector.
+            //  (TryMoveUnloadedTech does the same mid-move.) Previously this branch just logged and returned.
             if (!IsTechOnSetTile(ETU))
             {
                 IntVector2 staleTile = ETU.tilePos;
@@ -1499,6 +1552,8 @@ namespace TAC_AI.World
         }
         private static bool StrategicMoveStepConcluded(TileMoveCommand TMC)
         {
+            // REVISED: TryMoveUnloadedTech now reports criticalFail; an orphaned ETU is StopManagingUnit'd HERE, before
+            //  the OnFinished callback, so the callback's still-registered flag (TMC.ETU.Exists()) reflects the eviction.
             bool worked = TryMoveUnloadedTech(TMC.ETU, TMC.TargetTileCoord, out bool criticalFail);
             if (criticalFail && TMC.ETU != null)
             {
@@ -1512,6 +1567,8 @@ namespace TAC_AI.World
             TMC.OnFinished(worked, TMC.ETU.Exists());
             return worked;
         }
+        // REVISED: added `out bool criticalFail` (set true when the tech's StoredVisible is gone from every tile);
+        //  the stale-tile branch now drift-recovers via TryRefindTech/RebindToTile rather than only logging.
         public static bool TryMoveUnloadedTech(NP_TechUnit ETU, IntVector2 TargetTileCoord, out bool criticalFail)
         {
             criticalFail = false;
@@ -1727,6 +1784,8 @@ namespace TAC_AI.World
                             if (EP.EBUs.Count == 0 && EP.EMUs.Count == 0)// NO SUCH TEAM EXISTS (no base!!!)
                             {
                                 DebugTAC_AI.Info(KickStart.ModID + ": ManEnemyWorld.Update()[RTS] - Team " + EP.Team + " has been unregistered (no units available)");
+                                // REVISED: NPTTeams.Remove now runs BEFORE TeamDestroyedEvent.Send (all four eviction
+                                //  sites), so listeners see the team already gone from the registry. Order was swapped.
                                 NPTTeams.Remove(EP.Team);
                                 TeamDestroyedEvent.Send(EP.Team);
                                 EPScrambled.RemoveAt(step);
@@ -2127,6 +2186,10 @@ namespace TAC_AI.World
                 ToCalculate.Enqueue(unit);
         }
 
+        // REVISED: reflects m_Force from its declaring base type Thruster instead of the BoosterJet subclass.
+        //  m_Force is a private instance field on Thruster; GetField(NonPublic|Instance) does not surface a base
+        //  class's private field through a derived type, so the lookup now targets the type that actually declares it.
+        //  Used below on BoosterJet components for the unloaded boost-potential estimate.
         private static readonly FieldInfo oomph = typeof(Thruster).GetField("m_Force", BindingFlags.Instance | BindingFlags.NonPublic);
 
         /// <summary>
@@ -2551,6 +2614,8 @@ namespace TAC_AI.World
                         }
                         if (enabledTabs.Contains(item.Key))
                         {
+                            // REVISED: Where instead of TakeWhile - lists every matching team for the tab rather than
+                            //  stopping at the first one whose type differs (the unordered dict made TakeWhile drop teams).
                             foreach (var item2 in AllTeamsUnloaded.Where(x => AIGlobals.GetNPTTeamTypeForDebug(x.Key) == item.Key))
                             {
                                 if (GUILayout.Button("Team: [" + item2.Key.ToString() + "] - " + TeamNamer.GetTeamName(item2.Key)))

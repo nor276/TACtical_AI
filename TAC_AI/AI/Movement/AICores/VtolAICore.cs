@@ -7,8 +7,13 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
+    /// REVISED (overview): now an IAirMovementAICore via AirplaneAICore (IsFixedWing => false).
+    /// DriveMaintainer gained a beam-active KillAllControl short-circuit, and the grounded branch
+    /// now actively recovers (EmergLand below tech height, else powered vertical takeoff via
+    /// HelicopterUtils.ModerateUpwardsThrust + AngleTowardsUp) where it previously did nothing.
     internal class VtolAICore : AirplaneAICore, IMovementAICore
     {
+        // REVISED: VTOL reports as rotorcraft-style (not fixed-wing) for cross-pipeline IAirMovementAICore queries.
         public override bool IsFixedWing => false;
         public override void Initiate(Tank tank, IMovementAIController pilot)
         {
@@ -18,6 +23,7 @@ namespace TAC_AI.AI.Movement.AICores
         }
         public override bool DriveMaintainer(TankAIHelper helper, Tank tank, ref EControlCoreSet core)
         {
+            // REVISED: beam-active now kills all control and returns immediately.
             if (tank.beam.IsActive)
             {
                 pilot.KillAllControl(helper);
@@ -25,6 +31,8 @@ namespace TAC_AI.AI.Movement.AICores
             }
             if (pilot.Grounded)
             {
+                // REVISED: grounded recovery added; previously a no-op. Below tech height -> EmergLand,
+                // otherwise force pitch up and apply powered vertical thrust to climb back to flight.
                 if (!AIEPathing.AboveHeightFromGroundTech(helper, helper.lastTechExtents * 2))
                 {
                     DriveMaintainerEmergLand(helper, tank, ref core);
@@ -92,6 +100,7 @@ namespace TAC_AI.AI.Movement.AICores
                 }
                 else
                 {
+                    // REVISED: cruise now drives MainThrottle from AdvisedThrottle before updating throttle.
                     pilot.MainThrottle = pilot.AdvisedThrottle;
                     pilot.UpdateThrottle(helper);
                     AngleTowards(helper, tank, pilot, pilot.PathPointSet);

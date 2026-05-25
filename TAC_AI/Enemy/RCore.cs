@@ -14,6 +14,11 @@ namespace TAC_AI.AI.Enemy
     /// <summary> RELIES ON EVERYTHING IN THE "AI" FOLDER TO FUNCTION PROPERLY!!!
     ///            [excluding the Designators in said folder]
     /// </summary>
+    /// REVISED (overview): Mind-resolution extracted into EnsureEnemyMind (shared by BeEvil/BeEvilLight) with a latched one-shot
+    /// GenerateEnemyAI regen and full null-guarding. Per-tick housekeeping + alignment switch extracted into CommonEvilOp, which
+    /// both light and full ops now delegate to. GenerateEnemyAI restructured around RMission's new MissionSetupResult flags.
+    /// Movement-controller swaps now go through RequestMovementControllerSwap. FinalInitialization dropped its old "Default enemy"
+    /// early-out. Booster bias now thrust-weighted; control-block/scheme handling moved into SetFromScheme.
     public static class RCore
     {
         internal static FieldInfo charge = typeof(ModuleShieldGenerator).GetField("m_EnergyDeficit", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -33,11 +38,16 @@ namespace TAC_AI.AI.Enemy
             }
             helper.lastPlayer = null;
 
+            // REVISED: movement-controller rebind now requested via RequestMovementControllerSwap (deferred/reasoned swap)
             helper.RequestMovementControllerSwap(TankAIHelper.MovementSwapReason.EnemyGenerate);
 
             newMind.sceneStationaryPos = tank.boundsCentreWorldNoCheck;
             newMind.Refresh();
 
+            // REVISED: SetupBaseOrMissionAI now returns a MissionSetupResult flag set instead of a plain bool. The auto-config
+            // chain (AutoSetIntelligence/GetOrCalculateEnemyHandling/SetSmartAIStats) is skipped when FullyConfigured; the
+            // intelligence step alone is skipped when PartialMind. FinalInitialization now runs for all techs on a single path
+            // (the former mission-tech early-return that duplicated FinalInitialization is gone).
             var missionResult = RMission.SetupBaseOrMissionAI(helper, tank, newMind);
             if (!(bool)tank)
                 return;
@@ -217,8 +227,10 @@ namespace TAC_AI.AI.Enemy
                 return;
             }
             BlockSetEnemyHandling(tank, newMind, ForceAllBubblesUp);
+            // REVISED: block-based handling is now overridden by the active control scheme via SetFromScheme (added)
             SetFromScheme(newMind, tank);
         }
+        // REVISED: now internal (was private) so other setup paths can reuse the block-scan locomotion classifier
         internal static void BlockSetEnemyHandling(Tank tank, EnemyMind newMind, bool ForceAllBubblesUp)
         {
             // We have to do it this way since modded blocks don't work well with the defaults
@@ -278,6 +290,8 @@ namespace TAC_AI.AI.Enemy
                                     throw new Exception("BlockDetails SAID there was a BoosterJet in this block but that was incorrect!" +
                                         " Somehow GetComponentsInChildren returned a NULL entry.  We should not be checking for this!");
 #endif
+                                // REVISED: boost bias is now weighted by each booster's thrust force (was unweighted unit vectors),
+                                // so stronger boosters dominate the locomotion-direction estimate
                                 float boostForce = (float)AIControllerDefault.boostGet.GetValue(boost);
                                 boostBiasDirection -= tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)) * boostForce;
                             }
@@ -356,6 +370,7 @@ namespace TAC_AI.AI.Enemy
                 {
                     CheckAndHandleControlBlocks(newMind, bloc);
                 }
+                // REVISED: control-block failures are now logged (was a silent catch{}) so misbehaving blocks surface
                 catch (Exception eCtrl) { DebugTAC_AI.LogWarnPlayerOnce("[TAC_AI:catch:Enemy] CheckAndHandleControlBlocks failed", eCtrl); }
             }
 
@@ -437,6 +452,8 @@ namespace TAC_AI.AI.Enemy
             {
                 newMind.EvilCommander = EnemyHandling.SuicideMissile;
             }
+            // REVISED: explicit hover-without-wheels branch added - currently resolves to Wheeled (same as the else fallthrough),
+            // carving out the case as a named hook for future hover-specific handling
             else if (modHoverCount > 2 && modWheelCount == 0)
             {
                 newMind.EvilCommander = EnemyHandling.Wheeled;
@@ -465,6 +482,7 @@ namespace TAC_AI.AI.Enemy
             }
             else
             {
+                // REVISED: roll widened to 0..9 inclusive (was 0..8) so the case 8/9 (Miner/Default) arm can actually be selected
                 int randomNum2 = UnityEngine.Random.Range(0, 10);
                 switch (randomNum2)
                 {
@@ -552,6 +570,9 @@ namespace TAC_AI.AI.Enemy
             catch (Exception e) { DebugTAC_AI.Log("ScarePlayer(): error - " + e); }
         }
 
+        // REVISED: new shared Mind-resolution helper extracted from the old BeEvil/BeEvilLight bodies. Null-guards the tech,
+        // returns the live EnemyMind when present, else attempts a single GenerateEnemyAI regen guarded by helper.beEvilRegenAttempted
+        // (latched so a failed regen does not retry every tick - the tech goes inert with a once-per-key warning instead).
         private static EnemyMind EnsureEnemyMind(TankAIHelper helper, Tank tank)
         {
             if (!tank || !tank.visible || tank.blockman == null || helper.MovementController == null)
@@ -597,6 +618,8 @@ namespace TAC_AI.AI.Enemy
             helper.MovementController.UpdateEnemyMind(mind);
             return mind;
         }
+        // REVISED: both gates now resolve the Mind via EnsureEnemyMind and silently return when it is null
+        // (no ScarePlayer on a mindless tech), instead of the old inline lookup/regen each performed separately.
         internal static void BeEvil(TankAIHelper helper, Tank tank)
         {
             var Mind = EnsureEnemyMind(helper, tank);
@@ -611,6 +634,9 @@ namespace TAC_AI.AI.Enemy
             RunLightEvilOp(Mind, helper, tank);
             ScarePlayer(Mind, helper, tank);
         }
+        // REVISED: shared per-tick housekeeping extracted here (anchor-force, bolts, die-check, on-tile repair stepper,
+        // Provoked decay with EndAggro on expiry, then the CommanderAlignment stance switch). Both the light and full
+        // ops delegate to this; the light path stops after it, the full path continues with dispatch + retreat.
         private static void CommonEvilOp(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
             if (mind.StartedAnchored)
@@ -671,6 +697,8 @@ namespace TAC_AI.AI.Enemy
             }
         }
 
+        // REVISED: light path is now just the shared housekeeping (no dispatch), where the old RunLightEvilOp duplicated
+        // the anchor-force/repair/stance logic inline
         private static void RunLightEvilOp(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
             CommonEvilOp(mind, helper, tank);
@@ -681,6 +709,7 @@ namespace TAC_AI.AI.Enemy
 
             if (helper.RTSControlled && !helper.IsMultiTech)
             {
+                // REVISED: RTS detour now emits a once-per-key warning when an enemy tech bypasses EnemyOpsController.Execute
                 DebugTAC_AI.LogWarnPlayerOncePerKey(
                     "EnemyRTSDetour:" + tank.name,
                     "AI " + tank.name + ": RTSControlled enemy tech routed through RunRTSNaviEnemy instead of EnemyOpsController.Execute.", null);
@@ -1037,6 +1066,7 @@ namespace TAC_AI.AI.Enemy
                         newMind.EvilCommander = EnemyHandling.Starship;
                         break;
                     case ControlSchemeCategory.Hovercraft:
+                        // REVISED: hovercraft scheme now drives the Wheeled handler (was Starship)
                         newMind.EvilCommander = EnemyHandling.Wheeled;
                         break;
                     default:
@@ -1068,6 +1098,8 @@ namespace TAC_AI.AI.Enemy
                 newMind.CommanderBolts = EnemyBolts.AtFullOnAggro;// allow base function
             }
 
+            // REVISED: removed the old "Default enemy with Default everything" fast-path that forced RunState=Default and
+            // early-returned for plain wheeled default-smarts non-base techs; all techs now fall through the full init below.
             if (AIGlobals.IsAttract)
             {
                 if (KickStart.SpecialAttractNum == AttractType.Harvester)
@@ -1171,6 +1203,7 @@ namespace TAC_AI.AI.Enemy
             else
                 newMind.MinCombatRange = AIGlobals.MinCombatRangeDefault;
 
+            // REVISED: final movement-controller rebind now routed through RequestMovementControllerSwap (deferred/reasoned swap)
             helper.RequestMovementControllerSwap(TankAIHelper.MovementSwapReason.EnemyMindSetup);
             DebugTAC_AI.FinishAICalculationTimer(tank);
         }
