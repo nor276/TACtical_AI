@@ -439,6 +439,14 @@ namespace TAC_AI
         // Combat Minimum Spacing Ranges
         public const float MinCombatRangeDefault = 12;
         public const float MinCombatRangeSpyper = 60;
+        // REVISED: combat back-off dead-band. A tech holds-and-faces between (hull contact + MinCombatRange*this) and the
+        // full stand-off, and only reverses (FACE-ENEMY back off) when pushed inside that inner radius - so it stops
+        // constantly back-pedalling front-on just to maintain the stand-off. Lower = backs off less / holds sooner.
+        public const float CombatReverseInnerFraction = 0.35f;
+        // REVISED: when a mod forces continuous strafe (TweakTech/WeaponAimMod -> ShouldForceContinuousStrafe), only
+        // techs with at least this turret share keep strafing endlessly (their turrets can fire mid-circle). A
+        // mostly-front-fixed tech below this falls back to the duty cycle so it still gets a face/fire window.
+        public const float ContinuousStrafeMinTurretFraction = 0.5f;
         public const float SpacingRangeSpyperAir = 72;
         public const float SpacingRangeAircraft = 24;
         public const float SpacingRangeChopper = 12;

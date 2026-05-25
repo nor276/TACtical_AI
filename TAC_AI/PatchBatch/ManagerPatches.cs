@@ -128,6 +128,11 @@ namespace TAC_AI
             {
                 if (__result)
                     ManEnemyWorld.VisibleLoaded(__result);
+                else
+                    // REVISED: a failed restore (null Tank) used to leave its unloaded-tech marker tracked forever
+                    // (phantom radar dot). Hand the failed StoredVisible to ManEnemyWorld so it can conservatively drop
+                    // the orphaned marker when the tech is provably non-spawnable.
+                    ManEnemyWorld.VisibleFailedToLoad(storedVisible);
             }
             private static void CreateStoredVisible_Postfix(Visible visible,
                 ManSaveGame.StoredVisible __result)

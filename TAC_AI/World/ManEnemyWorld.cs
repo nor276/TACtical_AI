@@ -426,10 +426,28 @@ namespace TAC_AI.World
                 }
                 if (ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore != null)
                 {
-                    int purgery = ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore.RemoveAll(x => x != null && x is ManSaveGame.StoredTech ST &&
-                         ManBaseTeams.IsBaseTeamDynamicOrUnregistered(ST.m_TeamID));
-                    int purgeryTS = ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore.RemoveAll(x => x != null && x is ManSaveGame.StoredTech ST &&
-                        ST.m_TechData?.LocalisedName != null && AIGlobals.CanPurgeTradingStation(ST.m_TeamID, ST.m_TechData.LocalisedName.m_Id));
+                    // REVISED: the RemoveAll predicates now also DropFailedToRestoreMarker for each purged tech, so a tech
+                    // that failed to restore no longer leaves its orphaned radar/map marker behind (was: only the stored data
+                    // was removed, leaving a phantom dot).
+                    int purgery = ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore.RemoveAll(x =>
+                    {
+                        if (x != null && x is ManSaveGame.StoredTech ST && ManBaseTeams.IsBaseTeamDynamicOrUnregistered(ST.m_TeamID))
+                        {
+                            DropFailedToRestoreMarker(ST.m_ID);
+                            return true;
+                        }
+                        return false;
+                    });
+                    int purgeryTS = ManSaveGame.inst.CurrentState.m_VisiblesFailedToRestore.RemoveAll(x =>
+                    {
+                        if (x != null && x is ManSaveGame.StoredTech ST &&
+                            ST.m_TechData?.LocalisedName != null && AIGlobals.CanPurgeTradingStation(ST.m_TeamID, ST.m_TechData.LocalisedName.m_Id))
+                        {
+                            DropFailedToRestoreMarker(ST.m_ID);
+                            return true;
+                        }
+                        return false;
+                    });
                     // REVISED: now triggers when either count is non-zero (was only on the enemy-tech count), and the
                     //  three player-facing ShowErrorPopup calls are replaced by a single quiet recovery log line.
                     if (purgery != 0 || purgeryTS != 0)
@@ -544,6 +562,28 @@ namespace TAC_AI.World
                     }
                 }
             }
+        }
+
+        // REVISED: failure-dual of VisibleLoaded. A RestoreVisible that returns null (the game could not rebuild the
+        // Tank - e.g. missing/modded or oversized blocks, common under ragnarok) leaves the unloaded-tech marker
+        // (TrackedVisible) with no Tank behind it, which shows as a phantom radar/map dot. Drop that marker -
+        // but CONSERVATIVELY: only when the tech is provably non-spawnable (the game shunted it to
+        // m_VisiblesFailedToRestore). A deferred-but-valid spawn (not in that list) is left alone so a real pending
+        // enemy is not culled early.
+        public static void VisibleFailedToLoad(ManSaveGame.StoredVisible Vis)
+        {
+            if (!(Vis is ManSaveGame.StoredTech))
+                return;
+            var failed = ManSaveGame.inst?.CurrentState?.m_VisiblesFailedToRestore;
+            if (failed != null && failed.Contains(Vis))
+                DropFailedToRestoreMarker(Vis.m_ID);
+        }
+        // REVISED: drop a leaked phantom marker (TrackedVisible) and its dedup entry for a tech that cannot be restored.
+        public static void DropFailedToRestoreMarker(int id)
+        {
+            RegisteredByID.Remove(id);
+            if (ManVisible.inst != null)
+                ManVisible.inst.StopTrackingVisible(id);
         }
 
         public static void OnBeforeTilesSpawn(List<IntVector2> tileRequestor)

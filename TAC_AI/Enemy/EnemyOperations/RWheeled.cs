@@ -125,7 +125,12 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                             direct.DriveToFacingTowards();
                         }
                     }
-                    else if (helper.BlockedLineOfSight || KickStart.ShouldForceContinuousStrafe())
+                    // REVISED: forced continuous strafe (TweakTech/WeaponAimMod) now only applies to turret-heavy techs
+                    // that can actually fire while circling. A mostly-front-fixed tech (TurretFraction below the
+                    // threshold) falls through to the duty cycle so it still gets a face/fire window instead of orbiting
+                    // forever without firing. BlockedLineOfSight still strafes regardless (repositioning for a shot).
+                    else if (helper.BlockedLineOfSight
+                        || (KickStart.ShouldForceContinuousStrafe() && helper.TurretFraction >= AIGlobals.ContinuousStrafeMinTurretFraction))
                     {
                         MoveSideways(helper, dist, ref direct);
                     }

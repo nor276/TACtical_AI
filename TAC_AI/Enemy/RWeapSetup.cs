@@ -157,7 +157,14 @@ namespace TAC_AI.AI.Enemy
             bool isRaider = false;  // Circle weapons
             bool isFast = false;    // weapons that aim fast
             bool isMelee = false;
-            bool Forwards = (weaponsAngleBias / count).z > 0.7f;
+            // REVISED: divide the fixed-weapon bias by the FIXED-weapon count (count - circleWeaps), not the total
+            // weapon count - dividing by total let a couple of turrets dilute a mostly-front-fixed tech below 0.7 ->
+            // misclassified !Forwards -> EAttackMode.Circle -> broadside with fixed guns never bearing. All-turret
+            // techs (no fixed weapons) stay !Forwards and correctly circle.
+            int fixedWeaps = count - circleWeaps;
+            // also require at least half the weapons to be fixed, so a single forward gun on an otherwise turret-heavy
+            // tech doesn't flip it to Forwards (charge) when it should circle/kite.
+            bool Forwards = fixedWeaps > 0 && fixedWeaps * 2 >= count && (weaponsAngleBias / fixedWeaps).z > 0.7f;
 
             // Pick the top two canidates to determine our combat mindset:
             switch (sortList.ElementAt(4).Value)
