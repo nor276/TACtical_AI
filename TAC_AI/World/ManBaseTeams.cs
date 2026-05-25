@@ -460,7 +460,7 @@ namespace TAC_AI
         /// This is VERY lazy.  There's only a small chance it will actually transfer the funds to the real strongest base.
         /// <para>This is normally handled automatically by the manager, but you can call this if you want to move the cash NOW</para>
         /// </summary>
-        /// <param name="funds">The EnemyBaseFunder that contains the money to move</param>
+        /// REVISED: a stale 'funds' param doc was removed here - this overload is parameterless (the funds-taking version is the EnemyBaseFunder extension in RLoadedBases).
         /// <returns>True if it actually moved the money</returns>
         public bool SetHQToStrongestOrRandomBase()
         {

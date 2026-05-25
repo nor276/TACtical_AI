@@ -7,7 +7,8 @@ using TerraTechETCUtil;
 
 namespace TAC_AI.AI.Movement.AICores
 {
-    /// <summary> Handles Space AI Directors & Maintainers </summary>
+    /// <summary> Handles Land AI Directors & Maintainers </summary>
+    // REVISED: summary read "Space" - a copy-paste from SpaceAICore; this is the Land core.
     internal class LandAICore : IMovementAICore
     {
         private AIControllerDefault controller;

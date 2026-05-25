@@ -282,7 +282,7 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 try
                 {
-                    DebugTAC_AI.Log(KickStart.ModID + ": ERROR IN VehicleAICore - GetPathingTargetRTS");
+                    DebugTAC_AI.Log(KickStart.ModID + ": ERROR IN VehicleUtils - GetPathingTargetRTS");
                     DebugTAC_AI.Log(KickStart.ModID + ": Tank - " + tank.name);
                     DebugTAC_AI.Log(KickStart.ModID + ": Helper - " + (bool)controller.Helper);
                     DebugTAC_AI.Log(KickStart.ModID + ": AI Main Mode - " + tank.AI.GetAICategory().ToString());
@@ -380,7 +380,7 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 try
                 {
-                    DebugTAC_AI.Log(KickStart.ModID + ": ERROR IN VehicleAICore - GetPathingTargetRTS");
+                    DebugTAC_AI.Log(KickStart.ModID + ": ERROR IN VehicleUtils - GetPathingTargetRTS");
                     DebugTAC_AI.Log(KickStart.ModID + ": Tank - " + tank.name);
                     DebugTAC_AI.Log(KickStart.ModID + ": Helper - " + (bool)controller.Helper);
                     DebugTAC_AI.Log(KickStart.ModID + ": AI Main Mode - " + tank.AI.GetAICategory().ToString());
@@ -605,7 +605,7 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 try
                 {
-                    DebugTAC_AI.Log(KickStart.ModID + ": ERROR IN VehicleAICore - GetPathingTarget");
+                    DebugTAC_AI.Log(KickStart.ModID + ": ERROR IN VehicleUtils - GetPathingTarget");
                     DebugTAC_AI.Log(KickStart.ModID + ": Tank - " + tank.name);
                     DebugTAC_AI.Log(KickStart.ModID + ": Helper - " + (bool)controller.Helper);
                     DebugTAC_AI.Log(KickStart.ModID + ": AI Main Mode - " + tank.AI.GetAICategory().ToString());

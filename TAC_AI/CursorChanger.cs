@@ -26,9 +26,9 @@ namespace TAC_AI
             AIOrderEmpty    1
             AIOrderMove     2
             AIOrderSelect   3
-            AIOrderFetch    4
+            AIOrderBlock    4   (REVISED: renamed from AIOrderFetch)
             AIOrderMine     5
-            AIOrderProtect  6
+            AIOrderAegis    6   (REVISED: renamed from AIOrderProtect)
             AIOrderScout    7
         */
         public static CursorChangeHelper.CursorChangeCache Cache;

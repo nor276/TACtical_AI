@@ -20,7 +20,7 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
         /// <param name="mind"></param>
         public static void AttackZoom(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
-            //The Handler that tells the Tank (Escort) what to do movement-wise
+            //The Handler that tells the Tank (Starship) what to do movement-wise. REVISED: "(Escort)" label was a copy-paste from the shared handler template.
             BGeneral.ResetValues(helper, ref direct);
             helper.Attempt3DNavi = true;
             helper.AvoidStuff = true;

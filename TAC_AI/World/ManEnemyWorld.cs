@@ -59,7 +59,7 @@ namespace TAC_AI.World
         public const int EnemyRaidProvokeExtents = 4;// How far the can the enemy bases issue raids on the player. IN TILES
 
         // Movement
-        internal const float MaintainerTickDelay = 0.5f;         // How many seconds the AI will perform a move - default 2
+        internal const float MaintainerTickDelay = 0.5f;         // How many seconds the AI will perform a move. REVISED: value is 0.5 now (the "default 2" referred to an earlier value).
         public const float LandTechTraverseMulti = 0.75f;// Multiplier for AI traverse speed over ALL terrain
 
         // Harvesting

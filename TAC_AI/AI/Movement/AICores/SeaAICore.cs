@@ -424,7 +424,7 @@ namespace TAC_AI.AI.Movement.AICores
 
             //AI Drive Translational
             Vector3 driveVal;
-            //DebugTAC_AI.Log(KickStart.ModID + ": VehicleAICore for " + tank.name + " | " + helper.GetCoreControlString());
+            //DebugTAC_AI.Log(KickStart.ModID + ": SeaAICore for " + tank.name + " | " + helper.GetCoreControlString());
             if (helper.AdviseAwayCore)
             {   //Move from target
                 if (helper.lastEnemyGet.IsNotNull() && AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
