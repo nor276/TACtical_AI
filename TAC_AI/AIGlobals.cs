@@ -300,6 +300,14 @@ namespace TAC_AI
         public const int UnjamUpdateDrop = UnjamUpdateStart + UnjamUpdateTicks;
         public const int UnjamUpdateEnd = UnjamUpdateDrop + UnjamUpdateEndDelay;
         public const float AngularProgressThreshold = 0.5f;
+        // REVISED: windowed net-progress check used by IsTechMoving* / the unjam soft-decay. A tech that covers less than
+        // max(StuckNetProgressFloor, EstTopSped * StuckNetProgressWindow * StuckNetProgressFraction) world units over the
+        // window (while commanding drive) is making no net progress, so yaw jitter no longer masks a genuine wedge.
+        // The threshold scales with EstTopSped so a slow/heavy tech making genuine slow headway is not falsely flagged
+        // stuck (it tracks the same speed basis as the EnemyAISpeedPanicDividend gate); the floor covers near-zero EstTopSped.
+        public const float StuckNetProgressWindow = 1.5f;
+        public const float StuckNetProgressFraction = 0.2f;
+        public const float StuckNetProgressFloor = 1f;
 
         public const float AISubscribeDelay = 0.1f;
 

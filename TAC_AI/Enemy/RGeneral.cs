@@ -202,19 +202,18 @@ namespace TAC_AI.AI.Enemy
                 direct.DriveDest = EDriveDest.None;
         }
         // REVISED: new centralized no-target entry called by EnemyOperationsController before its EvilCommander switch.
-        // Re-acquires via TryRefreshEnemyEnemy; bails if a target appears; holds (DriveDest=None) while still Provoked;
-        // else routes by locomotion - Airplane/Chopper to LollyGagAir, Stationary to LollyGag(holdGround:true), else LollyGag.
+        // Re-acquires via TryRefreshEnemyEnemy; bails if a target appears; else routes by locomotion -
+        // Airplane/Chopper to LollyGagAir, Stationary to LollyGag(holdGround:true), else LollyGag.
         // Replaces the former per-R*-handler null-target guards.
+        // REVISED: dropped the "Provoked > 0 -> DriveDest = None; return" hold. That hold froze a target-less tech on
+        // its last path-point, so a tech that had just killed its target orbited the death spot for the whole provoke
+        // window instead of seeking the next enemy. It now falls through to LollyGag (wander + per-tick re-scan),
+        // matching the original per-handler behavior; TryRefreshEnemyEnemy above still re-acquires the moment one is in range.
         internal static void DispatchNoTargetIdle(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             helper.TryRefreshEnemyEnemy(mind.InvertBullyPriority);
             if (helper.lastEnemyGet != null)
                 return;
-            if (helper.Provoked > 0)
-            {
-                direct.DriveDest = EDriveDest.None;
-                return;
-            }
             switch (mind.EvilCommander)
             {
                 case EnemyHandling.Airplane:

@@ -239,7 +239,10 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     // REVISED: holdEdge adds the same WasRetreatingInCombat hysteresis to the hold boundary (range*1.25
                     // while retreating, else range*1). The advance bucket below also widened from range*1.25 to range*1.5.
                     float holdEdge = spacer + (range * (helper.WasRetreatingInCombat ? 1.25f : 1f));
-                    if (dist < spacer)
+                    // REVISED: reverse/stand-off band widened from "dist < spacer" (which only triggered once hulls were
+                    // already overlapping) to spacer + range*0.5, so non-melee brawlers back off to a modest gap instead
+                    // of piling up nose-to-nose. Melee techs still charge (DriveToFacingTowards below).
+                    if (dist < spacer + (range * 0.5f))
                     {   // too close?
                         if (!helper.IsTechMovingAbs(helper.EstTopSped / AIGlobals.EnemyAISpeedPanicDividend) && !mind.LikelyMelee)
                             helper.TryHandleObstruction(!AIECore.Feedback, dist, false, true, ref direct);

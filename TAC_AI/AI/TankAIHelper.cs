@@ -2503,7 +2503,10 @@ namespace TAC_AI.AI
 
             return (energy.storageTotal - energy.spareCapacity) / energy.storageTotal;
         }
-        // REVISED: ground IsTechMoving* now also counts yaw (angularVelocity.y > AngularProgressThreshold) as moving, so a tech pivoting in place is not treated as stuck. IsTechMovingSigned was removed.
+        // REVISED: ground IsTechMoving* count yaw (angularVelocity.y > AngularProgressThreshold) as moving so a tech
+        // pivoting in place is not treated as stuck - BUT only while MakingNetProgress, so a tech grinding/jittering
+        // between obstacles (driving hard, yawing, but no net displacement over the window) is still flagged stuck.
+        // IsTechMovingSigned was removed.
         public bool IsTechMovingAbs(float minSpeed)
         {
             if (tank.rbody.IsNull())
@@ -2520,7 +2523,7 @@ namespace TAC_AI.AI
                     return false;
                 if (Mathf.Abs(LocalSafeVelocity.z) > minSpeed || Mathf.Abs(GetDrive) < 0.5f)
                     return true;
-                return Mathf.Abs(tank.rbody.angularVelocity.y) > AIGlobals.AngularProgressThreshold;
+                return Mathf.Abs(tank.rbody.angularVelocity.y) > AIGlobals.AngularProgressThreshold && MakingNetProgress;
             }
         }
         public bool IsTechMovingActual(float minSpeed)
@@ -2539,7 +2542,7 @@ namespace TAC_AI.AI
                     return false;
                 if (Mathf.Abs(LocalSafeVelocity.z) > minSpeed)
                     return true;
-                return Mathf.Abs(tank.rbody.angularVelocity.y) > AIGlobals.AngularProgressThreshold;
+                return Mathf.Abs(tank.rbody.angularVelocity.y) > AIGlobals.AngularProgressThreshold && MakingNetProgress;
             }
         }
         public bool HasAnchorAI()
@@ -3945,8 +3948,27 @@ namespace TAC_AI.AI
             return targetIn;
         }
 
+        // REVISED: windowed net-progress tracker (see AIGlobals.StuckNetProgress*). MakingNetProgress goes false when the
+        // tech has barely moved over the last window - lets IsTechMoving*/the unjam soft-decay tell a real wedge (driving
+        // hard but pinned) from an in-place pivot or jitter, which the angular-velocity fallback alone could not.
+        private Vector3 netProgressLastPos = Vector3.zero;
+        private float netProgressNextCheck = 0f;
+        public bool MakingNetProgress { get; private set; } = true;
         private void UpdatePhysicsInfo()
         {
+            if (Time.time >= netProgressNextCheck)
+            {
+                Vector3 curProgressPos = tank.boundsCentreWorldNoCheck;
+                if (netProgressNextCheck > 0f)
+                {
+                    // scale the "made progress" bar by the tech's own top speed so a slow/heavy mover isn't falsely flagged stuck
+                    float minProg = Mathf.Max(AIGlobals.StuckNetProgressFloor,
+                        EstTopSped * AIGlobals.StuckNetProgressWindow * AIGlobals.StuckNetProgressFraction);
+                    MakingNetProgress = (curProgressPos - netProgressLastPos).sqrMagnitude > minProg * minProg;
+                }
+                netProgressLastPos = curProgressPos;
+                netProgressNextCheck = Time.time + AIGlobals.StuckNetProgressWindow;
+            }
             if (tank.rbody.IsNotNull())
             {
                 var velo = tank.rbody.velocity;
@@ -4063,9 +4085,10 @@ namespace TAC_AI.AI
                 IsTryingToUnjam = false;
             if (direct.DriveDir == EDriveFacing.Stop)
                 return;
-            if (FrustrationMeter > 0 && (bool)tank.rbody &&
-                (tank.rbody.velocity.sqrMagnitude > 0.25f
-                 || Mathf.Abs(tank.rbody.angularVelocity.y) > AIGlobals.AngularProgressThreshold))
+            // REVISED: bleed the meter on actual net progress (MakingNetProgress over the window), not on instantaneous
+            // velocity/yaw - a tech grinding/jittering against an obstacle used to bleed the meter via its yaw chatter and
+            // never escalate. Now only real displacement decays it, so a genuine wedge climbs the ladder and gets unjammed.
+            if (FrustrationMeter > 0 && MakingNetProgress)
             {
                 FrustrationMeter = Mathf.Max(0, FrustrationMeter - Mathf.Max(1, KickStart.AIClockPeriod / 2));
             }

@@ -540,7 +540,11 @@ namespace TAC_AI.AI.Movement.AICores
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
                 helper.UpdateEnemyDistance(targPos);
-                float driveDyna = Mathf.Clamp((helper.lastCombatRange - helper.MinCombatRange) / 3f, -1, 1);
+                // REVISED: bounds-aware stand-off (matches the enemy TryAdjustForCombatEnemy fix) - lastCombatRange is
+                // centre-to-centre, so comparing it to bare MinCombatRange only backed an allied turret off once hulls
+                // overlapped, leaving allied techs to pile up. Adding the combined hull extents holds a real edge-to-edge gap.
+                float combatStandoff = helper.MinCombatRange + helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds();
+                float driveDyna = Mathf.Clamp((helper.lastCombatRange - combatStandoff) / 3f, -1, 1);
                 // REVISED: circle-vs-face is now gated on CombatWantsCircleNow() (turret-fraction duty cycle); SideToThreat
                 // alone no longer forces the Perpendicular broadside, so the FACE (Forwards) branch runs during the face phase.
                 if ((helper.SideToThreat && helper.CombatWantsCircleNow()) || (helper.BlockedLineOfSight && helper.AdvancedAI))
@@ -620,7 +624,12 @@ namespace TAC_AI.AI.Movement.AICores
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
                 core.DriveDir = EDriveFacing.Forwards;
                 helper.UpdateEnemyDistance(targPos);
-                float driveDyna = Mathf.Clamp((helper.lastCombatRange - mind.MinCombatRange) / 3f, -1, 1);
+                // REVISED: back-off / orbit distance is now bounds-aware. lastCombatRange is centre-to-centre, so comparing
+                // it to bare MinCombatRange meant driveDyna only went negative ("too close, back off") once the hulls were
+                // already overlapping - turreted tanks never opened a gap and piled up. Adding the combined hull extents
+                // makes them hold a real edge-to-edge stand-off (~MinCombatRange) instead.
+                float combatStandoff = mind.MinCombatRange + helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds();
+                float driveDyna = Mathf.Clamp((helper.lastCombatRange - combatStandoff) / 3f, -1, 1);
 
                 if (mind.CommanderAttack == EAttackMode.Circle)
                 {   // works fine for now
