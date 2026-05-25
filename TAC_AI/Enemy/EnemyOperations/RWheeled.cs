@@ -105,6 +105,12 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     helper.AISetSettings.SideToThreat = true;
                     helper.Retreat = RGeneral.CanRetreat(helper, tank, mind);
                     helper.AutoSpacing = range;
+                    // REVISED: Circle is an engage/approach mode, never a deliberate retreat, so clear the
+                    // WasRetreatingInCombat latch here. The Circle bucket used to leave the flag untouched, which
+                    // let a stale "retreating" state from a prior Safety/Ranged frame carry into the approach charge
+                    // and circling - and the AvoidAssist retreat early-out then disabled obstacle avoidance the whole
+                    // time (the tech rammed scenery mid-pursuit). The Ranged/default buckets still set it per-distance.
+                    RGeneral.MarkAdvancing(helper);
                     direct.SetLastDest(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);
                     // REVISED: new APPROACH GATE - while still out of range (dist > spacer + range) drive straight
                     // toward the enemy instead of circling, so the tech closes before orbiting.

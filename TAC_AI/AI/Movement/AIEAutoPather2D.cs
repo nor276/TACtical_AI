@@ -9,10 +9,10 @@ namespace TAC_AI.AI.Movement
     /// <summary>
     /// Acts as the slow, non-immedeate pathfinding for land and sea AIs.
     /// </summary>
-    /// REVISED (overview): the obstacle-gated diagonal expansion was removed — diagonals are now always evaluated
-    /// (the per-WaterPathing "if (!nearbyObst)" wrappers and "else nearbyObst = true" branches are gone), so the
-    /// search no longer suppresses diagonal neighbours near obstacles. Recalc/stop no longer fire
-    /// OnFinishedPathfinding(null) at the consumer; the final PathRoute.RemoveAt(0) trim was dropped.
+    /// REVISED (overview): the obstacle-gated diagonal expansion (the per-WaterPathing "if (!nearbyObst)" wrappers and
+    /// "else nearbyObst = true" branches) is intact, matching the original - an over-difficulty straight neighbour still
+    /// suppresses diagonal corner-cutting. Recalc/stop no longer fire OnFinishedPathfinding(null) at the consumer; the
+    /// final PathRoute.RemoveAt(0) trim was dropped.
     public class AIEAutoPather2D : AIEAutoPather
     {
         private IntVector2 CurPos;
@@ -325,23 +325,33 @@ namespace TAC_AI.AI.Movement
                                 toCheckAlt.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
-                        // REVISED: diagonal neighbours are now always evaluated and added; the "if (!nearbyObst)" guard around this block (and the "else nearbyObst = true" that fed it) was removed, so an over-difficulty straight neighbour no longer suppresses the diagonals. (Same removal in the AllowWater and StayInWater cases below; nearbyObst is now effectively unused.)
-                        toCheckExtra.Clear();
-                        toCheckExtra2.Clear();
-                        foreach (var item in iterationsDia)
+                        // REVISED: restored the original obstacle gating - diagonal neighbours are skipped when a
+                        // straight neighbour is over-difficulty (nearbyObst), so the planned route does not cut
+                        // diagonally across an obstacle corner. (Same gating in the AllowWater and StayInWater cases.)
+                        if (!nearbyObst)
                         {
-                            posC = CurPos + item;
-                            if (!pathed.Contains(posC))
+                            toCheckExtra.Clear();
+                            toCheckExtra2.Clear();
+                            foreach (var item in iterationsDia)
                             {
-                                diff = CalcAvoidWater(posC, CurPos);
-                                PrintErrorInfoCoord(posC, diff);
-                                if (diff <= maxDiff)
-                                    toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                posC = CurPos + item;
+                                if (!pathed.Contains(posC))
+                                {
+                                    diff = CalcAvoidWater(posC, CurPos);
+                                    PrintErrorInfoCoord(posC, diff);
+                                    if (diff <= maxDiff)
+                                        toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                    else
+                                        nearbyObst = true;
+                                    toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                }
+                            }
+                            if (!nearbyObst)
+                            {
+                                toCheck.AddRange(toCheckExtra);
+                                toCheckAlt.AddRange(toCheckExtra2);
                             }
                         }
-                        toCheck.AddRange(toCheckExtra);
-                        toCheckAlt.AddRange(toCheckExtra2);
                         break;
                     case WaterPathing.AllowWater:
                         foreach (var item in iterationsStr)
@@ -357,21 +367,29 @@ namespace TAC_AI.AI.Movement
                                 toCheckAlt.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
-                        toCheckExtra.Clear();
-                        toCheckExtra2.Clear();
-                        foreach (var item in iterationsDia)
+                        if (!nearbyObst)
                         {
-                            posC = CurPos + item;
-                            if (!pathed.Contains(posC))
+                            toCheckExtra.Clear();
+                            toCheckExtra2.Clear();
+                            foreach (var item in iterationsDia)
                             {
-                                diff = CalcAll(posC, CurPos);
-                                if (diff <= maxDiff)
-                                    toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                posC = CurPos + item;
+                                if (!pathed.Contains(posC))
+                                {
+                                    diff = CalcAll(posC, CurPos);
+                                    if (diff <= maxDiff)
+                                        toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                    else
+                                        nearbyObst = true;
+                                    toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                }
+                            }
+                            if (!nearbyObst)
+                            {
+                                toCheck.AddRange(toCheckExtra);
+                                toCheckAlt.AddRange(toCheckExtra2);
                             }
                         }
-                        toCheck.AddRange(toCheckExtra);
-                        toCheckAlt.AddRange(toCheckExtra2);
                         break;
                     case WaterPathing.StayInWater:
                         foreach (var item in iterationsStr)
@@ -387,21 +405,29 @@ namespace TAC_AI.AI.Movement
                                 toCheckAlt.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
                             }
                         }
-                        toCheckExtra.Clear();
-                        toCheckExtra2.Clear();
-                        foreach (var item in iterationsDia)
+                        if (!nearbyObst)
                         {
-                            posC = CurPos + item;
-                            if (!pathed.Contains(posC))
+                            toCheckExtra.Clear();
+                            toCheckExtra2.Clear();
+                            foreach (var item in iterationsDia)
                             {
-                                diff = CalcWaterOnly(posC, CurPos);
-                                if (diff <= maxDiff)
-                                    toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
-                                toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                posC = CurPos + item;
+                                if (!pathed.Contains(posC))
+                                {
+                                    diff = CalcWaterOnly(posC, CurPos);
+                                    if (diff <= maxDiff)
+                                        toCheckExtra.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                    else
+                                        nearbyObst = true;
+                                    toCheckExtra2.Add(new KeyValuePair<byte, IntVector2>(diff, posC));
+                                }
+                            }
+                            if (!nearbyObst)
+                            {
+                                toCheck.AddRange(toCheckExtra);
+                                toCheckAlt.AddRange(toCheckExtra2);
                             }
                         }
-                        toCheck.AddRange(toCheckExtra);
-                        toCheckAlt.AddRange(toCheckExtra2);
                         break;
                 }
 

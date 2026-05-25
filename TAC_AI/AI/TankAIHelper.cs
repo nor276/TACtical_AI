@@ -3617,16 +3617,23 @@ namespace TAC_AI.AI
         }
 
         internal static List<KeyValuePair<Vector3, float>> posWeights = new List<KeyValuePair<Vector3, float>>();
-        // REVISED: all AvoidAssist* variants now early-out (return targetIn unmodified) while WasRetreatingInCombat, so ally-spacing/scenery dodge does not fight the combat-FSM retreat vector. The obsolete AvoidAssistInv_OBS variant was removed.
+        // REVISED: while WasRetreatingInCombat, AvoidAssist keeps the ObstDodgeOffset scenery dodge (a tech should never ram scenery, even backing off) but skips the ally-spacing weights so they do not fight the combat-FSM retreat vector; the Precise/Prediction/AirSpacing variants still fully early-out. The obsolete AvoidAssistInv_OBS variant was removed.
         internal Vector3 AvoidAssist(Vector3 targetIn, bool AvoidStatic = true)
         {
             if (!AvoidStuff || tank.IsAnchored)
                 return targetIn;
-            if (WasRetreatingInCombat)
-                return targetIn;
             if (targetIn.IsNaN())
             {
                 DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssist IS NaN!!");
+                return targetIn;
+            }
+            if (WasRetreatingInCombat)
+            {   // REVISED: while retreating, keep the scenery dodge (a tech should never ram scenery, even while
+                // backing off) but skip ally-spacing so it does not fight the retreat vector. ObstDodgeOffset also
+                // sets ThrottleState = Yield when it finds scenery, so the retreat eases off near obstacles too.
+                Vector3 obstRetreatOff = AIEPathing.ObstDodgeOffset(tank, this, AvoidStatic, out bool obstRetreat, AdvancedAI);
+                if (obstRetreat)
+                    return (targetIn + obstRetreatOff * 2f) / 3f;
                 return targetIn;
             }
             try
