@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 using TerraTechETCUtil;
 using TAC_AI.AI.Behaviors;
 using TAC_AI.AI.Engine;
@@ -6,6 +7,9 @@ using TAC_AI.AI.Engine.Registry;
 using TAC_AI.AI.Engine.Profiles;
 using TAC_AI.AI.Enemy;
 using TAC_AI.AI.AlliedOperations;
+using TAC_AI.AI.Movement;
+using TAC_AI.AI.Movement.AICores;
+using TAC_AI.AI.Enemy.EnemyOperations;
 
 namespace TAC_AI.AI.Forms
 {
@@ -20,6 +24,94 @@ namespace TAC_AI.AI.Forms
     {
         public string Id => "Modified";
         public string DisplayName => "Modified TAC AI";
+
+        // ---- v2 global lifecycle (this form becoming / leaving active). Modified registers nothing extra here;
+        // the shared AIModuleBootstrap handles module/tunable/profile registration globally. ----
+        public void InitGlobal() { }
+        public void DeInitGlobal() { }
+
+        // ---- v2 per-tech lifecycle: own the per-tech brain state in the shell's FormState slot ----
+        public void OnTechSpawn(TankAIHelper helper) { helper.FormState = new ModifiedTechState(); }
+        public void OnTechRecycle(TankAIHelper helper) { helper.FormState = null; }
+
+        // ---- v2 per-tech tick hooks: delegate to the detached tick bodies (ModifiedTick) + post-update brain ----
+        public void Directors(TankAIHelper helper, bool host)
+        {
+            if (host) helper.HostDirectorsBody();
+            else helper.ClientDirectorsBody();
+        }
+        public void Operations(TankAIHelper helper, bool host)
+        {
+            if (host) helper.HostOperationsBody();
+            else helper.ClientOperationsBody();
+        }
+        public void PostUpdate(TankAIHelper helper)
+        {
+            helper.ManageAILockOn();
+            helper.UpdateBlockHold();
+        }
+        public void ControlFrame(TankAIHelper helper, TankControl control)
+        {
+            helper.ControlFrameBody(control);
+        }
+
+        // ---- v2 isolation: this form owns the pathfinder (AIEPathMapper), so the shell reaches it only through here ----
+        public void OnWorldReset() { AIEPathMapper.ResetAll(); }
+        public void DrawPathingDebugGUI() { AIEPathMapper.GUIManaged.GUIGetTotalManaged(); }
+
+        // v2 isolation: build the per-tech movement controller (the body moved out of TankAIHelper.SwapMovementController<T>).
+        public IMovementAIController CreateMovementController(TankAIHelper helper, MovementContainerKind kind, EnemyMind mind)
+        {
+            switch (kind)
+            {
+                case MovementContainerKind.Static: return SwapTo<AIControllerStatic>(helper, mind);
+                case MovementContainerKind.Air:    return SwapTo<AIControllerAir>(helper, mind);
+                default:                           return SwapTo<AIControllerDefault>(helper, mind);
+            }
+        }
+        private static T SwapTo<T>(TankAIHelper helper, EnemyMind mind) where T : Component, IMovementAIController
+        {
+            if (helper.MovementController is T existing) { existing.Initiate(helper.tank, helper, mind); return existing; }
+            IMovementAIController previous = helper.MovementController;
+            T built = helper.gameObject.AddComponent<T>();
+            built.Initiate(helper.tank, helper, mind);
+            if (previous != null) previous.Recycle();
+            return built;
+        }
+
+        // v2 isolation: airplane maneuver state for status text (the shell switches on these ints without naming AirplaneAICore).
+        public int GetAirDiveState(TankAIHelper helper) => (helper.MovementController?.AICore is AirplaneAICore plane) ? plane.PerformDiveAttack : 0;
+        public int GetAirUTurnState(TankAIHelper helper) => (helper.MovementController?.AICore is AirplaneAICore plane) ? plane.PerformUTurn : 0;
+
+        // v2 isolation: enemy/allied combat-policy + dispatch (verbatim from the old RCore.CombatChecking / WeapSetup call sites).
+        public EAttackMode SelectEnemyAttackStrat(Tank tank, EnemyMind mind) => RWeapSetup.GetAttackStrat(tank, mind);
+        public EAttackMode SelectAlliedAttackStrat(TankAIHelper helper) => EWeapSetup.GetAttackStrat(helper.tank, helper);
+        public bool EnemyHasArtillery(BlockManager bm) => EWeapSetup.HasArtilleryWeapon(bm);
+        public void RunEnemyMonitor(TankAIHelper helper, Tank tank, EnemyMind mind) => RGeneral.Monitor(helper, tank, mind);
+        public void RunEnemyBolts(TankAIHelper helper, Tank tank, EnemyMind mind) => RBolts.ManageBolts(helper, tank, mind);
+        public void RunEnemyRepairStep(TankAIHelper helper, Tank tank, EnemyMind mind, bool venPower) => RRepair.EnemyRepairStepper(helper, tank, mind, venPower);
+        public void RunEnemyRTSCombat(TankAIHelper helper, Tank tank, EnemyMind mind) => RGeneral.RTSCombat(helper, tank, mind);
+        public void RunEnemyCombatChecking(TankAIHelper helper, Tank tank, EnemyMind mind)
+        {
+            switch (mind.EvilCommander)
+            {
+                case EnemyHandling.Airplane:
+                    RAircraft.EnemyDogfighting(helper, tank, mind);
+                    break;
+                case EnemyHandling.Stationary:
+                    RGeneral.BaseAttack(helper, tank, mind);
+                    break;
+                default:
+                    switch (mind.CommanderAttack)
+                    {
+                        case EAttackMode.Safety: RGeneral.SelfDefense(helper, tank, mind); break;
+                        case EAttackMode.Ranged: RGeneral.AimAttack(helper, tank, mind); break;
+                        case EAttackMode.Chase:  RGeneral.AidAttack(helper, tank, mind); break;
+                        default:                 RGeneral.AidAttack(helper, tank, mind); break;
+                    }
+                    break;
+            }
+        }
 
         private static readonly Dictionary<string, IBehavior> cache = new Dictionary<string, IBehavior>();
 

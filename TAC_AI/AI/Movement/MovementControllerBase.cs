@@ -20,6 +20,7 @@ namespace TAC_AI.AI
         public Enemy.EnemyMind EnemyMind { get => _mind; internal set => _mind = value; }
 
         public float GetDrive => _AI != null ? _AI.GetDrive : 0f;
+        public virtual bool Grounded { get; set; }   // v2: overridden by the air controller; false for the rest
 
         /// Initiate template: OnPreInitiate -> SelectCore(mind) -> AICore.Initiate -> OnPostInitiate.
         /// Subclasses customize via the hooks and the SelectCore override rather than reimplementing this.
@@ -30,7 +31,7 @@ namespace TAC_AI.AI
             EnemyMind = mind;
             OnPreInitiate();
             AICore = SelectCore(mind);
-            AICore.Initiate(tank, this);
+            AICore?.Initiate(tank, this);   // v2: null core allowed (e.g. Vanilla's no-op controller)
             OnPostInitiate();
         }
 

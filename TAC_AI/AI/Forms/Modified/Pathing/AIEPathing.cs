@@ -696,29 +696,6 @@ namespace TAC_AI.AI.Movement
             }
             return (helper.tank.boundsCentreWorldNoCheck.y > final_y);
         }
-        public static bool AboveTheSea(Vector3 posScene)
-        {
-            if (!KickStart.isWaterModPresent)
-                return false;
-            bool terrain = AIEPathMapper.GetAltitudeLoadedOnly(posScene, out float height);
-            if (terrain)
-            {
-                if (height < KickStart.WaterHeight)
-                    return true;
-            }
-            else if (50 < KickStart.WaterHeight)
-                    return true;
-            return false;
-        }
-        public static bool AboveTheSeaForcedAccurate(Vector3 posScene)
-        {
-            if (!KickStart.isWaterModPresent)
-                return false;
-            float height = ManWorld.inst.TileManager.GetTerrainHeightAtPosition(posScene, out _);
-            if (height < KickStart.WaterHeight)
-                return true;
-            return false;
-        }
         public static bool AboveTheSea(TankAIHelper helper)
         {
             return helper.GetFrameHeight() > KickStart.WaterHeight;
@@ -871,25 +848,6 @@ namespace TAC_AI.AI.Movement
             final.y = final_y;
             return final;
         }
-        public static Vector3 OffsetFromGroundAAlt(Vector3 input, float groundOffset = 35)
-        {
-            float final_y;
-            Vector3 final = input;
-            bool terrain = AIEPathMapper.GetAltitudeLoadedOnly(input, out float height);
-            if (terrain)
-                final_y = height + groundOffset;
-            else
-                final_y = 50 + groundOffset;
-            if (KickStart.isWaterModPresent)
-            {
-                if (KickStart.WaterHeight > height)
-                    final_y = KickStart.WaterHeight + groundOffset;
-            }
-            if (input.y < final_y)
-                final.y = final_y;
-            return final;
-        }
-
         // Sea
         public static Vector3 OffsetToSea(Vector3 input, Tank tank, TankAIHelper helper)
         {

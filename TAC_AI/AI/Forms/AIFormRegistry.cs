@@ -57,16 +57,17 @@ namespace TAC_AI.AI.Forms
         /// <summary>Select the active form. Falls back to Modified, then to any registered form, if id is unknown.</summary>
         public static void SetActive(string id)
         {
-            if (!string.IsNullOrEmpty(id) && forms.TryGetValue(id, out var f))
-            {
-                active = f; ActiveId = id; return;
-            }
-            if (forms.TryGetValue(DefaultFormId, out var def))
-            {
-                active = def; ActiveId = DefaultFormId; return;
-            }
-            using (var en = forms.Values.GetEnumerator())
-                if (en.MoveNext()) { active = en.Current; ActiveId = active.Id; }
+            // resolve the next form (requested id -> Modified default -> any registered)
+            IAIForm next = null; string nextId = null;
+            if (!string.IsNullOrEmpty(id) && forms.TryGetValue(id, out var f)) { next = f; nextId = id; }
+            else if (forms.TryGetValue(DefaultFormId, out var def)) { next = def; nextId = DefaultFormId; }
+            else { using (var en = forms.Values.GetEnumerator()) if (en.MoveNext()) { next = en.Current; nextId = next.Id; } }
+            if (next == null) return;
+            if (ReferenceEquals(next, active)) { ActiveId = nextId; return; }   // no change
+            // v2: hand the old form's per-tech state down and bring the new form up (e.g. Vanilla's stock-AI handback)
+            try { active?.DeInitGlobal(); } catch (System.Exception e) { DebugTAC_AI.LogError("AIFormRegistry: DeInitGlobal failed - " + e.Message); }
+            active = next; ActiveId = nextId;
+            try { active.InitGlobal(); } catch (System.Exception e) { DebugTAC_AI.LogError("AIFormRegistry: InitGlobal failed - " + e.Message); }
         }
 
         public static void Clear() { forms.Clear(); active = null; }

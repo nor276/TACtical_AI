@@ -2,7 +2,7 @@ using TAC_AI.AI.Enemy;
 
 namespace TAC_AI.AI
 {
-    internal enum MovementContainerKind { Default, Air, Static }
+    public enum MovementContainerKind { Default, Air, Static }   // v2: public — part of the IAIForm.CreateMovementController contract
     internal enum MovementCoreKind { None, Land, Sea, Space }
 
     /// REVISED (overview): NEW — single switch-based mapping table that routes (DriverType / EnemyHandling)

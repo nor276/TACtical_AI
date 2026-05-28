@@ -230,6 +230,8 @@ namespace TAC_AI.AI
         protected override void OnPostInitiate()
         {
             CheckBoosters();
+            // v2: hand the shell the live route queue so ManWorldRTS can draw it without casting to this form type.
+            Helper.CurrentPlannedPath = PathPlanned;
             DebugTAC_AI.LogAISetup(KickStart.ModID + ": Added ground AI for " + Tank.name);
         }
         private void CheckBoosters()
@@ -320,6 +322,9 @@ namespace TAC_AI.AI
         protected override void OnRecycle()
         {
             this.SetAutoPathfinding(false);
+            // v2: drop the route seam so a recycled controller's queue never lingers behind the shell reference.
+            if (Helper != null)
+                Helper.CurrentPlannedPath = null;
         }
     }
 }

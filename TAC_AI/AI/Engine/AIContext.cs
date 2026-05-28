@@ -73,7 +73,6 @@ namespace TAC_AI.AI.Engine
         public Vector3 SafeVelocity => helper.SafeVelocity;
         public Vector3 LocalSafeVelocity => helper.LocalSafeVelocity;
         public float RecentSpeed => helper.recentSpeed;
-        public float RecentSpeedSigned => helper.recentSpeedSigned;
         public bool MakingNetProgress => helper.MakingNetProgress;
         public float LastTechExtents => helper.lastTechExtents;
         public float GroundOffsetHeight => helper.GroundOffsetHeight;
@@ -221,7 +220,7 @@ namespace TAC_AI.AI.Engine
             return r;
         }
         public void RemoveObstruction(float searchRad = 12) => helper.RemoveObstruction(searchRad);
-        public void SettleDown(bool stopCore = true) => helper.SettleDown(stopCore);
+        public void SettleDown(bool stopCore = false) => helper.SettleDown(stopCore);
         public float GetDistanceFromTask(Vector3 taskLocation, float additionalSpacing = 0) => helper.GetDistanceFromTask(taskLocation, additionalSpacing);
         public float GetDistanceFromTask2D(Vector3 taskLocation, float additionalSpacing = 0) => helper.GetDistanceFromTask2D(taskLocation, additionalSpacing);
         public void SetDistanceFromTaskUnneeded() => helper.SetDistanceFromTaskUnneeded();

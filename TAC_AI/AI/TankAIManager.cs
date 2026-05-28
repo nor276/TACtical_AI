@@ -114,7 +114,9 @@ namespace TAC_AI.AI
         {
             if (!inst)
                 return;
-            AIEPathMapper.ResetAll();
+            // v2 isolation: reset every form's pathfinder cache on teardown without naming a form type (was AIEPathMapper.ResetAll).
+            foreach (var form in TAC_AI.AI.Forms.AIFormRegistry.All)
+                form.OnWorldReset();
             Singleton.Manager<ManPauseGame>.inst.PauseEvent.Unsubscribe(inst.OnPaused);
             Singleton.Manager<ManTechs>.inst.TankPostSpawnEvent.Unsubscribe(OnTankAddition);
             Singleton.Manager<ManTechs>.inst.TankTeamChangedEvent.Unsubscribe(OnTankChange);

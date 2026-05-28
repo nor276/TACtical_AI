@@ -150,10 +150,8 @@ namespace TAC_AI.AI
             {   // We are at the base, too close so give some space
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Giving room to base... |Tech is at " + tank.boundsCentreWorldNoCheck);
                 direct.DriveAwayFacingTowards();
-                helper.AvoidStuff = false;
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
                 helper.DriveVar = -1;
-                helper.SettleDown();
             }
             else if (dist < girth + 7)
             {   // We are at the base, stop moving and hold pos
@@ -185,10 +183,8 @@ namespace TAC_AI.AI
             if (dist < girth + 3)
             {   // We are at the place, too close so give some space
                 direct.DriveAwayFacingTowards();
-                helper.AvoidStuff = false;
                 helper.ThrottleState = AIThrottleState.ForceSpeed;
                 helper.DriveVar = -1;
-                helper.SettleDown();
             }
             else if (dist < girth + 7)
             {   // We are at the place, stop moving and hold pos

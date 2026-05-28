@@ -30,6 +30,7 @@ namespace TAC_AI.AI {
 
         Vector3 PathPoint { get; }// WHere the Tech is moving towards, not the target's exact location
         float GetDrive { get; }// The Forwards drive of the Tech
+        bool Grounded { get; }// v2: true only for a grounded (non-flightworthy) air controller; false for ground/sea/space/static/no-op
 
         void Initiate(Tank tank, TankAIHelper helper, Enemy.EnemyMind mind = null);
         void UpdateEnemyMind(Enemy.EnemyMind mind);

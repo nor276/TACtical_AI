@@ -394,9 +394,12 @@ namespace TAC_AI.AI.Movement.AICores
                         }
                         else
                         {
-                            // REVISED (NO-YAW): feed the heading toward the path goal so a no-enemy craft yaws to face its destination.
-                            // Was a TurnerHovership(distDiff) call that had been disabled, leaving thruster craft translating but never yawing.
-                            helper.Navi3DDirect = controller.PathPoint - tank.boundsCentreWorldNoCheck;
+                            // No-enemy: yaw toward the path goal, FLATTENED (y=0) so the swinging vertical component of the
+                            // path point doesn't drive the aggressive 3D pitch/roll solver (which made the nose shoot around
+                            // when the target was lost). Yaw-to-destination kept; pitch/roll stays level.
+                            Vector3 toGoalFlat = controller.PathPoint - tank.boundsCentreWorldNoCheck;
+                            toGoalFlat.y = 0f;
+                            helper.Navi3DDirect = toGoalFlat.sqrMagnitude > 0.001f ? toGoalFlat.normalized : Vector3.zero;
                         }
                     }
                     else

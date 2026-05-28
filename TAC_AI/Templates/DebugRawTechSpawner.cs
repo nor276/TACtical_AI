@@ -251,7 +251,7 @@ namespace TAC_AI.Templates
             GUILayout.BeginVertical(GUILayout.Width(HotWindow.width / 2));
             TankAIManager.GUIManaged.GUIGetTotalManaged();
             SpecialAISpawner.GUIManaged.GUIGetTotalManaged();
-            AIEPathMapper.GUIManaged.GUIGetTotalManaged();
+            TAC_AI.AI.Forms.AIFormRegistry.Active?.DrawPathingDebugGUI();
             GUILayout.EndVertical();
             GUILayout.BeginVertical();
             ManWorldRTS.GUIGetTotalManaged();
@@ -805,9 +805,9 @@ namespace TAC_AI.Templates
             HoriPosOff += ButtonWidth;
 
 #if !DEBUG
-            if (GUILayout.Button(AIEPathMapper.ShowPathingGIZMO ? redStart + "Hide Pathing</b></color>" : redStart + "Show Pathing</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
+            if (GUILayout.Button(KickStart.ShowPathingGIZMO ? redStart + "Hide Pathing</b></color>" : redStart + "Show Pathing</b></color>", GUILayout.Width(ButtonWidth), GUILayout.Height(30)))
             {
-                AIEPathMapper.ShowPathingGIZMO = !AIEPathMapper.ShowPathingGIZMO;
+                KickStart.ShowPathingGIZMO = !KickStart.ShowPathingGIZMO;
             }
             StepMenuPlacer();
 #endif

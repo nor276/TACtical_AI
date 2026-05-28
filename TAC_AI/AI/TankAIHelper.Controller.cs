@@ -12,27 +12,14 @@ namespace TAC_AI.AI
     // (OnUpdateHost/ClientAIDirectors, staggered Directors phase) calls when MovementAIControllerDirty.
     public partial class TankAIHelper
     {
-        // REVISED: single generic swap helper replacing the duplicated null-out/Recycle/GetOrAddComponent blocks in every Recal* path; reuses the existing controller if it is already the right type, else recycles the old one after building the new.
-        private T SwapMovementController<T>(EnemyMind mind) where T : Component, IMovementAIController
-        {
-            if (MovementController is T existing)
-            {
-                existing.Initiate(tank, this, mind);
-                return existing;
-            }
-            IMovementAIController previous = MovementController;
-            T built = gameObject.AddComponent<T>();
-            built.Initiate(tank, this, mind);
-            MovementController = built;
-            if (previous != null)
-                previous.Recycle();
-            return built;
-        }
+        // v2 isolation: the per-type controller build moved to the active form (IAIForm.CreateMovementController /
+        // ModifiedForm.SwapTo) so the shell names no concrete controller. The shell only picks the kind (MovementDispatch)
+        // and holds the result as IMovementAIController.
 
         private void SetupDefaultMovementAIController()
         {
             UsingAirControls = false;
-            SwapMovementController<AIControllerDefault>(null);
+            MovementController = TAC_AI.AI.Forms.AIFormRegistry.Active?.CreateMovementController(this, MovementContainerKind.Default, null);
             LogMovementControllerSwapIfChanged();
         }
 
@@ -45,12 +32,12 @@ namespace TAC_AI.AI
                 if ((MovementDispatch.ContainerForEnemy(enemy.EvilCommander) == MovementContainerKind.Static || enemy.StartedAnchored) && AnchorState != AIAnchorState.Unanchor)
                 {
                     DriverType = AIDriverType.Stationary;
-                    SwapMovementController<AIControllerStatic>(enemy);
+                    MovementController = TAC_AI.AI.Forms.AIFormRegistry.Active?.CreateMovementController(this, MovementContainerKind.Static, enemy);
                     return false;
                 }
                 if (MovementDispatch.ContainerForEnemy(enemy.EvilCommander) == MovementContainerKind.Air)
                 {
-                    if (MovementController is AIControllerAir existingAir && existingAir.Grounded)
+                    if (MovementController != null && MovementController.Grounded)
                     {
                         var oldClass = enemy.EvilCommander;
                         Enemy.RCore.BlockSetEnemyHandling(tank, enemy, false);
@@ -61,7 +48,7 @@ namespace TAC_AI.AI
                     }
                     else
                     {
-                        SwapMovementController<AIControllerAir>(enemy);
+                        MovementController = TAC_AI.AI.Forms.AIFormRegistry.Active?.CreateMovementController(this, MovementContainerKind.Air, enemy);
                         UsingAirControls = true;
                         return false;
                     }
@@ -80,19 +67,19 @@ namespace TAC_AI.AI
         {
             if (MovementDispatch.ContainerForPlayer(DriverType) == MovementContainerKind.Static && AnchorState != AIAnchorState.Unanchor)
             {
-                SwapMovementController<AIControllerStatic>(null);
+                MovementController = TAC_AI.AI.Forms.AIFormRegistry.Active?.CreateMovementController(this, MovementContainerKind.Static, null);
                 return false;
             }
             else if (MovementDispatch.ContainerForPlayer(DriverType) == MovementContainerKind.Air)
             {
-                if (MovementController is AIControllerAir existingAir && existingAir.Grounded)
+                if (MovementController != null && MovementController.Grounded)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": " + tank.name + " (player) demoting from Pilot (Grounded — no longer flightworthy)");
                     DriverType = AIDriverType.Tank;
                 }
                 else
                 {
-                    SwapMovementController<AIControllerAir>(null);
+                    MovementController = TAC_AI.AI.Forms.AIFormRegistry.Active?.CreateMovementController(this, MovementContainerKind.Air, null);
                     UsingAirControls = true;
                     return false;
                 }
@@ -112,7 +99,7 @@ namespace TAC_AI.AI
                 lastLoggedMovementControllerType = current;
             }
         }
-        private void RecalibrateMovementAIController()
+        internal void RecalibrateMovementAIController()
         {
             try
             {
@@ -146,7 +133,7 @@ namespace TAC_AI.AI
                     if (!RecalMoveAIControllerPlayer())
                         return;
                 }
-                SwapMovementController<AIControllerDefault>(enemy);
+                MovementController = TAC_AI.AI.Forms.AIFormRegistry.Active?.CreateMovementController(this, MovementContainerKind.Default, enemy);
                 return;
             }
             finally

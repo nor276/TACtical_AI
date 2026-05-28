@@ -26,7 +26,7 @@ namespace TAC_AI.AI.Movement
     /// </summary>
     public class AIEPathMapper : MonoBehaviour
     {
-        public static bool EnableAdvancedPathing => PathRequestsToCalcPerFrame != 0;
+        public static bool EnableAdvancedPathing => KickStart.PathRequestsToCalcPerFrame != 0;
         private static bool ForceSphereCasts => true;//ManGameMode.inst.GetCurrentGameType() == ManGameMode.GameType.RaD;
 
         internal static AIEPathMapper inst;
@@ -34,7 +34,6 @@ namespace TAC_AI.AI.Movement
         public const int chunksPerTileIndex = chunksPerTileWH - 1;
         public static float tileToChunk => (float)chunksPerTileIndex / ManWorld.inst.TileSize;
         public const int AutoPathersToCalcPerFrame = 2;
-        public static int PathRequestsToCalcPerFrame = 1;
 
         /// <summary>
         /// TerrainHeightVarianceMaxDifference
@@ -45,12 +44,6 @@ namespace TAC_AI.AI.Movement
         private static float Delta = 1f / chunksPerTileWH;
         private static float EvalRad = 1.42f * Delta * ManWorld.inst.TileSize;
         private static bool sub = false;
-
-#if DEBUG
-        internal static bool ShowPathingGIZMO = true;
-#else
-        internal static bool ShowPathingGIZMO = false;
-#endif
 
         private static readonly FieldInfo posGet = typeof(SceneryBlocker).GetField("m_Centre", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly FieldInfo shape = typeof(SceneryBlocker).GetField("m_Shape", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -65,7 +58,7 @@ namespace TAC_AI.AI.Movement
         {
             try
             {
-                if (AIGlobals.ShowDebugFeedBack && ShowPathingGIZMO)
+                if (AIGlobals.ShowDebugFeedBack && KickStart.ShowPathingGIZMO)
                 {
                     bool showUnpathable = Input.GetKey(KeyCode.Space);
                     bool drawFrame = false;
@@ -187,7 +180,7 @@ namespace TAC_AI.AI.Movement
         private static int pathStepS = 0;
         private void HandlePathingRequests()
         {
-            int frameCalcs = Mathf.Min(pathRequestsSuspended.Count, PathRequestsToCalcPerFrame);
+            int frameCalcs = Mathf.Min(pathRequestsSuspended.Count, KickStart.PathRequestsToCalcPerFrame);
             int frameCalcStep = 0;
             while (frameCalcStep < frameCalcs && pathRequestsSuspended.Any())
             {
@@ -211,7 +204,7 @@ namespace TAC_AI.AI.Movement
                 }
                 frameCalcStep++;
             }
-            frameCalcs = Mathf.Min(pathRequests.Count, PathRequestsToCalcPerFrame);
+            frameCalcs = Mathf.Min(pathRequests.Count, KickStart.PathRequestsToCalcPerFrame);
             frameCalcStep = 0;
             while (frameCalcStep < frameCalcs && pathRequests.Any())
             {
@@ -1158,7 +1151,7 @@ namespace TAC_AI.AI.Movement
                 }
                 if (ThrowException && BytesToNotLoaded(ref chunkByte))
                 {
-                    // REVISED: no longer zeroes chunkBytes[index] before throwing — the cached cell is kept rather than reset on the not-loaded throw.
+                    chunkBytes[index] = 0;   // reset so the cell is re-evaluated once its tile loads (matches original)
                     throw new TileNotLoadedException("Tile at " + pos.TileCoord + " scenePos " + pos.ScenePosition + " is not loaded");
                 }
                 return chunkByte;
@@ -1217,7 +1210,7 @@ namespace TAC_AI.AI.Movement
                     enabledTabs = new HashSet<WaterPathing>();
                 }
                 GUILayout.Box("--- Advanced Pathing  --- ");
-                ShowPathingGIZMO = AltUI.Toggle(ShowPathingGIZMO, "Show Pathing Grid");
+                KickStart.ShowPathingGIZMO = AltUI.Toggle(KickStart.ShowPathingGIZMO, "Show Pathing Grid");
                 GUILayout.Label("  Auto Pathers: " + autoPathers.Count);
                 GUILayout.Label("  Total Pathers: " + pathRequests.Count);
                 int activeCount = 0;

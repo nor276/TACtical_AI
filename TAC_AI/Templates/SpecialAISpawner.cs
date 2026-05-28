@@ -230,7 +230,7 @@ namespace TAC_AI.Templates
                         FactionSubTypes FST = TSP.m_TechToSpawn.GetMainCorp();
                         FactionLevel lvl = RawTechLoader.TryGetPlayerLicenceLevel();
                         if (KickStart.AllowSeaEnemiesToSpawn && KickStart.isWaterModPresent &&
-                            AI.Movement.AIEPathing.AboveTheSeaForcedAccurate(pos) &&
+                            AI.Movement.TerrainQuery.AboveTheSeaForcedAccurate(pos) &&
                             RawTechBase.GetBaseTerrain(TSP.m_TechToSpawn, TSP.m_TechToSpawn.CheckIsAnchored()) == BaseTerrain.Land)
                         {
                             TrySetSpawnSea(TSP, FST, FST, lvl, ref newTech);
@@ -902,7 +902,7 @@ namespace TAC_AI.Templates
                 var em = tech.GetComponent<EnemyMind>();
                 if (em)
                 {
-                    if (tech.GetComponent<TankAIHelper>().MovementController is AIControllerAir ||
+                    if (tech.GetComponent<TankAIHelper>().UsingAirControls ||
                         em.EvilCommander == EnemyHandling.Starship)
                     {
                         try
@@ -1066,7 +1066,7 @@ namespace TAC_AI.Templates
         }
         private static Vector3 GetAirSpawnOffsetFromPosition(Vector3 pos, Vector3 angleHeading)
         {
-            return AI.Movement.AIEPathing.OffsetFromGroundAAlt(pos + -(angleHeading * AirSpawnDist), 75);
+            return AI.Movement.TerrainQuery.OffsetFromGroundAAlt(pos + -(angleHeading * AirSpawnDist), 75);
         }
 
         private static HashSet<string> SelectedSpawns => BaseGamePopSpecials.SelectedSpawns;
@@ -1077,6 +1077,11 @@ namespace TAC_AI.Templates
 
         public static void InsureGrabBaseGameSpawns()
         {
+            // REVISED: BaseGameTechPool is set null on reset (below); .Any() on a null source throws ArgumentNullException,
+            // which fired BEFORE the Attract short-circuit and spammed the debug GUI on the title screen (Attract mode).
+            // Re-init if null so both the .Any() check here and the later .Add() are safe.
+            if (BaseGameTechPool == null)
+                BaseGameTechPool = new HashSet<TechData>();
             if (BaseGameTechPool.Any() || ManGameMode.inst.GetCurrentGameType() == ManGameMode.GameType.Attract)
                 return;
             Array sek = (Array)spawnPoolBaseGame.GetValue(ManPop.inst);

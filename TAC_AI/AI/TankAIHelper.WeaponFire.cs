@@ -9,7 +9,7 @@ namespace TAC_AI.AI
     // only the logic lives here. SuppressFiring writes tank.control.FireControl (a control sink).
     public partial class TankAIHelper
     {
-        private void SyncLineOfSight()
+        internal void SyncLineOfSight()
         {
             try
             {

@@ -23,7 +23,7 @@ namespace TAC_AI.AI
         private Vector3 netProgressLastPos = Vector3.zero;
         private float netProgressNextCheck = 0f;
         public bool MakingNetProgress { get; private set; } = true;
-        private void UpdatePhysicsInfo()
+        internal void UpdatePhysicsInfo()
         {
             if (Time.time >= netProgressNextCheck)
             {

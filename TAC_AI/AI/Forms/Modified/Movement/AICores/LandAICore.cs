@@ -354,8 +354,7 @@ namespace TAC_AI.AI.Movement.AICores
                 case AIThrottleState.Yield:
                     if (DriveControl < 0)
                     {
-                        // REVISED: reverse-yield now tests recentSpeedSigned (direction-aware) instead of recentSpeed (magnitude)
-                        if (helper.recentSpeedSigned < -AIGlobals.YieldSpeed)
+                        if (helper.recentSpeed < -AIGlobals.YieldSpeed)
                             DriveControl = 0.2f;
                         else
                             DriveControl = -1f;
@@ -540,23 +539,7 @@ namespace TAC_AI.AI.Movement.AICores
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
                 helper.UpdateEnemyDistance(targPos);
-                // REVISED: bounds-aware stand-off with a HOLD dead-band (matches the enemy TryAdjustForCombatEnemy fix).
-                // The stand-off (hull-contact + MinCombatRange) keeps allied turrets from piling up, while the dead-band
-                // makes the tech hold-and-face across [reverseInner, stand-off] and reverse only when pushed inside
-                // reverseInner - so it no longer back-pedals front-on constantly just to maintain the gap.
-                float combatReach = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds();
-                float combatStandoff = helper.MinCombatRange + combatReach;
-                float reverseInner = combatReach + helper.MinCombatRange * AIGlobals.CombatReverseInnerFraction;
-                float driveDyna;
-                if (helper.lastCombatRange < reverseInner)
-                    driveDyna = Mathf.Clamp((helper.lastCombatRange - reverseInner) / 3f, -1f, 0f);
-                else if (helper.lastCombatRange > combatStandoff)
-                    driveDyna = Mathf.Clamp((helper.lastCombatRange - combatStandoff) / 3f, 0f, 1f);
-                else
-                    driveDyna = 0f;
-                // REVISED: hold at the MIDDLE of the [reverseInner, stand-off] band (matches the enemy fix) so the tech
-                // settles in the band and faces instead of creeping to near-contact (AutoSpacing was below reverseInner).
-                float holdSpacing = (reverseInner + combatStandoff) * 0.5f;
+                float driveDyna = Mathf.Clamp((helper.lastCombatRange - helper.MinCombatRange) / 3f, -1, 1);
                 // REVISED: circle-vs-face is now gated on CombatWantsCircleNow() (turret-fraction duty cycle); SideToThreat
                 // alone no longer forces the Perpendicular broadside, so the FACE (Forwards) branch runs during the face phase.
                 if ((helper.SideToThreat && helper.CombatWantsCircleNow()) || (helper.BlockedLineOfSight && helper.AdvancedAI))
@@ -572,7 +555,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveDest = EDriveDest.ToLastDestination;
                         pos = helper.AvoidAssist(targPos);
-                        helper.AutoSpacing = holdSpacing;   // REVISED: hold in the stand-off band, not at near-contact
+                        helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 3;
                     }
                     else if (driveDyna < 0)
                     {
@@ -585,7 +568,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveDest = EDriveDest.ToLastDestination;
                         pos = helper.AvoidAssist(targPos);
-                        helper.AutoSpacing = holdSpacing;   // REVISED: hold in the stand-off band, not at near-contact
+                        helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 3;
                     }
                 }
                 else
@@ -601,7 +584,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveToFacingTowards();
                         pos = helper.AvoidAssist(targPos);
-                        helper.AutoSpacing = holdSpacing;   // REVISED: hold in the stand-off band, not at near-contact
+                        helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 3;
                     }
                     else if (driveDyna < 0)
                     {
@@ -613,7 +596,7 @@ namespace TAC_AI.AI.Movement.AICores
                     {
                         core.DriveToFacingTowards();
                         pos = helper.AvoidAssist(targPos);
-                        helper.AutoSpacing = holdSpacing;   // REVISED: hold in the stand-off band, not at near-contact
+                        helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 3;
                     }
                 }
                 if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
@@ -636,25 +619,7 @@ namespace TAC_AI.AI.Movement.AICores
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
                 core.DriveDir = EDriveFacing.Forwards;
                 helper.UpdateEnemyDistance(targPos);
-                // REVISED: bounds-aware stand-off with a HOLD dead-band. lastCombatRange is centre-to-centre; the stand-off
-                // is hull-contact + MinCombatRange so a turreted tank holds a real edge-to-edge gap (no pile-up). But
-                // driving driveDyna negative the moment range dips below the stand-off made the tech constantly back-pedal
-                // front-on to hold distance (it appeared to advance in full reverse). Now it HOLDS/faces (driveDyna 0)
-                // across the band [reverseInner, stand-off] and only reverses when pushed inside reverseInner.
-                float combatReach = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds();
-                float combatStandoff = mind.MinCombatRange + combatReach;
-                float reverseInner = combatReach + mind.MinCombatRange * AIGlobals.CombatReverseInnerFraction;
-                float driveDyna;
-                if (helper.lastCombatRange < reverseInner)
-                    driveDyna = Mathf.Clamp((helper.lastCombatRange - reverseInner) / 3f, -1f, 0f);
-                else if (helper.lastCombatRange > combatStandoff)
-                    driveDyna = Mathf.Clamp((helper.lastCombatRange - combatStandoff) / 3f, 0f, 1f);
-                else
-                    driveDyna = 0f;
-                // REVISED: hold at the MIDDLE of the [reverseInner, stand-off] band. The maintainer stops at AutoSpacing,
-                // so without this the enemy Circle branch (which left AutoSpacing at RWheeled's near-contact value) crept
-                // to contact and chattered reverse at reverseInner instead of settling in the band and facing.
-                float holdSpacing = (reverseInner + combatStandoff) * 0.5f;
+                float driveDyna = Mathf.Clamp((helper.lastCombatRange - mind.MinCombatRange) / 3f, -1, 1);
 
                 if (mind.CommanderAttack == EAttackMode.Circle)
                 {   // works fine for now
@@ -670,7 +635,6 @@ namespace TAC_AI.AI.Movement.AICores
                     else if (driveDyna == 1)
                     {
                         pos = helper.AvoidAssist(targPos);
-                        helper.AutoSpacing = holdSpacing;
                     }
                     else if (driveDyna < 0)
                     {
@@ -682,7 +646,6 @@ namespace TAC_AI.AI.Movement.AICores
                     else
                     {
                         pos = helper.AvoidAssist(targPos);
-                        helper.AutoSpacing = holdSpacing;
                     }
                 }
                 else

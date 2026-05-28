@@ -86,7 +86,7 @@ namespace TAC_AI.AI
         public bool LargeAircraft = false;      // Restrict turning to 45 and no U-Turns
         public bool ForcePitchUp = false;       // Emergency nose up
         public bool TakeOff = false;            // taking off from ground
-        public bool Grounded = false;           // aircraft deemed too damaged to fly
+        public override bool Grounded { get; set; }           // aircraft deemed too damaged to fly (v2: overrides the base interface member)
         public bool TargetGrounded = false;     // Are we dealing with a target that is on the ground?
         public bool LowerEngines = false;       // Choppers: Too high! Too high!  Airplanes: Conserve booster fuel
 

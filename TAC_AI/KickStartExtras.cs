@@ -93,7 +93,7 @@ namespace TAC_AI
             thisModConfig.BindConfig<KickStart>(null, "AIDodgeCheapness");
             thisModConfig.BindConfig<KickStart>(null, "AIClockPeriodSet");
             thisModConfig.BindConfig<KickStart>(null, "CombatFacingCyclePeriod");
-            thisModConfig.BindConfig<AIEPathMapper>(null, "PathRequestsToCalcPerFrame");
+            thisModConfig.BindConfig<KickStart>(null, "PathRequestsToCalcPerFrame");
             thisModConfig.BindConfig<KickStart>(null, "MuteNonPlayerRacket");
             thisModConfig.BindConfig<KickStart>(null, "enablePainMode");
             thisModConfig.BindConfig<KickStart>(null, "DisplayEnemyEvents");
@@ -281,13 +281,13 @@ namespace TAC_AI
                 });
             dodgePeriod.onValueSaved.AddListener(() => { KickStart.AIDodgeCheapness = (int)dodgePeriod.SavedValue + 1; });
             aiPathing = SuperNativeOptions.OptionRangeAutoDisplay("A.I. Pathfinding Speed", TACAI,
-                AIEPathMapper.PathRequestsToCalcPerFrame, 0, 6, 1, (float value) => {
+                KickStart.PathRequestsToCalcPerFrame, 0, 6, 1, (float value) => {
                     if (value == 0)
                         return "Off";
                     return Mathf.RoundToInt(value * (100f / 6f)) + "%";
                 });
             aiPathing.onValueSaved.AddListener(() => {
-                AIEPathMapper.PathRequestsToCalcPerFrame = (int)aiPathing.SavedValue;
+                KickStart.PathRequestsToCalcPerFrame = (int)aiPathing.SavedValue;
             });
             HoldFireOnNeutral = new Nuterra.NativeOptions.OptionToggle("Don't auto-attack neutrals", TACAI, AIGlobals.AllowWeaponsDisarm2);
             HoldFireOnNeutral.onValueSaved.AddListener(() => { AIGlobals.AllowWeaponsDisarm2 = HoldFireOnNeutral.SavedValue; });

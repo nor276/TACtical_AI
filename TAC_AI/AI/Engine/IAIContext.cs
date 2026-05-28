@@ -62,7 +62,6 @@ namespace TAC_AI.AI.Engine
         Vector3 SafeVelocity { get; }
         Vector3 LocalSafeVelocity { get; }
         float RecentSpeed { get; }
-        float RecentSpeedSigned { get; }
         bool MakingNetProgress { get; }
         float LastTechExtents { get; }
         float GroundOffsetHeight { get; }
@@ -199,7 +198,7 @@ namespace TAC_AI.AI.Engine
         void TryHandleObstruction(bool hasMessaged, float dist, bool useRush, bool useGun);
         bool AutoHandleObstruction(float dist = 0, bool useRush = false, bool useGun = true, float div = 4);
         void RemoveObstruction(float searchRad = 12);
-        void SettleDown(bool stopCore = true);
+        void SettleDown(bool stopCore = false);
         float GetDistanceFromTask(Vector3 taskLocation, float additionalSpacing = 0);
         float GetDistanceFromTask2D(Vector3 taskLocation, float additionalSpacing = 0);
         void SetDistanceFromTaskUnneeded();

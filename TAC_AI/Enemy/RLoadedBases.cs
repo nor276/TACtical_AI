@@ -1398,7 +1398,7 @@ namespace TAC_AI.AI.Enemy
                     AIGlobals.defaultExpandRad, AIGlobals.defaultExpandRadRange, 3, out Vector3 pos))
                 {
                     BaseTerrain terra;
-                    if (AIEPathing.AboveTheSea(pos))
+                    if (TerrainQuery.AboveTheSea(pos))
                         terra = BaseTerrain.Sea;
                     else
                         terra = BaseTerrain.AnyNonSea;
@@ -1459,7 +1459,7 @@ namespace TAC_AI.AI.Enemy
                     AIGlobals.defaultExpandRad, AIGlobals.defaultExpandRadRange, 3, out Vector3 pos))
                     {
                         BaseTerrain terra;
-                        if (AIEPathing.AboveTheSea(pos))
+                        if (TerrainQuery.AboveTheSea(pos))
                             terra = BaseTerrain.Sea;
                         else
                             terra = BaseTerrain.AnyNonSea;

@@ -15,13 +15,13 @@ namespace TAC_AI.AI.Tunables.Catalog
         {
             // ---- Combat ----
             TunableRegistry.RegisterFloat(
-                "Combat.ReverseInnerFraction", "Combat", 0.35f, 0f, 1f, 0.05f,
+                "Combat.ReverseInnerFraction", "Combat", 0.15f, 0f, 1f, 0.05f,
                 menuLabel: "Reverse stand-off fraction", display: v => v.ToString("0.00"),
                 bind: v => AIGlobals.CombatReverseInnerFraction = v,
                 readSites: new[] { "LandAICore.TryAdjustForCombat(Enemy): reverseInner band" });
 
             TunableRegistry.RegisterFloat(
-                "Combat.ContinuousStrafeMinTurretFraction", "Combat", 0.5f, 0f, 1f, 0.05f,
+                "Combat.ContinuousStrafeMinTurretFraction", "Combat", 0.0f, 0f, 1f, 0.05f,
                 menuLabel: "Min turret fraction to strafe", display: v => v.ToString("0.00"),
                 bind: v => AIGlobals.ContinuousStrafeMinTurretFraction = v,
                 readSites: new[] { "RWheeled.Circle: gate ShouldForceContinuousStrafe" });
@@ -70,7 +70,7 @@ namespace TAC_AI.AI.Tunables.Catalog
                 readSites: new[] { "Provoked set on hit / manual target" });
 
             TunableRegistry.RegisterFloat(
-                "Combat.LOSLostGraceTime", "Combat", 3f, 0f, 15f, 0.5f,
+                "Combat.LOSLostGraceTime", "Combat", 1f, 0f, 15f, 0.5f,
                 menuLabel: "LOS-lost grace (s)", display: v => v.ToString("0.0") + "s",
                 bind: v => AIGlobals.LOSLostGraceTime = v,
                 readSites: new[] { "UpdateTargetCombatFocus: hold target behind cover" });
@@ -110,7 +110,7 @@ namespace TAC_AI.AI.Tunables.Catalog
 
             // ---- Stuck / net-progress (engine cadence detail - hidden) ----
             TunableRegistry.RegisterFloat(
-                "Combat.StuckNetProgressWindow", "Combat", 1.5f, 0.25f, 10f, 0.25f,
+                "Combat.StuckNetProgressWindow", "Combat", 0.75f, 0.25f, 10f, 0.25f,
                 menuVisible: false, display: v => v.ToString("0.0") + "s",
                 bind: v => AIGlobals.StuckNetProgressWindow = v,
                 readSites: new[] { "UpdatePhysicsInfo: net-progress window" });

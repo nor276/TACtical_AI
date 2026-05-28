@@ -230,13 +230,13 @@ namespace TAC_AI.Templates
             BaseTerrain BT = BaseTerrain.Land;
             if (haveBB)
             {
-                if (spawnerTank.GetComponent<AIControllerAir>())
+                if ((spawnerTank.GetComponent<TankAIHelper>()?.UsingAirControls == true))
                 {
                     BT = BaseTerrain.Air;
                 }
                 else if (KickStart.isWaterModPresent)
                 {
-                    if (AIEPathing.AboveTheSea(pos))
+                    if (TerrainQuery.AboveTheSea(pos))
                     {
                         BT = BaseTerrain.Sea;
                     }
@@ -246,13 +246,13 @@ namespace TAC_AI.Templates
             {   // Defense
                 if (!RLoadedBases.PurchasePossible(type.baseCost, Team))
                     return false;
-                if (spawnerTank.GetComponent<AIControllerAir>())
+                if ((spawnerTank.GetComponent<TankAIHelper>()?.UsingAirControls == true))
                 {
                     BT = BaseTerrain.Air;
                 }
                 else if (KickStart.isWaterModPresent)
                 {
-                    if (AIEPathing.AboveTheSea(pos))
+                    if (TerrainQuery.AboveTheSea(pos))
                     {
                         BT = BaseTerrain.Sea;
                     }
@@ -369,13 +369,13 @@ namespace TAC_AI.Templates
             // Now spawn teh main host
             FactionSubTypes FTE = TankExtentions.GetMainCorp(spawnerTank);
             BaseTerrain BT = BaseTerrain.Land;
-            if (spawnerTank.GetComponent<AIControllerAir>())
+            if ((spawnerTank.GetComponent<TankAIHelper>()?.UsingAirControls == true))
             {
                 BT = BaseTerrain.Air;
             }
             else if (KickStart.isWaterModPresent)
             {
-                if (AIEPathing.AboveTheSea(pos))
+                if (TerrainQuery.AboveTheSea(pos))
                 {
                     BT = BaseTerrain.Sea;
                 }
@@ -578,7 +578,7 @@ namespace TAC_AI.Templates
             BaseTerrain BT = BaseTerrain.Land;
             if (KickStart.isWaterModPresent)
             {
-                if (AIEPathing.AboveTheSea(pos))
+                if (TerrainQuery.AboveTheSea(pos))
                 {
                     BT = BaseTerrain.Sea;
                 }
@@ -3025,13 +3025,13 @@ namespace TAC_AI.Templates
         {
             try
             {
-                if (AIEPathing.AboveHeightFromGround(posScene, 25))
+                if (TerrainQuery.AboveHeightFromGround(posScene, 25))
                 {
                     return BaseTerrain.Air;
                 }
                 else if (KickStart.isWaterModPresent)
                 {
-                    if (AIEPathing.AboveTheSea(posScene))
+                    if (TerrainQuery.AboveTheSea(posScene))
                     {
                         return BaseTerrain.Sea;
                     }

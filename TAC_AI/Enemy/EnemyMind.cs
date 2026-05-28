@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using TerraTechETCUtil;
-using TAC_AI.AI.Enemy.EnemyOperations;
 using TAC_AI.Templates;
 
 namespace TAC_AI.AI.Enemy
@@ -20,7 +19,6 @@ namespace TAC_AI.AI.Enemy
         // ESSENTIALS
         public Tank Tank { get; private set; }
         public TankAIHelper AIControl { get; private set; }
-        internal EnemyOperationsController EnemyOpsController;
         public AIERepair.DesignMemory TechMemor => AIControl.TechMemor;
 
         // Set on spawn
@@ -155,7 +153,6 @@ namespace TAC_AI.AI.Enemy
 
             initWindowEndTime = Time.time + AIGlobals.EnemyInitGrace;
             //DebugTAC_AI.Log(KickStart.ModID + ": Refreshing Enemy AI for " + Tank.name);
-            EnemyOpsController = new EnemyOperationsController(this);
             AIControl.RunState = AIRunState.Advanced;
             AIControl.MovementController.UpdateEnemyMind(this);
             AIControl.AvoidStuff = true;

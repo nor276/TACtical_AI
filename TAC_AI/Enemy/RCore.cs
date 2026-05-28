@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using TAC_AI.AI.AlliedOperations;
 using TAC_AI.AI.Movement;
 using TAC_AI.Templates;
 using TAC_AI.World;
@@ -127,7 +126,7 @@ namespace TAC_AI.AI.Enemy
                 newMind.CommanderMind = EnemyAttitude.Boss;
                 newMind.CommanderAttack = EAttackMode.Strong;
             }
-            else if (EWeapSetup.HasArtilleryWeapon(BM))
+            else if (TAC_AI.AI.Forms.AIFormRegistry.Active?.EnemyHasArtillery(BM) ?? false)
             {   // Artillery
                 newMind.CommanderMind = EnemyAttitude.Homing;
                 newMind.CommanderAttack = EAttackMode.Ranged;
@@ -138,7 +137,7 @@ namespace TAC_AI.AI.Enemy
                 if (tank.IsPopulation && AIGlobals.EnemyBaseMakerChance >= UnityEngine.Random.Range(0, 100))
                 {   // Base-Building Rival
                     newMind.CommanderMind = EnemyAttitude.NPCBaseHost;
-                    newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
+                    newMind.CommanderAttack = (TAC_AI.AI.Forms.AIFormRegistry.Active?.SelectEnemyAttackStrat(tank, newMind) ?? EAttackMode.Chase);
                     newMind.InvertBullyPriority = true;
                 }
                 else
@@ -147,32 +146,32 @@ namespace TAC_AI.AI.Enemy
                         newMind.CommanderMind = EnemyAttitude.Miner;
                     else
                         newMind.CommanderMind = EnemyAttitude.Junker;
-                    newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
+                    newMind.CommanderAttack = (TAC_AI.AI.Forms.AIFormRegistry.Active?.SelectEnemyAttackStrat(tank, newMind) ?? EAttackMode.Chase);
                 }
                 fired = true;
             }
             else if (BM.IterateBlockComponents<ModuleWeapon>().Count() > AIGlobals.HomingWeaponCount)
             {   // Over-armed
                 newMind.CommanderMind = EnemyAttitude.Homing;
-                newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
+                newMind.CommanderAttack = (TAC_AI.AI.Forms.AIFormRegistry.Active?.SelectEnemyAttackStrat(tank, newMind) ?? EAttackMode.Chase);
                 fired = true;
             }
             else if (BM.IterateBlockComponents<ModuleWeapon>().Count() >= AIGlobals.DefenderWeaponCount)
             {   // Can defend
                 newMind.CommanderMind = EnemyAttitude.Guardian;
-                newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
+                newMind.CommanderAttack = (TAC_AI.AI.Forms.AIFormRegistry.Active?.SelectEnemyAttackStrat(tank, newMind) ?? EAttackMode.Chase);
                 fired = true;
             }
             else if (newMind.MainFaction == FactionSubTypes.VEN)
             {   // Ven
                 newMind.CommanderAttack = EAttackMode.Circle;
-                newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
+                newMind.CommanderAttack = (TAC_AI.AI.Forms.AIFormRegistry.Active?.SelectEnemyAttackStrat(tank, newMind) ?? EAttackMode.Chase);
                 fired = true;
             }
             else if (newMind.MainFaction == FactionSubTypes.HE)
             {   // Assault
                 newMind.CommanderMind = EnemyAttitude.Homing;
-                newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
+                newMind.CommanderAttack = (TAC_AI.AI.Forms.AIFormRegistry.Active?.SelectEnemyAttackStrat(tank, newMind) ?? EAttackMode.Chase);
                 fired = true;
             }
             if (BM.blockCount >= AIGlobals.LethalTechSize)
@@ -292,7 +291,7 @@ namespace TAC_AI.AI.Enemy
 #endif
                                 // REVISED: boost bias is now weighted by each booster's thrust force (was unweighted unit vectors),
                                 // so stronger boosters dominate the locomotion-direction estimate
-                                float boostForce = (float)AIControllerDefault.boostGet.GetValue(boost);
+                                float boostForce = (float)AIGlobals.BoostForceField.GetValue(boost);
                                 boostBiasDirection -= tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)) * boostForce;
                             }
                             boosterGetCache.Clear();
@@ -510,7 +509,7 @@ namespace TAC_AI.AI.Enemy
                 }
             }
             //add Attack
-            newMind.CommanderAttack = RWeapSetup.GetAttackStrat(tank, newMind);
+            newMind.CommanderAttack = (TAC_AI.AI.Forms.AIFormRegistry.Active?.SelectEnemyAttackStrat(tank, newMind) ?? EAttackMode.Chase);
         }
 
         // ----------------------------  Operations  ----------------------------
@@ -652,7 +651,7 @@ namespace TAC_AI.AI.Enemy
                 }
             }
 
-            RBolts.ManageBolts(helper, tank, mind);
+            TAC_AI.AI.Forms.AIFormRegistry.Active?.RunEnemyBolts(helper, tank, mind);
             TestShouldCommitDie(tank, mind);
             if (ManWorld.inst.CheckIsTileAtPositionLoaded(tank.boundsCentreWorldNoCheck))
             {
@@ -660,7 +659,7 @@ namespace TAC_AI.AI.Enemy
                 {
                     bool venPower = false;
                     if (mind.MainFaction == FactionSubTypes.VEN) venPower = true;
-                    RRepair.EnemyRepairStepper(helper, tank, mind, venPower);// longer while fighting
+                    TAC_AI.AI.Forms.AIFormRegistry.Active?.RunEnemyRepairStep(helper, tank, mind, venPower);// longer while fighting
                 }
             }
             if (mind.AIControl.Provoked <= 0)
@@ -716,7 +715,8 @@ namespace TAC_AI.AI.Enemy
                 helper.RunRTSNaviEnemy(mind);
             }
             else
-                mind.EnemyOpsController.Execute();
+                // v2 isolation: inlined the deleted EnemyOperationsController pass-through (it only called ProfileRunner).
+                TAC_AI.AI.Engine.ProfileRunner.RunEnemy(new TAC_AI.AI.Engine.AIContext(mind.AIControl, mind), mind);
             //CommanderMind is handled in each seperate class
             if (ManBaseTeams.IsBaseTeamDynamic(tank.Team))
             {
@@ -739,38 +739,8 @@ namespace TAC_AI.AI.Enemy
             else
                 return target.tank.boundsCentreWorldNoCheck;
         }
-        private static void CombatChecking(TankAIHelper helper, Tank tank, EnemyMind mind)
-        {
-            if (mind == null)
-                throw new NullReferenceException("RCore.CombatChecking() was called with null EnemyMind.  HOW!?!");
-            switch (mind.EvilCommander)
-            {
-                case EnemyHandling.Airplane:
-                    EnemyOperations.RAircraft.EnemyDogfighting(helper, tank, mind);
-                    break;
-                case EnemyHandling.Stationary:
-                    RGeneral.BaseAttack(helper, tank, mind);
-                    break;
-                default:
-                    switch (mind.CommanderAttack)
-                    {
-                        case EAttackMode.Safety:
-                            RGeneral.SelfDefense(helper, tank, mind);
-                            break;
-                        case EAttackMode.Ranged:
-                            RGeneral.AimAttack(helper, tank, mind);
-                            break;
-                        case EAttackMode.Chase:
-                            RGeneral.AidAttack(helper, tank, mind);
-                            //RGeneral.HoldGrudge(helper, tank, Mind); - now handled within FindEnemy
-                            break;
-                        default:
-                            RGeneral.AidAttack(helper, tank, mind);
-                            break;
-                    }
-                    break;
-            }
-        }
+        // v2 isolation: CombatChecking (the enemy firing dispatch) moved to ModifiedForm.RunEnemyCombatChecking - it's
+        // form combat policy. BeHostile/BeSubNeutral now call AIFormRegistry.Active.RunEnemyCombatChecking.
         private static bool ProcessIfRetreat(TankAIHelper helper, Tank tank, EnemyMind mind, ref EControlOperatorSet direct)
         {
             if (helper.Retreat)
@@ -827,14 +797,14 @@ namespace TAC_AI.AI.Enemy
 
         private static void BeHostile(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
-            CombatChecking(helper, tank, mind);
+            TAC_AI.AI.Forms.AIFormRegistry.Active?.RunEnemyCombatChecking(helper, tank, mind);
         }
         private static void BeSubNeutral(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
             if (helper.Provoked > 0)
-                CombatChecking(helper, tank, mind);
+                TAC_AI.AI.Forms.AIFormRegistry.Active?.RunEnemyCombatChecking(helper, tank, mind);
             else if (AIGlobals.BaseSubNeutralsCuriousFollow)
-                RGeneral.Monitor(helper, tank, mind);
+                TAC_AI.AI.Forms.AIFormRegistry.Active?.RunEnemyMonitor(helper, tank, mind);
         }
         private static void BeNeutral(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
@@ -856,7 +826,7 @@ namespace TAC_AI.AI.Enemy
         private static void BeFriendly(EnemyMind mind, TankAIHelper helper, Tank tank)
         {
             // Can't really damage an ally
-            CombatChecking(helper, tank, mind);
+            TAC_AI.AI.Forms.AIFormRegistry.Active?.RunEnemyCombatChecking(helper, tank, mind);
         }
 
         // ----------------------------  Checks  ----------------------------

@@ -164,7 +164,7 @@ namespace TAC_AI
 
                     Vector3 forward = (KickStart.SpecialAttractPos - posSea).normalized;
                     Vector3 position = posSea;// - (forward * 10);
-                    position = AI.Movement.AIEPathing.SnapOffsetToSea(position);
+                    position = AI.Movement.TerrainQuery.SnapOffsetToSea(position);
 
                     if (!RawTechLoader.SpawnAttractTech(position, forward, AIGlobals.GetRandomEnemyBaseTeam(), BaseTerrain.Sea))
                         RawTechLoader.SpawnAttractTech(position, forward, AIGlobals.GetRandomEnemyBaseTeam(), BaseTerrain.Space);

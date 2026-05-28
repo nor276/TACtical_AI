@@ -97,7 +97,7 @@ namespace TAC_AI
                 if (!KickStart.isPopInjectorPresent && KickStart.isWaterModPresent)
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": Precheck validated");
-                    if (AI.Movement.AIEPathing.AboveTheSeaForcedAccurate(Singleton.playerTank.boundsCentreWorld))
+                    if (AI.Movement.TerrainQuery.AboveTheSeaForcedAccurate(Singleton.playerTank.boundsCentreWorld))
                     {
                         DebugTAC_AI.Log(KickStart.ModID + ": Attempting retrofit");
                         PlayerSpawnAid.TryBotePlayerSpawn();

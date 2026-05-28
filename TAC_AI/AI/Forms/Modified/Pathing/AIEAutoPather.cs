@@ -91,9 +91,8 @@ namespace TAC_AI.AI.Movement
         public const float TerrainSlopeMaxClimbPerUnit = 1.0f;
         [Range(0.1f, 50f)]
         public const float TerrainSlopeMaxDropPerUnit = 6.25f;
-        // REVISED: climb penalty is now a fixed 8f (was DefaultMaxDifficulty / MaxClimbPerUnit); the fall penalty now derives from MaxDropPerUnit instead of aliasing the climb penalty, so up- and down-slope are weighted independently.
-        public const float TerrainSlopeClimbPenaltyMulti = 8f;
-        public const float TerrainSlopeFallPenaltyMulti = DefaultMaxDifficulty / TerrainSlopeMaxDropPerUnit;
+        public const float TerrainSlopeClimbPenaltyMulti = DefaultMaxDifficulty / TerrainSlopeMaxClimbPerUnit;
+        public const float TerrainSlopeFallPenaltyMulti = TerrainSlopeClimbPenaltyMulti;
         public const float maxDeadEndsTillFailMulti = 2f;
         public const float maxPathedTillFailDistMulti = 8f;
         public const int MaxPointsInLineToRemove = 4;

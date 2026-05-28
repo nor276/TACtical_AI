@@ -1739,39 +1739,28 @@ namespace TAC_AI.World
                 }
             }
         }
-        private static List<WorldPosition> pathDispCache = new List<WorldPosition>();
+        // REVISED (v2): reads the shell seam help.CurrentPlannedPath (the active form's pathfinder points it at its
+        // live planned-route collection) instead of casting into the form-owned AIControllerDefault / autoPather -
+        // keeps this World file free of brain types. Gated on UsingPathfinding (as v1 was) so a stale reference left
+        // by a tech that stopped pathing or swapped to a non-pathing controller never draws. The two old branches
+        // (committed PathPlanned + live autoPather route) collapse into this one route.
         private bool UpdatePathfindingRouteVisualIfAny(TankAIHelper help)
         {
-            if (help.UsingPathfinding)
+            if (!help.UsingPathfinding)
+                return false;
+            var planned = help.CurrentPlannedPath;
+            if (planned != null && planned.Count > 0)
             {
-                if (help.MovementController is AIControllerDefault def && def.PathPlanned != null && def.PathPlanned.Count > 0)
+                Vector3 lastPoint = help.tank.boundsCentreWorldNoCheck;
+                lastPoint.y += help.lastTechExtents;
+                foreach (var item in planned)
                 {
-                    var path = new Queue<WorldPosition>(def.PathPlanned);
-                    Vector3 lastPoint = help.tank.boundsCentreWorldNoCheck;
-                    lastPoint.y += help.lastTechExtents;
-                    foreach (var item in def.PathPlanned)
-                    {
-                        Vector3 nextPoint = item.ScenePosition;
-                        nextPoint.y += help.lastTechExtents;
-                        DrawDirection(lastPoint, nextPoint, colorPath);
-                        lastPoint = nextPoint;
-                    }
-                    return true;
+                    Vector3 nextPoint = item.ScenePosition;
+                    nextPoint.y += help.lastTechExtents;
+                    DrawDirection(lastPoint, nextPoint, colorPath);
+                    lastPoint = nextPoint;
                 }
-                if (help.autoPather != null && help.autoPather.CanGetPath(1) && help.autoPather.IsRegistered)
-                {
-                    pathDispCache.Clear();
-                    help.autoPather.GetPath(pathDispCache);
-                    Vector3 lastPoint = pathDispCache.FirstOrDefault().ScenePosition;
-                    for (int step = 1; step < pathDispCache.Count; step++)
-                    {
-                        Vector3 nextPoint = pathDispCache[step].ScenePosition;
-                        nextPoint.y += help.lastTechExtents;
-                        DrawDirection(lastPoint, nextPoint, colorPathing);
-                        lastPoint = nextPoint;
-                    }
-                    return true;
-                }
+                return true;
             }
             return false;
         }

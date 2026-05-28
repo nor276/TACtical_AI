@@ -34,6 +34,15 @@ namespace TAC_AI
         public static bool UseProcedualEnemyBaseSpawning = false;
         public static bool DoPopSpawnCostCheck = false;
 
+        // v2 isolation: pathfinder config/debug knobs, moved off the form's AIEPathMapper so KickStartExtras /
+        // DebugRawTechSpawner / TankAIManager don't name a form type. The active form's pathfinder reads these.
+        public static int PathRequestsToCalcPerFrame = 1;
+#if DEBUG
+        public static bool ShowPathingGIZMO = true;
+#else
+        public static bool ShowPathingGIZMO = false;
+#endif
+
 #if STEAM
         public static bool ShouldBeActive = false;
         public static bool UseClassicRTSControls = true;
@@ -178,7 +187,9 @@ namespace TAC_AI
         /// </summary>
         public static int AIDodgeCheapness = 20;
         // REVISED: NEW config tunable — period (seconds) of the combat circle/face duty cycle; combat alternates between circling and facing proportional to turret fraction.
-        public static float CombatFacingCyclePeriod = 4f;
+        // DECISIVE default 0: period <= 0.05 makes CombatWantsCircleNow() a STABLE decision (mostly-turreted techs circle, mostly-fixed face) instead of flipping
+        // drive direction on a timer (the timed flip + random per-tech phase read as "drives off in random directions" / lost commitment). Raise it to re-enable the cycle.
+        public static float CombatFacingCyclePeriod = 0f;
         public static int AIPopMaxLimit = 8;
         public static bool MuteNonPlayerRacket = true;
         public static bool DisplayEnemyEvents = true;

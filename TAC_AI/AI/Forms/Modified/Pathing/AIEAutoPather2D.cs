@@ -80,7 +80,7 @@ namespace TAC_AI.AI.Movement
         }
         private void Recalc_Internal(Vector3 startPos, Vector3 endPos)
         {
-            // REVISED: resets the dead-end counter on recalc; no longer pushes OnFinishedPathfinding(null) to the consumer here.
+            PathingUnit.OnFinishedPathfinding(null);   // clear the follower's stale queue the instant a recalc starts
             deadEnds = 0;
             PathRoute.Clear();
             pathed.Clear();
@@ -794,7 +794,8 @@ namespace TAC_AI.AI.Movement
                     ChainRemoveStep++;
                 }
             }
-            // REVISED: the trailing PathRoute.RemoveAt(0) (which dropped the first/start waypoint) was removed; the full route is now kept.
+            if (PathRoute.Count > 0)
+                PathRoute.RemoveAt(0);   // drop the tech's own start cell (matches original)
         }
 
     }

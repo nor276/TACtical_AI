@@ -298,7 +298,7 @@ namespace TAC_AI.AI
             toCharge = null;
             try
             {
-                foreach (var ally in AIEPathing.AllyList(helper.tank))
+                foreach (var ally in TankAIManager.GetNonEnemyTanks(helper.tank.Team)) // v2 isolation: AIEPathing.AllyList was just this shell call; inlined to drop the form dependency
                 {
                     float temp = (ally.boundsCentreWorldNoCheck - tankPos).sqrMagnitude;
                     TechEnergy.EnergyState eState = ally.EnergyRegulator.Energy(TechEnergy.EnergyType.Electric);
@@ -567,7 +567,7 @@ namespace TAC_AI.AI
                         {
                             //We have to get the total thrust in here accounted for as well because the only way we CAN boost is ALL boosters firing!
                             // REVISED: weights each booster's bias by its actual thrust force; was an unweighted unit-direction sum
-                            float boostForce = (float)AIControllerDefault.boostGet.GetValue(boost);
+                            float boostForce = (float)AIGlobals.BoostForceField.GetValue(boost);
                             boostBiasDirection -= tank.rootBlockTrans.InverseTransformDirection(boost.transform.TransformDirection(boost.LocalThrustDirection)) * boostForce;
                         }
                         boosters = true;

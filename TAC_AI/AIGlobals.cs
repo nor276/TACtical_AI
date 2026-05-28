@@ -36,6 +36,9 @@ namespace TAC_AI
         // Note improve AI navigation around water - they keep driving into the water and get stuck
         public static bool IsNotAttract => ManGameMode.inst.GetCurrentGameType() != ManGameMode.GameType.Attract;
 
+        // v2 isolation: shell-owned reflection handle for Thruster.m_Force, so AIECore/RCore don't name AIControllerDefault.boostGet (a form type).
+        public static readonly FieldInfo BoostForceField = typeof(Thruster).GetField("m_Force", BindingFlags.NonPublic | BindingFlags.Instance);
+
         private static FieldInfo getCamTank = typeof(TankCamera).GetField("m_hideHud", BindingFlags.NonPublic | BindingFlags.Instance);
         public static bool GetHideHud => (bool)getCamTank.GetValue(TankCamera.inst);
         public static bool HideHud = false;
@@ -305,7 +308,7 @@ namespace TAC_AI
         // window (while commanding drive) is making no net progress, so yaw jitter no longer masks a genuine wedge.
         // The threshold scales with EstTopSped so a slow/heavy tech making genuine slow headway is not falsely flagged
         // stuck (it tracks the same speed basis as the EnemyAISpeedPanicDividend gate); the floor covers near-zero EstTopSped.
-        public static float StuckNetProgressWindow = 1.5f;
+        public static float StuckNetProgressWindow = 0.75f; // DECISIVE-FEEL default (was 1.5f): commit to un-wedging sooner. Tunable.
         public static float StuckNetProgressFraction = 0.2f;
         public static float StuckNetProgressFloor = 1f;
 
@@ -402,7 +405,7 @@ namespace TAC_AI
         public static int ProvokeTime = 200;         // Roughly around 200/40 = 5 seconds
         public const int ProvokeTimeShort = 80;
         // REVISED: NEW — seconds a target stays held after LOS is lost (behind cover) before pursuit ends.
-        public static float LOSLostGraceTime = 3.0f;
+        public static float LOSLostGraceTime = 1.0f; // DECISIVE-FEEL default (was 3.0f): drop unseen targets faster. Tunable (Combat menu).
         public static int DamageAlertThreshold = 45;// Above this damage we react to the threat
         // REVISED: NEW — cumulative damage-alert model: damage sums toward DamageAlertCumulativeThreshold and decays at DamageAlertDecayPerSec, so steady chip damage eventually trips the alert.
         public const float DamageAlertCumulativeThreshold = 60f;
@@ -414,7 +417,7 @@ namespace TAC_AI
         // REVISED: NEW flicker controls — keep a held target until past 1.5x range, require 2 blocked-LOS checks before asserting cover, and cap RTS-locked targets at 2.5x range.
         public const float CombatRangeRetentionMult = 1.5f;
         public const float CombatRangeRetentionMultSqr = CombatRangeRetentionMult * CombatRangeRetentionMult;
-        public const int LosBlockedStreakThreshold = 2;
+        public const int LosBlockedStreakThreshold = 1; // DECISIVE-FEEL default (was 2): react to blocked LOS on the first check (original behavior).
         public const float RTSLockMaxRangeMultiplier = 2.5f;
         public const float RTSLockMaxRangeMultiplierSqr = RTSLockMaxRangeMultiplier * RTSLockMaxRangeMultiplier;
 
@@ -442,11 +445,11 @@ namespace TAC_AI
         // REVISED: combat back-off dead-band. A tech holds-and-faces between (hull contact + MinCombatRange*this) and the
         // full stand-off, and only reverses (FACE-ENEMY back off) when pushed inside that inner radius - so it stops
         // constantly back-pedalling front-on just to maintain the stand-off. Lower = backs off less / holds sooner.
-        public static float CombatReverseInnerFraction = 0.35f;
+        public static float CombatReverseInnerFraction = 0.15f; // DECISIVE-FEEL default (was 0.35f): shrink the hold-and-face dead-band so it keeps committing drive. Tunable.
         // REVISED: when a mod forces continuous strafe (TweakTech/WeaponAimMod -> ShouldForceContinuousStrafe), only
         // techs with at least this turret share keep strafing endlessly (their turrets can fire mid-circle). A
         // mostly-front-fixed tech below this falls back to the duty cycle so it still gets a face/fire window.
-        public static float ContinuousStrafeMinTurretFraction = 0.5f;
+        public static float ContinuousStrafeMinTurretFraction = 0.0f; // DECISIVE-FEEL default (was 0.5f): with TweakTech/WeaponAimMod, all techs keep committed continuous orbit (original feel), bypassing the duty cycle. Tunable.
         public const float SpacingRangeSpyperAir = 72;
         public const float SpacingRangeAircraft = 24;
         public const float SpacingRangeChopper = 12;
