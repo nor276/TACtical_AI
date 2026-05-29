@@ -40,6 +40,14 @@ namespace TAC_AI.AI
             }
         }
         private AIDriverType driveType = AIDriverType.AutoSet;
+        // Authored driver-type intent (stamped from RawTech at spawn). Any/AnyNonSea = no concrete intent
+        // (author opted out, run heuristic). HandlingDetermine maps a concrete terrain to a driver and
+        // short-circuits. AnyNonSea is a soft tiebreaker that disqualifies Sailor in the heuristic.
+        // Cleared on Recycle; Invalidated flag set true on player block edits (PendingPlayerRecompose path) +
+        // on split-off children (AIESplitHandler) - once the live blueprint diverges from the author's
+        // declaration, the heuristic should take back over.
+        internal BaseTerrain AuthoredTerrain = BaseTerrain.Any;
+        internal bool AuthoredHintInvalidated = false;
         // REVISED: AutoSet with a built tank now resolves the driver immediately via ExecuteAutoSetNoCalibrate instead of storing AutoSet verbatim; controller swap routed through RequestMovementControllerSwap.
         public void SetDriverType(AIDriverType driverType)
         {
@@ -825,6 +833,7 @@ namespace TAC_AI.AI
             if (AIAlign == AIAlignment.Player)
             {
                 PendingPlayerRecompose = true;
+                AuthoredHintInvalidated = true;
                 try
                 {
                     if (!tank.FirstUpdateAfterSpawn && !PendingDamageCheck && TechMemor)
@@ -854,6 +863,7 @@ namespace TAC_AI.AI
             if (AIAlign == AIAlignment.Player)
             {
                 PendingPlayerRecompose = true;
+                AuthoredHintInvalidated = true;
                 try
                 {
                     removedBlock.visible.EnableOutlineGlow(false, cakeslice.Outline.OutlineEnableReason.ScriptHighlight);
@@ -878,6 +888,8 @@ namespace TAC_AI.AI
             PlayerAllowAutoAnchoring = false;
             isRTSControlled = false;
             DriverType = AIDriverType.AutoSet;
+            AuthoredTerrain = BaseTerrain.Any;
+            AuthoredHintInvalidated = false;
             AttackMode = EAttackMode.AutoSet;
             RequestMovementControllerSwap(MovementSwapReason.Recycled);
             DediAI = AIType.Escort;

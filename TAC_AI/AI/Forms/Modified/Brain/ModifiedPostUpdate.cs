@@ -18,7 +18,7 @@ namespace TAC_AI.AI
             switch (helper.ActiveAimState)
             {
                 case AIWeaponState.Enemy:
-                    if (helper.lastEnemyGet.IsNotNull())
+                    if (helper.lastEnemyGet.IsLiveTechTarget())
                     {
                         if (!DebugTAC_AI.NoLogTargeting)
                             DebugTAC_AI.LogTargeting(helper.tank, "Overriding targeting to aim at " + helper.lastEnemy.name + " pos " + helper.lastEnemy.tank.boundsCentreWorldNoCheck);

@@ -164,7 +164,9 @@ namespace TAC_AI.AI.Movement
                 }
                 catch (Exception e)
                 {
-                    DebugTAC_AI.Log("AIEPathMapper: Error with a pather in queue, discarding... " + e);
+                    // Dead-tech queue entry (Tank destroyed after enqueue); already self-heals by discarding. File-only,
+                    // per-key-deduped so the stack-trace storm from a wave of despawns doesn't fill the log.
+                    DebugTAC_AI.LogWarnFileOnly("AIEPathMapper.QueueDiscard", "AIEPathMapper: Error with a pather in queue, discarding (see exception)", e);
                     autoPathers.RemoveAt(autoPathStep);
                 }
                 frameCalcStep++;

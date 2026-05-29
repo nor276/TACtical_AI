@@ -306,7 +306,7 @@ namespace TAC_AI.AI.Movement.AICores
                     if (helper.LocalSafeVelocity.z > AIGlobals.AirStallSpeed)
                     {
                         float ExtAvoid = helper.AutoSpacing;
-                        if (helper.lastPlayer.IsNotNull())
+                        if (Helper.lastPlayer.IsLiveTechTarget())
                             ExtAvoid = helper.lastPlayer.GetCheapBounds();
                         float Extremes = ExtAvoid + helper.lastTechExtents + AIGlobals.PathfindingExtraSpace;
                         float throttleToSet = 1;

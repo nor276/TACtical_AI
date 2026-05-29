@@ -374,7 +374,7 @@ namespace TAC_AI.AI.Movement.AICores
                 if (aegisOutOfRange || !TryAdjustForCombat(true, ref pilot.PathPointSet, ref core))
                 {
                     if (aegisOutOfRange) Helper.IgnoreEnemyDistance();
-                    if (Helper.theResource.IsNotNull())
+                    if (Helper.theResource.IsLiveTechTarget())
                     {
                         Helper.theResource.tank.GetHelperInsured().MultiTechsAffiliated.Add(Helper.tank);
                         if (Helper.DriveDestDirected == EDriveDest.FromLastDestination)
@@ -405,7 +405,7 @@ namespace TAC_AI.AI.Movement.AICores
                     else
                     {
                         Helper.lastPlayer = Helper.GetPlayerTech();
-                        if (Helper.lastPlayer.IsNotNull())
+                        if (Helper.lastPlayer.IsLiveTechTarget())
                         {
                             pilot.PathPointSet.y = Helper.lastPlayer.tank.boundsCentreWorldNoCheck.y;
                         }
@@ -524,7 +524,7 @@ namespace TAC_AI.AI.Movement.AICores
                 else
                 {
                     Helper.lastPlayer = Helper.GetPlayerTech();
-                    if (Helper.lastPlayer.IsNotNull())
+                    if (Helper.lastPlayer.IsLiveTechTarget())
                     {
                         pilot.PathPointSet.y = Helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + (Helper.GroundOffsetHeight / 5);
                     }
@@ -605,13 +605,13 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = pilot.Helper;
             bool output = false;
-            if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
+            if (helper.ChaseThreat && !helper.Retreat && Helper.lastEnemyGet.IsLiveTechTarget())
             {
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
                 // REVISED: real null check (IsNotNull on resource + its tank) replaces the truthy theResource?.tank.
-                if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
+                if (between && Helper.theResource.IsLiveTechTarget() && helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);
                 }
@@ -681,7 +681,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = pilot.Helper;
             bool output = false;
-            if (!helper.Retreat && helper.lastEnemyGet.IsNotNull() && mind.CommanderMind != EnemyAttitude.OnRails)
+            if (!helper.Retreat && Helper.lastEnemyGet.IsLiveTechTarget() && mind.CommanderMind != EnemyAttitude.OnRails)
             {
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;

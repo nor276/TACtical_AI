@@ -1098,6 +1098,9 @@ namespace TAC_AI.Templates
             // REVISED: FixupAnchors call is no longer null-conditional; changed from theTech?.FixupAnchors
             theTech.FixupAnchors(true);
 
+            // Stamp the authored terrain so HandlingDetermine can short-circuit on a concrete declaration.
+            AIECore.StampAuthoredIntent(theTech, toSpawn.terrain);
+
             return theTech;
         }
 
@@ -2257,6 +2260,9 @@ namespace TAC_AI.Templates
 
                 DebugTAC_AI.LogAISetup(KickStart.ModID + ": InstantTech - Built " + name);
 
+                // Stamp the authored terrain so HandlingDetermine can short-circuit on a concrete declaration.
+                AIECore.StampAuthoredIntent(theTech, filter.Terrain);
+
                 return theTech;
             }
             finally
@@ -2303,6 +2309,10 @@ namespace TAC_AI.Templates
                 theTech.gameObject.AddComponent<RequestAnchored>();
 
             DebugTAC_AI.Log(KickStart.ModID + ": InstantTech - Built " + name);
+
+            // Stamp the authored terrain from the RawTech (BT.terrain is the most reliable source - it's the
+            // author's declaration on the source blueprint, not the filter which may have been defaulted).
+            AIECore.StampAuthoredIntent(theTech, BT.terrain);
 
             return theTech;
         }

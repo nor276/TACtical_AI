@@ -528,7 +528,7 @@ namespace TAC_AI.AI.Movement.AICores
                     helper.theGuardedAlly = helper.theResource;
                     if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombat(true, ref pos, ref core))
                     {
-                        if (helper.theResource.IsNotNull())
+                        if (helper.theResource.IsLiveTechTarget())
                         {
                             if (helper.IsDirectedMovingFromDest)
                             {
@@ -721,7 +721,7 @@ namespace TAC_AI.AI.Movement.AICores
                     helper.theGuardedAlly = helper.theResource;
                     if (helper.lastOperatorRange > helper.MaxCombatRange || !controller.AICore.TryAdjustForCombatEnemy(mind, ref pos, ref core))
                     {
-                        if (helper.theResource.IsNotNull())
+                        if (helper.theResource.IsLiveTechTarget())
                         {
                             if (helper.IsDirectedMovingFromDest)
                             {

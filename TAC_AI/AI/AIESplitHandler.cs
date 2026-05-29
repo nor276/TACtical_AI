@@ -195,6 +195,9 @@ namespace TAC_AI.AI
                 {   // We assume flares or a drone/infantry to launch
                     helper.DediAI = AIType.Escort;
                 }
+                // Split children are a new tech blueprint vs the mother's RawTech; the mother's authored
+                // terrain doesn't describe this fragment, so invalidate the hint and let the heuristic decide.
+                helper.AuthoredHintInvalidated = true;
                 helper.SetDriverType(AIECore.HandlingDetermine(tank, helper));
                 helper.lastCloseAlly = mother;
                 DebugTAC_AI.Log(KickStart.ModID + ": AIESplitHandler - Set to " + helper.DediAI + " for " + tank.name);

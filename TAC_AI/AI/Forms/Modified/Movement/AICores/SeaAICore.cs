@@ -50,7 +50,7 @@ namespace TAC_AI.AI.Movement.AICores
             var helper = controller.Helper;
             if (core.DrivePathing != EDrivePathing.IgnoreAll)
             {
-                if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsNotNull()))
+                if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsLiveTechTarget()))
                     Target = AIEPathing.OffsetFromGroundH(Target, helper);
                 else
                     Target = AIEPathing.OffsetToSea(Target, tank, helper);
@@ -73,7 +73,7 @@ namespace TAC_AI.AI.Movement.AICores
             var helper = controller.Helper;
             if (core.DrivePathing != EDrivePathing.IgnoreAll)
             {
-                if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsNotNull()))
+                if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsLiveTechTarget()))
                     Target = AIEPathing.OffsetFromGroundH(Target, helper);
                 else
                     Target = AIEPathing.OffsetToSea(Target, tank, helper);
@@ -172,7 +172,7 @@ namespace TAC_AI.AI.Movement.AICores
                     break;
             }
 
-            if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsNotNull()))
+            if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsLiveTechTarget()))
                 Target = AIEPathing.OffsetFromGroundH(Target, helper);
             else
                 Target = AIEPathing.OffsetToSea(Target, tank, helper);
@@ -190,7 +190,7 @@ namespace TAC_AI.AI.Movement.AICores
             var helper = controller.Helper;
             if (core.DrivePathing != EDrivePathing.IgnoreAll)
             {
-                if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsNotNull()))
+                if (helper.Attempt3DNavi && !(helper.FullMelee && helper.lastEnemyGet.IsLiveTechTarget()))
                     Target = AIEPathing.OffsetFromGroundH(Target, helper);
                 else
                     Target = AIEPathing.OffsetToSea(Target, tank, helper);
@@ -343,7 +343,7 @@ namespace TAC_AI.AI.Movement.AICores
                     if (core.DriveDir == EDriveFacing.Perpendicular)
                     {   //Broadside the enemy
                         TurnVal = turnVal.Clamp01Box();
-                        if (helper.lastEnemyGet.IsNotNull())
+                        if (helper.lastEnemyGet.IsLiveTechTarget())
                         {
                             helper.Navi3DDirect = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck;
                         }
@@ -356,7 +356,7 @@ namespace TAC_AI.AI.Movement.AICores
                     else if (core.DriveDir == EDriveFacing.Forwards)
                     {
                         TurnVal = turnVal.Clamp01Box();
-                        if (helper.lastEnemyGet.IsNotNull())
+                        if (helper.lastEnemyGet.IsLiveTechTarget())
                         {
                             helper.Navi3DDirect = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck;
                         }
@@ -380,7 +380,7 @@ namespace TAC_AI.AI.Movement.AICores
                     if (core.DriveDir == EDriveFacing.Perpendicular)
                     {   //Broadside the enemy
                         TurnVal = turnVal.Clamp01Box();
-                        if (helper.lastEnemyGet.IsNotNull())
+                        if (helper.lastEnemyGet.IsLiveTechTarget())
                         {
                             if (Vector3.Dot(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck, tank.rootBlockTrans.right) < 0)
                             {
@@ -409,7 +409,7 @@ namespace TAC_AI.AI.Movement.AICores
                     else if (core.DriveDir == EDriveFacing.Forwards)
                     {
                         TurnVal = turnVal.Clamp01Box();
-                        if (helper.lastEnemyGet.IsNotNull())
+                        if (helper.lastEnemyGet.IsLiveTechTarget())
                         {
                             helper.Navi3DDirect = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck;
                         }
@@ -434,11 +434,11 @@ namespace TAC_AI.AI.Movement.AICores
             //DebugTAC_AI.Log(KickStart.ModID + ": SeaAICore for " + tank.name + " | " + helper.GetCoreControlString());
             if (helper.AdviseAwayCore)
             {   //Move from target
-                if (helper.lastEnemyGet.IsNotNull() && AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
+                if (helper.lastEnemyGet.IsLiveTechTarget() && AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
                 {
                     //DebugTAC_AI.Log(KickStart.ModID + ": REVEREEE");
                     driveVal = InertiaTranslation(tank.rootBlockTrans.InverseTransformVector(InvertHorizontalPlane(distDiff.normalized * 150)));
-                    if (helper.AIAlign == AIAlignment.Player && helper.lastPlayer.IsNotNull())
+                    if (helper.AIAlign == AIAlignment.Player && helper.lastPlayer.IsLiveTechTarget())
                     {
                         // Keep below a certain height in relation to player so that they may command if need be
                         if (helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + (helper.MaxCombatRange / 3) < helper.tank.boundsCentreWorldNoCheck.y)
@@ -464,11 +464,11 @@ namespace TAC_AI.AI.Movement.AICores
             }
             else
             {
-                if (helper.lastEnemyGet.IsNotNull() && !helper.IsMultiTech && AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
+                if (helper.lastEnemyGet.IsLiveTechTarget() && !helper.IsMultiTech && AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
                 {   //level alt with enemy
                     //DebugTAC_AI.Log(KickStart.ModID + ": FWD");
                     driveVal = InertiaTranslation(tank.rootBlockTrans.InverseTransformVector(distDiff));
-                    if (helper.AIAlign == AIAlignment.Player && helper.lastPlayer.IsNotNull())
+                    if (helper.AIAlign == AIAlignment.Player && helper.lastPlayer.IsLiveTechTarget())
                     {
                         // Keep below a certain height in relation to player so that they may command if need be
                         if (helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + (helper.MaxCombatRange / 3) < helper.tank.boundsCentreWorldNoCheck.y)
@@ -638,12 +638,12 @@ namespace TAC_AI.AI.Movement.AICores
             TankAIHelper helper = controller.Helper;
             bool output = false;
             // REVISED: combat-engage gate dropped the IsDirectedMoving clause; now just ChaseThreat && !Retreat.
-            if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
+            if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsLiveTechTarget())
             {
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
                 output = true;
                 core.DriveDir = EDriveFacing.Forwards;
-                if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
+                if (between && helper.theResource.IsLiveTechTarget() && helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);
                 }
@@ -716,7 +716,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
-            if (!helper.Retreat && helper.lastEnemyGet.IsNotNull() && mind.CommanderMind != EnemyAttitude.OnRails)
+            if (!helper.Retreat && helper.lastEnemyGet.IsLiveTechTarget() && mind.CommanderMind != EnemyAttitude.OnRails)
             {
                 output = true;
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);

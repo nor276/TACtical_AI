@@ -251,7 +251,7 @@ namespace TAC_AI.AI.Movement.AICores
             if (helper.DoSteerCore)
             {
                 TurnVal = turnVal.Clamp01Box();
-                if (helper.lastEnemyGet.IsNotNull())
+                if (helper.lastEnemyGet.IsLiveTechTarget())
                 {
                     helper.Navi3DDirect = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck - tank.boundsCentreWorldNoCheck;
                 }
@@ -270,12 +270,12 @@ namespace TAC_AI.AI.Movement.AICores
             {
                 driveVal = tank.rootBlockTrans.InverseTransformVector(controller.PathPoint - tank.boundsCentreWorldNoCheck).normalized;
             }
-            else if (helper.lastEnemyGet.IsNotNull() && !helper.IsMultiTech &&
+            else if (helper.lastEnemyGet.IsLiveTechTarget() && !helper.IsMultiTech &&
                 AIEPathing.IsUnderMaxAltPlayer(tank.boundsCentreWorldNoCheck.y))
             {   //level alt with enemy
                 controller.HoldHeight = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck.y + 4;
                 driveVal = tank.rootBlockTrans.InverseTransformVector(controller.PathPoint - tank.boundsCentreWorldNoCheck).normalized;
-                if (tank.IsFriendly() && helper.lastPlayer.IsNotNull())
+                if (tank.IsFriendly() && helper.lastPlayer.IsLiveTechTarget())
                 {
                     if (helper.lastPlayer.tank.boundsCentreWorldNoCheck.y + (helper.MaxCombatRange / 3) < helper.tank.boundsCentreWorldNoCheck.y)
                         driveVal.y = -1;
@@ -402,7 +402,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
-            if (helper.lastEnemyGet.IsNotNull())
+            if (helper.lastEnemyGet.IsLiveTechTarget())
             {
                 Vector3 targPos = helper.lastEnemyGet.tank.boundsCentreWorldNoCheck;
                 output = true;
@@ -420,7 +420,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
-            if (helper.lastEnemyGet.IsNotNull() && mind.CommanderMind != Enemy.EnemyAttitude.OnRails)
+            if (helper.lastEnemyGet.IsLiveTechTarget() && mind.CommanderMind != Enemy.EnemyAttitude.OnRails)
             {
                 output = true;
                 helper.UpdateEnemyDistance(helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);

@@ -10,6 +10,15 @@ namespace TAC_AI
 {
     public static class TankExtentions
     {
+        // A Visible can briefly outlive its Tank (destroyed mid-frame, recycled, despawned), so
+        // helper.lastEnemyGet.IsNotNull() can pass while .tank is null - dereferences then NRE in
+        // the AICores. Use this guard instead of bare IsNotNull anywhere a .tank.X deref follows.
+        public static bool IsLiveTechTarget(this Visible v)
+        {
+            return v != null && v.tank != null && v.isActive
+                && v.tank.blockman != null && v.tank.blockman.blockCount > 0;
+        }
+
         public static bool CommandInteract(this Tank tank, Visible vis)
         {
             if (vis?.resdisp)

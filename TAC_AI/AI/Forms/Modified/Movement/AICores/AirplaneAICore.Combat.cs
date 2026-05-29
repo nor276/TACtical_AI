@@ -18,12 +18,12 @@ namespace TAC_AI.AI.Movement.AICores
         public bool TryAdjustForCombat(bool between, ref Vector3 pos, ref EControlCoreSet core)
         {
             bool output = false;
-            if (Helper.ChaseThreat && !Helper.Retreat && Helper.lastEnemyGet.IsNotNull())
+            if (Helper.ChaseThreat && !Helper.Retreat && Helper.lastEnemyGet.IsLiveTechTarget())
             {
                 output = true;
                 Vector3 targPos = Helper.RoughPredictTarget(Helper.lastEnemyGet.tank);
                 // REVISED: real null check (IsNotNull on resource + its tank) replaces the truthy theResource?.tank.
-                if (between && Helper.theResource.IsNotNull() && Helper.theResource.tank.IsNotNull())
+                if (between && Helper.theResource.IsLiveTechTarget() && Helper.theResource.tank.IsNotNull())
                 {
                     targPos = Between(targPos, Helper.theResource.tank.boundsCentreWorldNoCheck);
                 }
@@ -105,7 +105,7 @@ namespace TAC_AI.AI.Movement.AICores
             bool output = false;
 
             bool isCombatAttitude = mind.CommanderMind != EnemyAttitude.OnRails;
-            if (!Helper.Retreat && Helper.lastEnemyGet.IsNotNull() && isCombatAttitude)
+            if (!Helper.Retreat && Helper.lastEnemyGet.IsLiveTechTarget() && isCombatAttitude)
             {
                 output = true;
                 Helper.UpdateEnemyDistance(Helper.lastEnemyGet.tank.boundsCentreWorldNoCheck);

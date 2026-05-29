@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using TAC_AI.AI.Enemy;
 using TAC_AI.AI.Movement;
+using TAC_AI.Templates;
 using TerraTechETCUtil;
 using UnityEngine;
 
@@ -470,6 +471,36 @@ namespace TAC_AI.AI
             }
             return false;
         }
+        // Stamps the authored BaseTerrain onto a spawned tech's helper. Called from RawTechLoader at every
+        // spawn site that has a RawTechPopParams filter (the author's declared spawn intent). After the stamp,
+        // HandlingDetermine will short-circuit on concrete terrains (Land/Sea/Air/Chopper/Space) and treat
+        // Any / AnyNonSea as "author opted out" - heuristic owns those. Player block edits flip
+        // AuthoredHintInvalidated true and the heuristic takes back over.
+        public static void StampAuthoredIntent(Tank tank, BaseTerrain terrain)
+        {
+            if (tank == null) return;
+            var helper = tank.GetComponent<TankAIHelper>();
+            if (helper == null) return;
+            helper.AuthoredTerrain = terrain;
+            helper.AuthoredHintInvalidated = false;
+        }
+
+        // Maps an authored RawTech BaseTerrain to a concrete AIDriverType. Returns AutoSet for Any / AnyNonSea
+        // (no concrete intent declared - heuristic should run). AnyNonSea is still meaningful as a soft tiebreaker
+        // inside the heuristic (it disqualifies Sailor); that's handled at the Sailor branches below, not here.
+        private static AIDriverType MapAuthoredTerrain(BaseTerrain t)
+        {
+            switch (t)
+            {
+                case BaseTerrain.Land: return AIDriverType.Tank;
+                case BaseTerrain.Sea: return AIDriverType.Sailor;
+                case BaseTerrain.Air: return AIDriverType.Pilot;
+                case BaseTerrain.Chopper: return AIDriverType.Pilot;  // no Chopper driver in the enum
+                case BaseTerrain.Space: return AIDriverType.Astronaut;
+                default: return AIDriverType.AutoSet;                  // Any / AnyNonSea = no concrete intent
+            }
+        }
+
         public static AIDriverType HandlingDetermine(Tank tank, TankAIHelper helper)
         {
             var BM = tank.blockman;
@@ -479,6 +510,18 @@ namespace TAC_AI.AI
                 helper.AnchorStatic();
                 if (helper.DriverType != AIDriverType.AutoSet)
                     return helper.DriverType;
+            }
+
+            // Authored intent (RawTech.Terrain stamped at spawn). When the author declared a concrete terrain
+            // and the player has not edited the tech since, short-circuit the heuristic entirely. Player block
+            // edits flip AuthoredHintInvalidated true (OnBlockAttached/Detaching); split children get the same
+            // treatment in AIESplitHandler. Non-RawTech techs (vanilla spawns, player builds) never had a stamp
+            // so AuthoredTerrain stays Any and this falls through.
+            if (!helper.AuthoredHintInvalidated)
+            {
+                AIDriverType authored = MapAuthoredTerrain(helper.AuthoredTerrain);
+                if (authored != AIDriverType.AutoSet)
+                    return authored;
             }
 
             if (KickStart.IsRandomAdditionsPresent)
@@ -613,7 +656,8 @@ namespace TAC_AI.AI
                     return AIDriverType.Pilot;
                 else if (!isFlyingDirectionForwards)
                     return AIDriverType.Pilot;
-                else if (canFloat && modWheelCount == 0)
+                // AnyNonSea: author declared "anything but water" - skip Sailor even if it would otherwise win.
+                else if (canFloat && modWheelCount == 0 && helper.AuthoredTerrain != BaseTerrain.AnyNonSea)
                     return AIDriverType.Sailor;
                 return AIDriverType.Tank;
             }
@@ -629,7 +673,10 @@ namespace TAC_AI.AI
             {
                 return AIDriverType.Pilot;
             }
-            else if (KickStart.isWaterModPresent && FoilCount > 0 && modGyroCount > 0 && modBoostCount > 0 && (modWheelCount < 4 || modHoverCount > 1))
+            // AnyNonSea soft-tiebreaker: author declared "anything but water" - skip Sailor and let the
+            // tech fall through to Tank instead of getting routed into the boat AI.
+            else if (KickStart.isWaterModPresent && FoilCount > 0 && modGyroCount > 0 && modBoostCount > 0 && (modWheelCount < 4 || modHoverCount > 1)
+                && helper.AuthoredTerrain != BaseTerrain.AnyNonSea)
             {
                 return AIDriverType.Sailor;
             }

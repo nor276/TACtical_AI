@@ -580,7 +580,7 @@ namespace TAC_AI.AI.Movement.AICores
                 if (aegisOutOfRange || !TryAdjustForCombat(true, ref pilot.PathPointSet, ref core))
                 {
                     if (aegisOutOfRange) Helper.IgnoreEnemyDistance();
-                    if (Helper.theResource.IsNotNull())
+                    if (Helper.theResource.IsLiveTechTarget())
                     {
                         if (Helper.DriveDestDirected == EDriveDest.FromLastDestination)
                         {
@@ -897,7 +897,7 @@ namespace TAC_AI.AI.Movement.AICores
                 else
                 {
                     Helper.lastPlayer = Helper.GetPlayerTech();
-                    if (Helper.lastPlayer.IsNotNull())
+                    if (Helper.lastPlayer.IsLiveTechTarget())
                     {
                         pilot.PathPointSet.y = (Helper.lastPlayer.tank.boundsCentreWorldNoCheck + (Vector3.up * (Helper.GroundOffsetHeight / 5))).y;
                     }

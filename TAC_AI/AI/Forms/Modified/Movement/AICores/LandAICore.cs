@@ -533,7 +533,7 @@ namespace TAC_AI.AI.Movement.AICores
             TankAIHelper helper = controller.Helper;
             bool output = false;
             // REVISED: combat-engage gate dropped the IsDirectedMoving clause; now just ChaseThreat && !Retreat.
-            if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsNotNull())
+            if (helper.ChaseThreat && !helper.Retreat && helper.lastEnemyGet.IsLiveTechTarget())
             {
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);
                 output = true;
@@ -599,7 +599,7 @@ namespace TAC_AI.AI.Movement.AICores
                         helper.AutoSpacing = helper.lastTechExtents + helper.lastEnemyGet.GetCheapBounds() + 3;
                     }
                 }
-                if (between && helper.theResource.IsNotNull() && helper.theResource.tank.IsNotNull())
+                if (between && helper.theResource.IsLiveTechTarget() && helper.theResource.tank.IsNotNull())
                 {
                     pos = Between(targPos, helper.theResource.tank.boundsCentreWorldNoCheck);
                 }
@@ -613,7 +613,7 @@ namespace TAC_AI.AI.Movement.AICores
         {
             TankAIHelper helper = controller.Helper;
             bool output = false;
-            if (helper.ChaseThreat && helper.lastEnemyGet.IsNotNull() && mind.CommanderMind != EnemyAttitude.OnRails)
+            if (helper.ChaseThreat && helper.lastEnemyGet.IsLiveTechTarget() && mind.CommanderMind != EnemyAttitude.OnRails)
             {
                 output = true;
                 Vector3 targPos = helper.InterceptTargetDriving(helper.lastEnemyGet);

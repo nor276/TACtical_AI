@@ -220,7 +220,7 @@ namespace TAC_AI.AI
                 }
                 catch (Exception e)
                 {
-                    DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    DebugTAC_AI.LogWarnFileOnly(
                         "UTC-WeaponDirector-" + helper.tank.name,
                         "AI " + helper.tank.name + ": WeaponDirector error", e);
                 }
@@ -238,7 +238,7 @@ namespace TAC_AI.AI
                 }
                 catch (Exception e)
                 {
-                    DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    DebugTAC_AI.LogWarnFileOnly(
                         "UTC-DriveDirector-" + helper.tank.name,
                         "AI " + helper.tank.name + ": DriveDirector error", e);
                 }
@@ -253,7 +253,7 @@ namespace TAC_AI.AI
                 }
                 catch (Exception e)
                 {
-                    DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    DebugTAC_AI.LogWarnFileOnly(
                         "UTC-WeaponMaintainer-" + helper.tank.name,
                         "AI " + helper.tank.name + ":  WeaponMaintainer error", e);
                 }
@@ -262,7 +262,7 @@ namespace TAC_AI.AI
                     helper.MovementController.DriveMaintainer(ref helper.ControlCore);                }
                 catch (Exception e)
                 {
-                    DebugTAC_AI.LogWarnPlayerOncePerKey(
+                    DebugTAC_AI.LogWarnFileOnly(
                         "UTC-DriveMaintainer-" + helper.tank.name,
                         "AI " + helper.tank.name + ": DriveMaintainer error", e);
                 }

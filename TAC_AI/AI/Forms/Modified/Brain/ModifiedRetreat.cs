@@ -47,7 +47,7 @@ namespace TAC_AI.AI
                     }
                 }
             }
-            else if (helper.lastPlayer.IsNotNull())
+            else if (helper.lastPlayer.IsLiveTechTarget())
             {
                 if (helper.DriverType == AIDriverType.Pilot)
                 {
