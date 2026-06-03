@@ -1,0 +1,289 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace TAC_AI.AI.Forms.Smart.World
+{
+    // ============================================================
+    // Sanitized event payload types — no engine object references.
+    // ============================================================
+
+    /// <summary>Sanitized identifier for a multiplayer player. Wraps NetPlayer.netId-like int.</summary>
+    public readonly struct PlayerId : IEquatable<PlayerId>
+    {
+        public readonly int Value;
+        public PlayerId(int value) { Value = value; }
+        public bool Equals(PlayerId other) => Value == other.Value;
+        public override bool Equals(object obj) => obj is PlayerId p && Equals(p);
+        public override int GetHashCode() => Value;
+        public override string ToString() => "Player#" + Value;
+    }
+
+    /// <summary>Sanitized weapon identifier; uniquely identifies one weapon block on one tech.</summary>
+    public readonly struct WeaponId : IEquatable<WeaponId>
+    {
+        public readonly int Value;
+        public WeaponId(int value) { Value = value; }
+        public bool Equals(WeaponId other) => Value == other.Value;
+        public override bool Equals(object obj) => obj is WeaponId w && Equals(w);
+        public override int GetHashCode() => Value;
+        public override string ToString() => "Weapon#" + Value;
+    }
+
+    /// <summary>Sanitized damage info that workers may consume. No engine refs.</summary>
+    public readonly struct SanitizedDamageInfo
+    {
+        public readonly float Damage;
+        public readonly Vector3 ImpactPositionWorld;
+        public readonly Vector3 ImpactDirectionWorld;
+        public readonly TechId AttackerIfKnown;
+        public readonly bool HasAttacker;
+
+        public SanitizedDamageInfo(float damage, Vector3 pos, Vector3 dir, TechId attackerIfKnown, bool hasAttacker)
+        {
+            Damage = damage;
+            ImpactPositionWorld = pos;
+            ImpactDirectionWorld = dir;
+            AttackerIfKnown = attackerIfKnown;
+            HasAttacker = hasAttacker;
+        }
+    }
+
+    // ============================================================
+    // Event catalog per WORLD-CONTRACT §5.2.
+    // All events are structs (value-typed) to avoid GC pressure under heavy combat.
+    // ============================================================
+
+    public readonly struct TechSpawned { public readonly TechId Id; public readonly TeamId Team; public readonly Vector3 Position; public TechSpawned(TechId id, TeamId team, Vector3 pos) { Id = id; Team = team; Position = pos; } }
+    public readonly struct TechDespawned { public readonly TechId Id; public TechDespawned(TechId id) { Id = id; } }
+    public readonly struct TechTeamChanged { public readonly TechId Id; public readonly TeamId OldTeam, NewTeam; public TechTeamChanged(TechId id, TeamId oldT, TeamId newT) { Id = id; OldTeam = oldT; NewTeam = newT; } }
+    public readonly struct TechSeen { public readonly TechId Id; public readonly Vector3 Position; public readonly Vector3 Velocity; public readonly float Heading; public TechSeen(TechId id, Vector3 p, Vector3 v, float h) { Id = id; Position = p; Velocity = v; Heading = h; } }
+    // Aether v0.1: no producer wired. The categorical SightState.Lost transition is the
+    // mechanism — AetherFuser could fire this on the Coasting/Stale → Lost edge if a
+    // consumer asks for it. Marked [Obsolete] so consumers don't subscribe expecting it
+    // to fire. Re-enable in v0.2 when a consumer needs the edge signal.
+    [System.Obsolete("Aether v0.1: no producer. Reactivate when a consumer needs the SightState.Lost edge.", error: false)]
+    public readonly struct TechLost { public readonly TechId Id; public readonly Vector3 LastKnownPosition; public TechLost(TechId id, Vector3 pos) { Id = id; LastKnownPosition = pos; } }
+    public readonly struct DamageObserved { public readonly TechId Id; public readonly SanitizedDamageInfo Damage; public DamageObserved(TechId id, SanitizedDamageInfo info) { Id = id; Damage = info; } }
+    // No block-attach/detach producer in v0.1.0 — VehicleModel rebuild
+    // observes the whole block list, not transitions. v0.2: bridge from
+    // Tank.blockman events when block-level granularity is needed.
+    [System.Obsolete("v0.1.0: no producer. Vehicle snapshots rebuild whole-list. Re-enable in v0.2.", error: false)]
+    public readonly struct BlockAttached { public readonly TechId Id; public readonly int BlockTypeHash; public readonly Vector3 LocalPosition; public BlockAttached(TechId id, int typeHash, Vector3 pos) { Id = id; BlockTypeHash = typeHash; LocalPosition = pos; } }
+    [System.Obsolete("v0.1.0: no producer. Vehicle snapshots rebuild whole-list. Re-enable in v0.2.", error: false)]
+    public readonly struct BlockDetached { public readonly TechId Id; public readonly int BlockTypeHash; public readonly Vector3 LocalPosition; public BlockDetached(TechId id, int typeHash, Vector3 pos) { Id = id; BlockTypeHash = typeHash; LocalPosition = pos; } }
+    public readonly struct ProjectileFired { public readonly TechId Id; public readonly WeaponId Weapon; public readonly Vector3 FireOrigin, FireDirection; public ProjectileFired(TechId id, WeaponId w, Vector3 o, Vector3 d) { Id = id; Weapon = w; FireOrigin = o; FireDirection = d; } }
+    // No player-join/leave producer in v0.1.0 — MP roster tracking is unused
+    // by current Smart logic (player identity feeds Learning's profile path, but
+    // resolution happens once at world load). v0.2 wires ManNetwork events.
+    [System.Obsolete("v0.1.0: no producer. v0.2: bridge ManNetwork player events.", error: false)]
+    public readonly struct PlayerJoined { public readonly PlayerId Player; public PlayerJoined(PlayerId p) { Player = p; } }
+    [System.Obsolete("v0.1.0: no producer. v0.2: bridge ManNetwork player events.", error: false)]
+    public readonly struct PlayerLeft { public readonly PlayerId Player; public PlayerLeft(PlayerId p) { Player = p; } }
+    [System.Obsolete("v0.1.0: no producer. v0.2: bridge ManGameMode start signals.", error: false)]
+    public readonly struct WorldStarted { }
+    [System.Obsolete("v0.1.0: no producer. v0.2: bridge ManGameMode mode-switch signals.", error: false)]
+    public readonly struct WorldModeSwitched { public readonly int NewModeHash; public WorldModeSwitched(int hash) { NewModeHash = hash; } }
+    public readonly struct WorldSaving { }
+    public readonly struct WorldSaved { }
+    public readonly struct WorldLoading { }
+    public readonly struct WorldLoaded { }
+    public readonly struct BeliefUpdated { public readonly TechId Id; public BeliefUpdated(TechId id) { Id = id; } }
+
+    // Identity-tagged outcome event. Published whenever a Smart-driven tech achieves an
+    // identity-appropriate success: Hunter / Sniper / AircraftHunter kill a hostile,
+    // Base absorbs damage without falling, Gatherer delivers a block, AircraftSupport
+    // protects an ally. Per Docs/SMART-IDENTITY-DESIGN.md sec 9: LearningService trainers
+    // are NOT forked per identity in v0.1 - the Identity tag is collected for future
+    // stratification. Phase 6 wires KillScored from SmartEventBridge.OnTankDestroyed.
+    // BaseHeld / BlockDelivered / AllyProtected are reserved for follow-on phases.
+    public enum OutcomeKind : byte
+    {
+        KillScored = 0,       // Hunter / Sniper / AircraftHunter / AircraftSupport: hostile destroyed by us
+        BaseHeld = 1,         // Base: damage absorbed without falling over a window
+        BlockDelivered = 2,   // Gatherer: cargo deposited at delivery point
+        AllyProtected = 3,    // AircraftSupport: same-team ally took no damage while we were in support range
+    }
+
+    public readonly struct IdentityOutcome
+    {
+        public readonly TechId TechId;
+        public readonly TAC_AI.AI.Forms.Smart.Identity.SmartIdentity Identity;
+        public readonly OutcomeKind Kind;
+        public readonly float Magnitude;
+        public IdentityOutcome(TechId techId, TAC_AI.AI.Forms.Smart.Identity.SmartIdentity identity,
+            OutcomeKind kind, float magnitude)
+        {
+            TechId = techId;
+            Identity = identity;
+            Kind = kind;
+            Magnitude = magnitude;
+        }
+    }
+
+    /// <summary>
+    /// Smart-internal typed pub/sub bus per WORLD-CONTRACT §5. Synchronous main-thread dispatch.
+    /// Events are value-typed structs; subscribers receive by value (per-call allocation is the
+    /// 16-32 bytes of the struct; no boxing because Action&lt;T&gt; with a struct T does not box).
+    ///
+    /// Subscriber exceptions are caught at the dispatch boundary so one bad subscriber does not
+    /// break the others (per ARCHITECTURE §4 E4).
+    ///
+    /// Phase 3.2 (FIX-PLAN.md): the contract previously said "Workers MUST NOT call Publish
+    /// directly; they route through a main-thread relay." The relay didn't exist — PerceptionWorker
+    /// called <see cref="Publish"/> from a worker thread (AUDIT-R2 §2.R2.G + §2.R2.I). The relay
+    /// is now built in: worker code calls <see cref="PublishFromWorker"/> which enqueues into a
+    /// process-global main-thread queue drained by <see cref="DrainMainThreadQueue"/>. The drain is
+    /// called per-tick by <see cref="SmartForm.Operations"/> (release builds) and additionally per-
+    /// frame by <see cref="SmartTrainingDriver.Update"/> (dev builds, for sub-tick latency).
+    /// </summary>
+    public static class WorldEventBus
+    {
+        // Phase 9 (FIX-PLAN.md) — AUDIT R1 §3.6: prior shape was a List<> + per-Publish
+        // .ToArray() snapshot under lock. That meant the hot Publish path allocated an
+        // Action<TEvent>[] EVERY publish — at combat tempo (DamageObserved,
+        // ProjectileFired several times per second per tech × 32 techs) that was
+        // measurable GC. Switch to copy-on-write: Subscribe/Unsubscribe allocate one
+        // new array; Publish reads the volatile reference with zero allocation.
+        private static class Subscribers<TEvent> where TEvent : struct
+        {
+            public static readonly object Sync = new object();
+            public static Action<TEvent>[] Handlers = System.Array.Empty<Action<TEvent>>();
+        }
+
+        // Phase 3.2 (FIX-PLAN.md): worker-thread → main-thread relay queue.
+        // The queue is unbounded; main-thread tick is expected to drain it within
+        // each frame. If a flood swamps the main loop, the queue grows transiently
+        // — that is a load-shedding signal, not a correctness problem.
+        private static readonly System.Collections.Concurrent.ConcurrentQueue<Action> _mainThreadQueue =
+            new System.Collections.Concurrent.ConcurrentQueue<Action>();
+
+        public static void Subscribe<TEvent>(Action<TEvent> handler) where TEvent : struct
+        {
+            if (handler == null) return;
+            lock (Subscribers<TEvent>.Sync)
+            {
+                var current = Subscribers<TEvent>.Handlers;
+                var next = new Action<TEvent>[current.Length + 1];
+                System.Array.Copy(current, next, current.Length);
+                next[current.Length] = handler;
+                System.Threading.Volatile.Write(ref Subscribers<TEvent>.Handlers, next);
+            }
+        }
+
+        public static void Unsubscribe<TEvent>(Action<TEvent> handler) where TEvent : struct
+        {
+            if (handler == null) return;
+            lock (Subscribers<TEvent>.Sync)
+            {
+                var current = Subscribers<TEvent>.Handlers;
+                int idx = System.Array.IndexOf(current, handler);
+                if (idx < 0) return;
+                if (current.Length == 1)
+                {
+                    System.Threading.Volatile.Write(ref Subscribers<TEvent>.Handlers, System.Array.Empty<Action<TEvent>>());
+                    return;
+                }
+                var next = new Action<TEvent>[current.Length - 1];
+                if (idx > 0) System.Array.Copy(current, 0, next, 0, idx);
+                if (idx < current.Length - 1) System.Array.Copy(current, idx + 1, next, idx, current.Length - 1 - idx);
+                System.Threading.Volatile.Write(ref Subscribers<TEvent>.Handlers, next);
+            }
+        }
+
+        public static void Publish<TEvent>(TEvent ev) where TEvent : struct
+        {
+            // Copy-on-write: read the volatile reference once; iterate without locking.
+            // Subscribe/Unsubscribe always publish a NEW array (atomic ref swap) so this
+            // dispatch sees a stable snapshot. Zero allocation on the hot path.
+            var snapshot = System.Threading.Volatile.Read(ref Subscribers<TEvent>.Handlers);
+            for (int i = 0; i < snapshot.Length; i++)
+            {
+                try { snapshot[i](ev); }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogError(
+                        "Smart.WorldEventBus: subscriber for " + typeof(TEvent).Name +
+                        " threw " + ex.GetType().Name + ": " + ex.Message);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Worker-thread-safe publish path. Captures <paramref name="ev"/> into a closure
+        /// that will be dispatched the next time <see cref="DrainMainThreadQueue"/> runs
+        /// on the main thread. Subscribers always observe the event from the main thread.
+        /// Per FIX-PLAN.md Phase 3.2.
+        /// </summary>
+        public static void PublishFromWorker<TEvent>(TEvent ev) where TEvent : struct
+        {
+            _mainThreadQueue.Enqueue(() => Publish(ev));
+        }
+
+        /// <summary>
+        /// Drain the worker→main-thread relay queue. MUST be called from the main thread
+        /// per tick; <see cref="SmartForm.Operations"/> calls this. Each dequeued action
+        /// dispatches one event via <see cref="Publish"/>. Subscriber exceptions are caught
+        /// by Publish itself; queue-drain itself is exception-safe.
+        /// </summary>
+        public static void DrainMainThreadQueue()
+        {
+            // Cap drain count per call so a flood doesn't starve the main loop.
+            int budget = 256;
+            Action work;
+            while (budget-- > 0 && _mainThreadQueue.TryDequeue(out work))
+            {
+                try { work(); }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogWarning(
+                        "Smart.WorldEventBus.DrainMainThreadQueue: " + ex.GetType().Name + ": " + ex.Message);
+                }
+            }
+        }
+
+        /// <summary>Clear all subscribers. Smart's DeInitGlobal calls this.</summary>
+        public static void ClearAll()
+        {
+            // For each known event type, clear its handler list.
+            // Generic-static dispatch means we can't trivially iterate; we explicitly clear the
+            // types defined in this file. New event types added in other subsystems should be
+            // added here (or a registry pattern adopted).
+            ClearSubscribers<TechSpawned>();
+            ClearSubscribers<TechDespawned>();
+            ClearSubscribers<TechTeamChanged>();
+            ClearSubscribers<TechSeen>();
+            ClearSubscribers<DamageObserved>();
+            ClearSubscribers<ProjectileFired>();
+            ClearSubscribers<WorldSaving>();
+            ClearSubscribers<WorldSaved>();
+            ClearSubscribers<WorldLoading>();
+            ClearSubscribers<WorldLoaded>();
+            ClearSubscribers<BeliefUpdated>();
+            // Phase 10 (FIX-PLAN.md): obsolete event types still allocate per-T statics
+            // when first JITted; clear them inside #pragma so the [Obsolete] warning is
+            // contained to this one place. When v0.2 wires their producers, remove the
+            // pragma block.
+#pragma warning disable CS0618
+            ClearSubscribers<TechLost>();
+            ClearSubscribers<BlockAttached>();
+            ClearSubscribers<BlockDetached>();
+            ClearSubscribers<PlayerJoined>();
+            ClearSubscribers<PlayerLeft>();
+            ClearSubscribers<WorldStarted>();
+            ClearSubscribers<WorldModeSwitched>();
+#pragma warning restore CS0618
+
+            // Phase 3.2 (FIX-PLAN.md): drain the marshal queue so any pending worker-
+            // published events do not leak into a future session's subscribers.
+            Action _;
+            while (_mainThreadQueue.TryDequeue(out _)) { /* discard */ }
+        }
+
+        private static void ClearSubscribers<TEvent>() where TEvent : struct
+        {
+            lock (Subscribers<TEvent>.Sync)
+                System.Threading.Volatile.Write(ref Subscribers<TEvent>.Handlers, System.Array.Empty<Action<TEvent>>());
+        }
+    }
+}

@@ -1018,6 +1018,14 @@ namespace TAC_AI
             firedAfterBlockInjector = true;
         }
 
+        // Phase 3.4 (FIX-PLAN.md): expose save/load lifecycle as static events so the Smart
+        // subsystem (and any future subsystem) can subscribe without competing with the
+        // existing ManSafeSaves registration. Doing == true → pre-save / pre-load; Doing
+        // == false → post-save / post-load. Subscribers must be exception-safe; KickStart
+        // catches and logs.
+        public static event Action<bool> SaveSink;
+        public static event Action<bool> LoadSink;
+
         public static void OnSaveManagers(bool Doing)
         {
             if (Doing)
@@ -1030,6 +1038,8 @@ namespace TAC_AI
                 ManBaseTeams.OnWorldFinishSave();
                 ManWorldRTS.OnWorldFinishSave();
             }
+            try { SaveSink?.Invoke(Doing); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("KickStart.SaveSink: " + ex.Message); }
         }
         public static void OnLoadManagers(bool Doing)
         {
@@ -1044,6 +1054,8 @@ namespace TAC_AI
                 ManBaseTeams.OnWorldLoad();
                 ManWorldRTS.OnWorldLoad();
             }
+            try { LoadSink?.Invoke(Doing); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("KickStart.LoadSink: " + ex.Message); }
         }
 
         internal static FieldInfo limitBreak = typeof(ManPop).GetField("m_PopulationLimit", BindingFlags.NonPublic | BindingFlags.Instance);

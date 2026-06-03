@@ -205,6 +205,22 @@ namespace TAC_AI
                 return;
             UnityEngine.Debug.Log(message + " - " + e + "\n" + StackTraceUtility.ExtractStackTrace().ToString());
         }
+        // ADDED: warning-level routing used by the Smart subsystem (Threading, World, Pathing, Learning,
+        // Training, etc.). Per FIX-PLAN.md Phase 1.1 — adds the symbol every Smart file already calls
+        // through UnityEngine.Debug.LogWarning. Also resolves the WorkerPool static-ctor cascade that
+        // would otherwise raise TypeInitializationException as soon as InstallDefaultHandlers runs.
+        internal static void LogWarning(string message)
+        {
+            if (!ShouldLog)
+                return;
+            UnityEngine.Debug.LogWarning(message);
+        }
+        internal static void LogWarning(string message, Exception e)
+        {
+            if (!ShouldLog)
+                return;
+            UnityEngine.Debug.LogWarning(message + " - " + e + "\n" + StackTraceUtility.ExtractStackTrace().ToString());
+        }
         internal static void LogDevOnly(string message)
         {
             if (!LogDev)

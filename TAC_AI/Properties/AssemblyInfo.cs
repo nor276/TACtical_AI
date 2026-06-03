@@ -34,3 +34,11 @@ using System.Runtime.InteropServices;
 // [assembly: AssemblyVersion("1.0.*")]
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
+
+// Phase 2.2 (FIX-PLAN.md): expose internal types in TAC_AI to sibling Smart-Diagnostics
+// and Smart-Tests assemblies so a developer can read internal SmartRuntime / TeamRuntime /
+// SmartPerTechState / PathingService / LearningService state without making the public API
+// surface load-bearing. Without these the only observation channel is DebugTAC_AI.Log
+// lines — see AUDIT-R2 §2.R2.J (Theme H, "no way to inspect anything").
+[assembly: InternalsVisibleTo("Smart.Diagnostics")]
+[assembly: InternalsVisibleTo("Smart.Tests")]

@@ -65,9 +65,11 @@ namespace TAC_AI.AI.Forms
             if (next == null) return;
             if (ReferenceEquals(next, active)) { ActiveId = nextId; return; }   // no change
             // v2: hand the old form's per-tech state down and bring the new form up (e.g. Vanilla's stock-AI handback)
+            string oldId = active != null ? active.Id : "<null>";
             try { active?.DeInitGlobal(); } catch (System.Exception e) { DebugTAC_AI.LogError("AIFormRegistry: DeInitGlobal failed - " + e.Message); }
             active = next; ActiveId = nextId;
             try { active.InitGlobal(); } catch (System.Exception e) { DebugTAC_AI.LogError("AIFormRegistry: InitGlobal failed - " + e.Message); }
+            DebugTAC_AI.Log("AIFormRegistry.SetActive: '" + oldId + "' -> '" + nextId + "' (requested='" + id + "')");
         }
 
         public static void Clear() { forms.Clear(); active = null; }

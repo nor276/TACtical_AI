@@ -136,26 +136,14 @@ namespace TAC_AI.AI.Enemy.EnemyOperations
                     }
                     else
                     {
-                        // REVISED: turret-fraction DUTY CYCLE - circles (DriveToFacingPerp) while CombatWantsCircleNow()
-                        // is true, else faces the enemy for a firing window. Replaced the old ActionPause > 120
-                        // stop-and-shoot timer; the old mind.Hurt -> randomize actionPause line is gone with it.
-                        if (helper.CombatWantsCircleNow())
-                        {
-                            if (!helper.IsTechMovingAbs(helper.EstTopSped / (AIGlobals.EnemyAISpeedPanicDividend * 2))
-                                || 10 < helper.FrustrationMeter)
-                                helper.TryHandleObstruction(!AIECore.Feedback, dist, false, true, ref direct);
-                            else
-                            {
-                                helper.SettleDown(false);
-                                direct.DriveToFacingPerp();
-                            }
-                        }
-                        else
-                        {
-                            helper.AISetSettings.SideToThreat = false;
-                            helper.SettleDown(false);
-                            direct.DriveToFacingTowards();
-                        }
+                        // Duty cycle reverted: turret-heavy techs no longer crab-walk to AutoSpacing and park
+                        // perpendicular (the Perpendicular branch of LandAICore.DriveMaintainer halts at AutoSpacing
+                        // with no corrective reverse, so the tech sat still rather than orbited). All Circle-attack
+                        // wheeled techs now face & fire when in range. BlockedLineOfSight / ShouldForceContinuousStrafe
+                        // still strafe via MoveSideways above (the legitimate "reposition for a shot" path).
+                        helper.AISetSettings.SideToThreat = false;
+                        helper.SettleDown(false);
+                        direct.DriveToFacingTowards();
                     }
                     break;
                 case EAttackMode.Ranged:

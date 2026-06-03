@@ -47,13 +47,33 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'SteamDev|AnyCPU'">
     <OutputPath>bin\SteamDev\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;STEAM, DEV</DefineConstants>
+    <!-- Phase 1.5 (FIX-PLAN.md): malformed 'STEAM, DEV' (comma+space) produced one symbol
+         literally named 'STEAM, DEV' that #if cannot reference, and SMART_DEV was never
+         defined anywhere, so every file under AI/Forms/Smart/Training/ compiled to an
+         empty translation unit. Fixed to proper semicolon separation and SMART_DEV added
+         so the Training subsystem is actually built in the developer Steam configuration. -->
+    <DefineConstants>TRACE;DEBUG;STEAM;DEV;SMART_DEV</DefineConstants>
     <Optimize>true</Optimize>
     <DebugType>pdbonly</DebugType>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <LangVersion>7.3</LangVersion>
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Dev|AnyCPU'">
+    <!-- Phase 1.5 (FIX-PLAN.md): new lightweight developer configuration that mirrors
+         Debug but defines SMART_DEV so the Training subsystem (SelfPlayHarness,
+         TrainingMatch, EvolutionarySearch, etc.) is compiled. Use this for AI iteration
+         without the full Steam build path. -->
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Dev\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;SMART_DEV</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <LangVersion>7.3</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Ionic.Zlib">
@@ -429,6 +449,96 @@
     <Compile Include="AI\Forms\IAIForm.cs" />
     <Compile Include="AI\Forms\AIFormRegistry.cs" />
     <Compile Include="AI\Forms\Modified\ModifiedForm.cs" />
+    <Compile Include="AI\Forms\Smart\SmartForm.cs" />
+    <Compile Include="AI\Forms\Smart\SmartMovementController.cs" />
+    <Compile Include="AI\Forms\Smart\SmartRuntime.cs" />
+    <Compile Include="AI\Forms\Smart\Control\ContinuousController.cs" />
+    <Compile Include="AI\Forms\Smart\Control\CostFunction.cs" />
+    <Compile Include="AI\Forms\Smart\Control\ManeuverLibrary.cs" />
+    <Compile Include="AI\Forms\Smart\Control\PhysicsRollout.cs" />
+    <Compile Include="AI\Forms\Smart\Control\SamplingMPC.cs" />
+    <Compile Include="AI\Forms\Smart\Control\TacticalOptimizer.cs" />
+    <Compile Include="AI\Forms\Smart\Control\WeaponFireController.cs" />
+    <Compile Include="AI\Forms\Smart\Coordination\Coordinator.cs" />
+    <Compile Include="AI\Forms\Smart\Coordination\GlobalCoordinatorDaemon.cs" />
+    <Compile Include="AI\Forms\Smart\Coordination\LineOfSight.cs" />
+    <Compile Include="AI\Forms\Smart\Coordination\PlanDecomposition.cs" />
+    <Compile Include="AI\Forms\Smart\Coordination\RoleAssignment.cs" />
+    <Compile Include="AI\Forms\Smart\Coordination\TargetAssignment.cs" />
+    <Compile Include="AI\Forms\Smart\Coordination\TeamBelief.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\AircraftHunterGoalSource.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\AircraftSupportGoalSource.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\BaseGoalSource.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\GathererGoalSource.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\HunterGoalSource.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\SmartIdentity.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\SmartIdentityClassifier.cs" />
+    <Compile Include="AI\Forms\Smart\Identity\SniperGoalSource.cs" />
+    <Compile Include="AI\Forms\Smart\Integration\SmartEventBridge.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\ActionValueEstimator.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\LearningService.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\Migrations\0001_initial_schema.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\OnlineTrainer.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\OpponentIntentClassifier.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\ProfilePersistence.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\ThreatAssessmentModel.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\TrajectoryResidualModel.cs" />
+    <Compile Include="AI\Forms\Smart\Pathing\CapabilityFilters.cs" />
+    <Compile Include="AI\Forms\Smart\Pathing\PathingService.cs" />
+    <Compile Include="AI\Forms\Smart\Pathing\TerrainMap.cs" />
+    <Compile Include="AI\Forms\Smart\Pathing\ThreatField.cs" />
+    <Compile Include="AI\Forms\Smart\Pathing\TrajectoryOptimizer.cs" />
+    <Compile Include="AI\Forms\Smart\Planning\GlobalPlannerDaemon.cs" />
+    <Compile Include="AI\Forms\Smart\Planning\PlanLibrary.cs" />
+    <Compile Include="AI\Forms\Smart\Planning\PUCTSearch.cs" />
+    <Compile Include="AI\Forms\Smart\Planning\StrategicPlanner.cs" />
+    <Compile Include="AI\Forms\Smart\Planning\StrategicRollout.cs" />
+    <Compile Include="AI\Forms\Smart\Planning\StrategicState.cs" />
+    <Compile Include="AI\Forms\Smart\Planning\StrategicValueFunction.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\BoundedQueue.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\CancellationHelpers.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\CircuitBreaker.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\DoubleBuffer.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\MarshallingPatterns.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\ThreadingDiagnostics.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\WorkerLifecycleRegistry.cs" />
+    <Compile Include="AI\Forms\Smart\Threading\WorkerPool.cs" />
+    <Compile Include="AI\Forms\Smart\Training\EvolutionarySearch.cs" />
+    <Compile Include="AI\Forms\Smart\Training\OutcomeScorer.cs" />
+    <Compile Include="AI\Forms\Smart\Training\PretrainingPipeline.cs" />
+    <Compile Include="AI\Forms\Smart\Training\ScenarioGenerator.cs" />
+    <Compile Include="AI\Forms\Smart\Training\SelfPlayHarness.cs" />
+    <Compile Include="AI\Forms\Smart\Training\SmartTrainingDriver.cs" />
+    <Compile Include="AI\Forms\Smart\Training\TrainingMatch.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\ArchetypeProbe.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\ArmorMap.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\BlockArchetype.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\BlockInstancePose.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\BlockKindCounts.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\BlockKindFlags.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\ChassisCapture.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\ChassisFixtureGate.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\EmitterKind.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\KinematicTracker.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\MassDistribution.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\MobilityProfile.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\PropulsionTopology.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\ThrustEmitter.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\ThrustField.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\TypedBlockCatalog.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\VehicleModel.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\WeaponProfile.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\WeaponSpec.cs" />
+    <Compile Include="AI\Forms\Smart\World\AetherFuser.cs" />
+    <Compile Include="AI\Forms\Smart\World\AetherTuning.cs" />
+    <Compile Include="AI\Forms\Smart\World\BeliefState.cs" />
+    <Compile Include="AI\Forms\Smart\World\DeadReckon.cs" />
+    <Compile Include="AI\Forms\Smart\World\EventBus.cs" />
+    <Compile Include="AI\Forms\Smart\World\MonoClock.cs" />
+    <Compile Include="AI\Forms\Smart\World\ObservationIntake.cs" />
+    <Compile Include="AI\Forms\Smart\World\Observer.cs" />
+    <Compile Include="AI\Forms\Smart\World\SightState.cs" />
+    <Compile Include="AI\Forms\Smart\World\WorldModel.cs" />
     <Compile Include="AI\Forms\Vanilla\VanillaMovementController.cs" />
     <Compile Include="AI\Forms\Vanilla\VanillaForm.cs" />
     <Compile Include="AI\Engine\Registry\AIModuleRegistry.cs" />

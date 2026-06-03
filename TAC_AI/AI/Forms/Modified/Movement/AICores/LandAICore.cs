@@ -540,9 +540,10 @@ namespace TAC_AI.AI.Movement.AICores
                 core.DriveDir = EDriveFacing.Forwards;
                 helper.UpdateEnemyDistance(targPos);
                 float driveDyna = Mathf.Clamp((helper.lastCombatRange - helper.MinCombatRange) / 3f, -1, 1);
-                // REVISED: circle-vs-face is now gated on CombatWantsCircleNow() (turret-fraction duty cycle); SideToThreat
-                // alone no longer forces the Perpendicular broadside, so the FACE (Forwards) branch runs during the face phase.
-                if ((helper.SideToThreat && helper.CombatWantsCircleNow()) || (helper.BlockedLineOfSight && helper.AdvancedAI))
+                // Duty-cycle Perpendicular orbit removed - turret-heavy allied techs no longer crab-walk to AutoSpacing
+                // and park (the Perpendicular DriveMaintainer halts at AutoSpacing with no corrective reverse, so the
+                // tech sat still). BlockedLineOfSight + AdvancedAI keeps the legitimate strafe-for-line-of-sight branch.
+                if (helper.BlockedLineOfSight && helper.AdvancedAI)
                 {
                     core.DriveDir = EDriveFacing.Perpendicular;
                     if (helper.FullMelee)

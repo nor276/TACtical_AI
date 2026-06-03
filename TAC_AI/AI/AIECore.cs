@@ -476,12 +476,13 @@ namespace TAC_AI.AI
         // HandlingDetermine will short-circuit on concrete terrains (Land/Sea/Air/Chopper/Space) and treat
         // Any / AnyNonSea as "author opted out" - heuristic owns those. Player block edits flip
         // AuthoredHintInvalidated true and the heuristic takes back over.
-        public static void StampAuthoredIntent(Tank tank, BaseTerrain terrain)
+        public static void StampAuthoredIntent(Tank tank, BaseTerrain terrain, System.Collections.Generic.HashSet<BasePurpose> purposes = null)
         {
             if (tank == null) return;
             var helper = tank.GetComponent<TankAIHelper>();
             if (helper == null) return;
             helper.AuthoredTerrain = terrain;
+            helper.AuthoredPurposes = purposes;
             helper.AuthoredHintInvalidated = false;
         }
 

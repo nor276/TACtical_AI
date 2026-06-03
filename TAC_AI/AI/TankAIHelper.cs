@@ -48,6 +48,10 @@ namespace TAC_AI.AI
         // declaration, the heuristic should take back over.
         internal BaseTerrain AuthoredTerrain = BaseTerrain.Any;
         internal bool AuthoredHintInvalidated = false;
+        // Authored RawTech purposes (Headquarters / Defense / Harvesting / Sniper / ...) stamped at spawn
+        // alongside AuthoredTerrain. May be null on player-built / unauthored techs - consumers MUST null-check.
+        // Modified form ignores this; Smart form's IdentityClassifier reads it.
+        internal System.Collections.Generic.HashSet<BasePurpose> AuthoredPurposes;
         // REVISED: AutoSet with a built tank now resolves the driver immediately via ExecuteAutoSetNoCalibrate instead of storing AutoSet verbatim; controller swap routed through RequestMovementControllerSwap.
         public void SetDriverType(AIDriverType driverType)
         {

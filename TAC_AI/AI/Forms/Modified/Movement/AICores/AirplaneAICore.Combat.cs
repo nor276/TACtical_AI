@@ -121,7 +121,9 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else if (driveDyna == 1)
                     {
-                        core.DriveDir = EDriveFacing.Perpendicular;
+                        // Too far for a strafing run - close in first. Strafing-while-far meant the aircraft
+                        // flew sideways at long range and never reached engagement distance.
+                        core.DriveDir = EDriveFacing.Forwards;
                         pos = Helper.AvoidAssistPrediction(Helper.RoughPredictTarget(Helper.lastEnemyGet.tank), pilot.AerofoilSluggishness);
                     }
                     else if (driveDyna < 0)

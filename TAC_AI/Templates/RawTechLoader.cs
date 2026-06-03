@@ -1098,8 +1098,9 @@ namespace TAC_AI.Templates
             // REVISED: FixupAnchors call is no longer null-conditional; changed from theTech?.FixupAnchors
             theTech.FixupAnchors(true);
 
-            // Stamp the authored terrain so HandlingDetermine can short-circuit on a concrete declaration.
-            AIECore.StampAuthoredIntent(theTech, toSpawn.terrain);
+            // Stamp the authored terrain + purposes so HandlingDetermine can short-circuit on a concrete declaration
+            // (terrain) and Smart's IdentityClassifier can read authored intent (purposes).
+            AIECore.StampAuthoredIntent(theTech, toSpawn.terrain, toSpawn.purposes);
 
             return theTech;
         }
@@ -2260,8 +2261,9 @@ namespace TAC_AI.Templates
 
                 DebugTAC_AI.LogAISetup(KickStart.ModID + ": InstantTech - Built " + name);
 
-                // Stamp the authored terrain so HandlingDetermine can short-circuit on a concrete declaration.
-                AIECore.StampAuthoredIntent(theTech, filter.Terrain);
+                // Stamp the authored terrain + purposes so HandlingDetermine can short-circuit on a concrete declaration
+                // (terrain) and Smart's IdentityClassifier can read authored intent (purposes).
+                AIECore.StampAuthoredIntent(theTech, filter.Terrain, filter.Purposes);
 
                 return theTech;
             }
@@ -2310,9 +2312,10 @@ namespace TAC_AI.Templates
 
             DebugTAC_AI.Log(KickStart.ModID + ": InstantTech - Built " + name);
 
-            // Stamp the authored terrain from the RawTech (BT.terrain is the most reliable source - it's the
-            // author's declaration on the source blueprint, not the filter which may have been defaulted).
-            AIECore.StampAuthoredIntent(theTech, BT.terrain);
+            // Stamp the authored terrain + purposes from the RawTech (BT.terrain is the most reliable source - it's the
+            // author's declaration on the source blueprint, not the filter which may have been defaulted). Purposes
+            // are read by Smart's IdentityClassifier.
+            AIECore.StampAuthoredIntent(theTech, BT.terrain, BT.purposes);
 
             return theTech;
         }

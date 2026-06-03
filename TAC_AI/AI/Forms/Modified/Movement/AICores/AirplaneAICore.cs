@@ -867,7 +867,11 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                 }
                 else
-                    pilot.PathPointSet = AIEPathing.SnapOffsetFromGroundA(pilot.Tank.boundsCentreWorldNoCheck + pilot.Tank.rootBlockTrans.forward, Helper);
+                    // No-target idle: lift-only OffsetFromGroundA, not SnapOffsetFromGroundA. Snap would FORCE the
+                    // PathPointSet down to terrain+offset altitude, and when the aircraft is currently above that the
+                    // tech sees a downward heading - dives - PreventCollisionWithGround pulls it back up - next tick
+                    // snaps it down again. Pure oscillation. Lift-only keeps the aircraft's current altitude.
+                    pilot.PathPointSet = AIEPathing.OffsetFromGroundA(pilot.Tank.boundsCentreWorldNoCheck + pilot.Tank.rootBlockTrans.forward, Helper);
             }
             else
             {
@@ -903,7 +907,9 @@ namespace TAC_AI.AI.Movement.AICores
                     }
                     else
                     {
-                        pilot.PathPointSet = AIEPathing.SnapOffsetFromGroundA(pilot.Tank.boundsCentreWorldNoCheck + pilot.Tank.rootBlockTrans.forward, Helper);
+                        // Lift-only (see comment above) - prevents the nose-dive / pull-up oscillation when there's
+                        // no live target and lastPlayer is unavailable.
+                        pilot.PathPointSet = AIEPathing.OffsetFromGroundA(pilot.Tank.boundsCentreWorldNoCheck + pilot.Tank.rootBlockTrans.forward, Helper);
 
                     }
                 }
