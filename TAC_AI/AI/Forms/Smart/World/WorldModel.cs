@@ -35,8 +35,14 @@ namespace TAC_AI.AI.Forms.Smart.World
     /// via the DoubleBuffer publish, with the field write itself benign as a reference swap
     /// (readers see either the old or new reference, both fully constructed).
     /// </summary>
-    public sealed class WorldModel
+    public sealed class WorldModel : ITechSidecar
     {
+        // L-028 ITechSidecar wiring. Forget aliases the existing DeregisterTech.
+        public string Name => "WorldModel";
+        public void Forget(TechId id) => DeregisterTech(id);
+        public System.Collections.Generic.IReadOnlyCollection<TechId> SnapshotKeys()
+            => (System.Collections.Generic.IReadOnlyCollection<TechId>)_byTech.Keys;
+
         private readonly System.Collections.Concurrent.ConcurrentDictionary<TechId, PerTechEntry> _byTech;
         private readonly DoubleBuffer<BeliefSnapshot> _fusedBuffer;
         private readonly ObservationIntake _intake;
@@ -81,6 +87,12 @@ namespace TAC_AI.AI.Forms.Smart.World
             PerTechEntry _;
             if (!_byTech.TryRemove(id, out _)) return false;
             _intake.Remove(id);
+            // L-083: the hard-coded per-sidecar fan-out lived here AND in SmartRuntime.Deregister
+            // — duplicated cleanup that drifted apart subtly when new sidecars landed. Now
+            // SmartRuntime.Deregister owns the TechLifecycleRegistry.ForgetAll fan-out
+            // (L-055); WorldModel just publishes TechDespawned and lets the registry handle
+            // the rest. SmartRuntime.Deregister callers that pass through WorldModel still
+            // get the registry fan-out via their own SmartRuntime.Deregister call.
             WorldEventBus.Publish(new TechDespawned(id));
             return true;
         }

@@ -46,6 +46,12 @@ namespace TAC_AI.AI.Forms.Smart.Planning
                 }
             }
             catch (System.OperationCanceledException) { throw; }
+            // L-024: explicit TAE catch. Per-team Planner shares the GlobalPlanner storm window.
+            catch (System.Threading.ThreadAbortException)
+            {
+                if (TAC_AI.AI.Forms.Smart.Threading.AbortGuard.Absorb("GlobalPlanner")
+                    == TAC_AI.AI.Forms.Smart.Threading.AbortGuard.AbortAction.ExitForRespawn) throw;
+            }
             catch (System.Exception ex)
             {
                 DebugTAC_AI.LogWarning("Smart.StrategicPlanner: " + ex.GetType().Name + ": " + ex.Message);

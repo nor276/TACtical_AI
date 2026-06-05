@@ -363,13 +363,14 @@ public static class CoordinationCommsBus
 | File | Owns |
 |---|---|
 | `Coordinator.cs` | Orchestration, tick flow, `CoordinationState` publication. |
-| `TeamBelief.cs` | LOS aggregation, observation injection into World, comms-bus interface. |
-| `LineOfSight.cs` | Per-friendly LOS computation (`ManVisible` lookup, raycast fallback). |
+| ~~`TeamBelief.cs`~~ | **REV 7 P5 Item 22:** DELETED (orphaned — zero `new TeamBelief(` callers). LOS aggregation inlined in `TeamRuntime.BuildTeamSnapshot` at `SmartRuntime.cs:401-429`; comms-bus interface is `WorldEventBus` directly. |
+| `LineOfSight.cs` | Per-friendly LOS computation (`ManVisible` lookup, raycast fallback). Self-mask fix in REV 7 P5 prerequisite (`RaycastAll` + skip own colliders). |
+| `LineOfSightProducer.cs` | **REV 7 P5 Item 23:** main-thread producer (round-robin observer cursor, 64-rays-per-frame cap, 150ms cadence). Per-team `DoubleBuffer<Dictionary<TechId, List<TechId>>>` published snapshot consumed by `TeamRuntime.BuildTeamSnapshot`. |
 | `TargetAssignment.cs` | Cost matrix construction + Hungarian solver. |
 | `RoleAssignment.cs` | Rule-based role assignment + slot for learned adjustment. |
 | `PlanDecomposition.cs` | Per-plan `Decompose<PlanName>` functions. |
 
-Six files. Within [FORM-SPEC §5.10](FORM-SPECIFICATION.md#section-5-ai-collaborator-directives)'s range. (Note: TeamBelief and LineOfSight are split because the LOS math is one coherent unit independent of how observations are aggregated; merging would couple two concepts.)
+Six files (REV 7 P5: TeamBelief deleted, LineOfSightProducer added — same count). Within [FORM-SPEC §5.10](FORM-SPECIFICATION.md#section-5-ai-collaborator-directives)'s range.
 
 ---
 

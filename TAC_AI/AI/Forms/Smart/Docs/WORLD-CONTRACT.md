@@ -53,58 +53,75 @@ World/ owns three coupled concerns:
 
 ---
 
-## SECTION 2: BELIEF STATE
+## SECTION 2: BELIEF STATE — AETHER TRACE MODEL
+
+> **REV 7 (v0.2):** §2/§3/§4 were originally a 7D Gaussian + Kalman + covariance-decay design. The implementation that shipped is **Aether** — an immutable per-tech *trace* (last-observed anchors + age-driven uncertainty) computed by closed-form dead-reckoning rather than matrix arithmetic. Pre-Aether section text is preserved as `SUPERSEDED-BY-AETHER` cross-references in `AUDIT.md` / `FIX-PLAN.md`; this contract now describes the live design. Authoritative architectural narrative: [AETHER-DESIGN.md](AETHER-DESIGN.md).
 
 ### 2.1 Structure
 
-[NORMATIVE] Per observed tech, the belief state is:
+[NORMATIVE] Per observed tech, the belief state is an **immutable trace** of the most recent observation, plus pre-baked coast-extrapolated fields and a single scalar `UncertaintyMeters`. The class name `BeliefState` is preserved — many consumers reference it — but the shape is **not** a Gaussian:
 
-```
-public sealed class BeliefState
+```csharp
+public sealed class BeliefState   // sealed, immutable; constructed only via BeliefStateFactory
 {
-    public readonly TechId Id;
-    public readonly TeamId Team;                          // ally/neutral/hostile
+    public readonly TechId       Id;
+    public readonly TeamId       Team;
 
-    // Continuous state: position + velocity + heading (7D).
-    public readonly Vector7 Mean;
-    public readonly Matrix7x7 Covariance;
+    // Anchors — frozen at the last observation; never mutated thereafter.
+    public readonly Vector3      LastSeenPosition;
+    public readonly Vector3      LastSeenVelocity;
+    public readonly Vector3      LastSeenForward;          // unit 3-vector; pitch/roll preserved (aircraft)
+    public readonly long         LastObservedTickMono;     // Stopwatch.GetTimestamp source
+    public readonly long         PublishedTickMono;        // the perception tick that built this trace
+    public readonly float        SpeedAtObserve;           // |LastSeenVelocity|, cached
+    public readonly float        MaxAccelerationEstimate;  // kinematic bound for uncertainty growth
 
-    // Categorical intent distribution.
-    public readonly IReadOnlyList<float> IntentProbs;    // length = NumIntentCategories; sums to 1.0
+    // Sight transitions — see §4 for the staleness state machine.
+    public readonly SightState   Sight;                    // Fresh | Coasting | Stale | Lost
 
-    // Bookkeeping.
-    public readonly long LastObservedTick;
-    public readonly bool InSight;                          // true if observation occurred this tick
-    public readonly float MaxAccelerationEstimate;        // from Vehicle.VehicleModel.Mobility
+    // Pre-baked at publish time so consumers do field loads, not method calls.
+    public readonly Vector3      PositionMean;             // coast-extrapolated to PublishedTickMono
+    public readonly Vector3      VelocityMean;             // age-decayed to PublishedTickMono
+    public readonly Vector3      ForwardXZ;                // LastSeenForward, XZ-normalized
+    public readonly float        HeadingMean;              // Atan2(ForwardXZ.x, ForwardXZ.z), pre-baked
+    public readonly float        AgeSeconds;               // cached at publish
+    public readonly float        UncertaintyMeters;        // closed-form kinematic radius (single scalar)
+
+    // Compatibility shims — same property names AS v0.1, zero consumer source change.
+    public bool   InSight          => Sight == SightState.Fresh;
+    public long   LastObservedTick => LastObservedTickMono;
+    // PositionVariance: invariant `3·U²` shim satisfying both (pv.x+pv.z) and (pv.x+pv.y+pv.z) consumers.
+    public Vector3 PositionVariance => new Vector3(UncertaintyMeters * UncertaintyMeters, …, …);
+
+    // Coast-aware accessors — opt-in; consumers that need NOW values instead of publish-tick values.
+    // dt resolves via MonoClock.TickFreq so callers don't thread it through.
+    // Lost-state clamp: when Sight == Lost, PositionAt → LastSeenPosition, VelocityAt → zero,
+    // ConfidenceAt → 0. None extrapolate beyond LostAfterSec.
+    public Vector3 PositionAt(long nowMono);
+    public Vector3 VelocityAt(long nowMono);
+    public float   ConfidenceAt(long nowMono);             // 1.0 if Fresh; linear 1→0 across Stale; 0 if Lost
 }
 ```
 
-[NORMATIVE] `Vector7` packs `(posX, posY, posZ, velX, velY, velZ, heading)`. Heading is a scalar (yaw angle) for compactness; pitch/roll are not tracked at the belief level (they're rarely actionable for planning).
+[NORMATIVE] `BeliefState` is sealed, immutable, and produced exclusively via `BeliefStateFactory`. The shape carries **no covariance matrix** and **no intent distribution** — both were removed in the Aether migration. The single uncertainty channel is `UncertaintyMeters`, derived from `(AgeSeconds, MaxAccelerationEstimate)` by a closed-form kinematic bound (§3.3).
 
-[NORMATIVE] The 7×7 covariance MUST stay positive semi-definite at every update. The Kalman update (§3) preserves this property mathematically; numerical reinforcement (e.g., Joseph form, or symmetrization + small diagonal regularization) is applied after every update to prevent floating-point drift.
+[NORMATIVE] `Vector3 PositionVariance` is a back-compat shim. Live production consumers read it as a scalar trace (`pv.x + pv.z` in `SmartRuntime.SummarizeBelief`); the shim returns three identical squared-uncertainty entries so both 2-axis and 3-axis trace readers see consistent values. New code SHOULD read `UncertaintyMeters` directly.
 
-### 2.2 Intent categories
+### 2.2 Intent — DELETED IN AETHER, SIDECAR IN v0.2
 
-[NORMATIVE] The intent category set is small and stable. Initial set (provisional per [FORM-SPECIFICATION.md §1 disclaimer](FORM-SPECIFICATION.md)):
+[NORMATIVE] The v0.1 6-category intent distribution (`Aggressing / Retreating / Flanking / Repositioning / Holding / Idle`) is **not part of `BeliefState`**. The historical reasoning was that Learning's intent classifier would fill it; the live consumer count for this field across v0.1 + v0.2 is **zero**, so the field was removed entirely with Aether.
 
-- Aggressing — actively closing on a target.
-- Retreating — moving away from threats.
-- Flanking — moving to a side angle on a target.
-- Repositioning — moving without an obvious target relationship.
-- Holding — stationary or near-stationary.
-- Idle — no apparent goal (typical of unmanned scenery techs).
+[NORMATIVE] **v0.2 sidecar (P4 Item 10):** intent classification is now an **opt-in producer-only sidecar** — `IntentRegistry` (`World/IntentRegistry.cs`), owned by `SmartRuntime.IntentSidecar`. The category enum and any consumer surface remain forward-looking; producers may write to the sidecar without affecting the trace. No v0.2 consumer reads intent. When intent does become consumed (post-v0.2), the registry feeds it; it never goes back into the immutable trace.
 
-[NORMATIVE] The category set is owned by this contract; consumers (Planning, Learning) reference these categories by index. Adding/removing a category is a Vehicle-level contract change.
-
-[NORMATIVE] Intent classification is performed by Learning's intent classifier when that subsystem is authored. Until then, World's perception worker assigns the prior — uniform distribution over Aggressing/Retreating/Flanking/Holding for hostile techs, biased toward Holding/Idle for allies and neutrals.
+[RATIONALE] Keeping intent off the trace preserves the trace's hot-path size (~120 B per tech vs the prior ~250 B), avoids the publish-time cost of carrying a value no live consumer reads, and lets the sidecar be replaced or extended without touching the dozens of code paths that hold a `BeliefState` reference.
 
 ### 2.3 Immutability and publishing
 
-[NORMATIVE] `BeliefState` is immutable. Every update produces a new instance. The perception worker publishes the current belief per tech via `DoubleBuffer<BeliefState>`. Consumers read the latest snapshot without locks.
+[NORMATIVE] `BeliefState` is constructed once per Aether tick (or once at register) and never mutated. The Aether fuser (§3) publishes per-tech traces and a single fused `BeliefSnapshot` via `DoubleBuffer<T>`. Consumers read the latest snapshot lock-free.
 
-[NORMATIVE] The full world snapshot — every tech's current belief — is also published as a single `BeliefSnapshot` via a separate `DoubleBuffer<BeliefSnapshot>`. This is what team-level Planning reads.
+[NORMATIVE] `BeliefSnapshot` is unchanged in shape from v0.1:
 
-```
+```csharp
 public sealed class BeliefSnapshot
 {
     public readonly long TickStamp;
@@ -112,106 +129,95 @@ public sealed class BeliefSnapshot
 }
 ```
 
-[RATIONALE] Per-tech buffers serve single-tech consumers (e.g., a Control loop for one of our own techs). The fused snapshot serves team-level consumers. Maintaining both is cheap (the fused snapshot is constructed once per perception tick from the same data).
+[NORMATIVE] **Fresh-dictionary-per-publish:** `ByTech` is a freshly-allocated `Dictionary<TechId, BeliefState>` each tick. This is the v0.1 `PerceptionWorker` pattern preserved verbatim — consumers may hold a snapshot reference across many ticks; mutating the dict would break them.
+
+[RATIONALE] Per-tech buffers serve single-tech consumers (e.g., a Control loop). The fused snapshot serves team-level consumers (Planner, Coordinator, ThreatField). Both are cheap to maintain; the fused snapshot is built once per Aether tick from the same trace cache.
 
 ---
 
-## SECTION 3: KALMAN UPDATE
+## SECTION 3: AETHER FUSION (REPLACES KALMAN UPDATE)
 
-### 3.1 Process model (propagation)
+> **Migration note:** prior text described a 7×7 Kalman with per-tick covariance propagation and matrix gain. None of that exists in the v0.2 codebase. The four numerical guards that defended the matrix path (`HasTooLarge` reset, `sDiag` floor 1e-3, positive-diagonal clamp 1e-6, `Symmetrize`) are deleted with their owner. See [AETHER-DESIGN.md "Costs the redesign eliminates"](AETHER-DESIGN.md) for the K-amplification class and PSD-violation failure modes that no longer exist.
 
-[NORMATIVE] Each tick, every belief is propagated forward by the elapsed time `dt`:
+### 3.1 Fuser cadence and ownership
 
-```
-F = [I  dt*I  0]    # 7x7 state transition: position += velocity*dt; velocity, heading unchanged
-    [0   I   0]
-    [0   0   1]
+[NORMATIVE] `AetherFuser` (`World/AetherFuser.cs`) is the sole producer of `BeliefState` traces. It runs as a long-running worker enqueued by `SmartRuntime.Init` at the ~33 ms (~30 Hz) cadence preserved from v0.1.
 
-x' = F * x
-P' = F * P * F^T + Q
+[NORMATIVE] Each fuser tick:
+1. **Drain** pending position observations from the per-tech intake queues (filled by main-thread `Observer.Submit` from `SmartForm.ObserveWorldTechsIfDue`, cadence-matched at ~33 ms).
+2. **Per tech in the drain set:** build a new immutable `BeliefState` via `BeliefStateFactory.NewlyObserved(...)` — anchors snapshot the just-drained observation; pre-baked fields are computed inline.
+3. **Per tech NOT in the drain set:** if the trace is younger than `LostAfterSec`, build a new immutable `BeliefState` via `BeliefStateFactory.Coast(prior, nowMono)` — anchors carry forward; pre-baked fields advance per the closed-form coast model (§3.2); `SightState` transitions per §4.
+4. **Publish** the per-tech trace into the per-tech `DoubleBuffer`. Build the fused dictionary (§2.3); publish it via `FusedBuffer.Write`.
 
-where Q is the process noise covariance, derived from the tech's max acceleration estimate:
-  Q[velocity block] = (max_accel * dt)^2 * I
-  Q[position block] = (max_accel * dt^2 / 2)^2 * I
-  Q[heading]        = (max_angular_accel * dt)^2
-```
+[NORMATIVE] The fuser owns its iteration order; no Operations or Coordinator code reads a partially-published snapshot. Publish points (per-tech buffer write + fused buffer write) are the *only* memory-visibility barriers consumers see — between them, the fuser may take seconds to traverse a large tech population without breaking anyone.
 
-[NORMATIVE] The propagation runs in the perception worker for every tracked tech. Cost is O(N_techs) per tick; matrices are 7×7 (cheap).
+### 3.2 Position / velocity dead-reckoning (no matrix arithmetic)
 
-[RATIONALE] Coupling the process noise to the tech's max acceleration (from VehicleModel.Mobility) gives kinematically consistent uncertainty — a fast tech's belief spreads faster than a slow one's. This is more accurate than a constant process noise.
+[NORMATIVE] When a tech is observed (`Fresh`), the trace anchors snapshot `tank.boundsCentreWorldNoCheck`, `tank.rbody.velocity`, and `tank.rootBlockTrans.forward` *unmodified* — the observations are **deterministic noiseless reads** of engine state; no measurement-noise term applies. Decision **D2** (see [AETHER-DESIGN.md](AETHER-DESIGN.md)) made the lack of input smoothing explicit; raw rbody velocity becomes `LastSeenVelocity` without an EWMA pre-filter. A physics-frame velocity spike is bounded by the kinematic accelerator (§3.3) and visible to downstream consumers, matching the `organic-vs-bug design value` (memory).
 
-### 3.2 Measurement model (sighted observation)
-
-[NORMATIVE] When a tech is in sight (within `ManVisible` range and not occluded), the perception worker captures `KinematicState` from Vehicle:
+[NORMATIVE] When the tech is NOT observed (`Coasting` or `Stale`), `PositionMean` / `VelocityMean` are computed by closed-form damped extrapolation rather than by matrix propagation:
 
 ```
-z = (positionWorld, velocityWorld, headingYaw)    # 7D measurement
-H = I_7x7                                          # direct observation
-R = diag(positionVariance, velocityVariance, headingVariance)
-                                                   # measurement noise depends on observation quality
+dt              = (nowMono - LastObservedTickMono) * MonoClock.TickFreq    // seconds since last observation
+velocityDecay   = exp(-dt / VelocityDecayTimeConstant)                     // exponential damping toward zero
+VelocityMean    = LastSeenVelocity * velocityDecay
+PositionMean    = LastSeenPosition + LastSeenVelocity * VelocityDecayTimeConstant * (1 - velocityDecay)
+                                                                            // analytic integral of (LastVel · exp(-t/τ))
 ```
 
-Kalman gain and update:
+[NORMATIVE] `VelocityDecayTimeConstant` is provisional (~10 s — the v0.1 design's velocity decay constant, kept). The decay is mild: a tech we haven't seen for 10 s is increasingly likely to have stopped, but a tech moving fast in a known direction is still moving in that direction for the first second or two of coasting.
+
+### 3.3 Uncertainty growth — single scalar, closed-form
+
+[NORMATIVE] `UncertaintyMeters` replaces the 49-float covariance entirely. It is computed at publish time from the kinematic bound:
 
 ```
-y = z - H * x'                                    # innovation
-S = H * P' * H^T + R                              # innovation covariance
-K = P' * H^T * S^-1                               # Kalman gain
-x = x' + K * y
-P = (I - K * H) * P'                              # Joseph form preferred for numerical stability
+UncertaintyMeters = 0.5 * MaxAccelerationEstimate * AgeSeconds²
 ```
 
-### 3.3 Measurement noise R
+i.e. the radius a tech could have traversed under maximum acceleration from rest in `AgeSeconds`. This is monotone in age and proportional to `MaxAccelerationEstimate` — fast techs' uncertainty grows faster, the same physical intuition the prior process-noise design carried.
 
-[NORMATIVE] Measurement noise is provisional:
-- Position variance: 0.5 m² when directly observed; 2 m² when observation is at long range or partially occluded.
-- Velocity variance: 1 m²/s² when directly observed; 4 m²/s² when noisy.
-- Heading variance: 0.05 rad² when directly observed.
+[NORMATIVE] No clamping is applied at the production site. Once `AgeSeconds > LostAfterSec` the trace transitions to `SightState.Lost` (§4); `UncertaintyMeters` continues to be reported but consumers SHOULD gate on `Sight == Lost` rather than on a radius threshold (no v0.2 consumer compares `UncertaintyMeters > N`).
 
-These values are starting points (per [FORM-SPECIFICATION.md §1 disclaimer](FORM-SPECIFICATION.md)) and tuned during self-play.
+### 3.4 Observation events outside the perception pass
 
-### 3.4 Sparse / inferred observations
+[NORMATIVE] Some events convey position evidence outside the periodic observation sweep:
+- **`DamageObserved`** at one of our techs — published by `SmartEventBridge` per-tank `DamageEvent` (P3.3 / R2 §2.R2.J). Routed to `LearningService.OnDamageObserved` + `DamageHintBuffer` (P4 Item 11 sidecar). **No v0.2 consumer feeds damage hints back into the trace** — `BeliefState` is observation-driven only. The DamageHintBuffer surface is producer-only at ship; v0.3 facing-threat orbit may consume it.
+- **`BlockDestroyed`** on a hostile tech — confirms the tech still exists. Producer-only at v0.2; the periodic sweep will pick up the fresh kinematics on the next tick.
+- **`ProjectileFired`** — telegraphs the firing tech's pose. No v0.2 consumer; this hook is reserved for v0.3 lead-aim work.
 
-[NORMATIVE] Some events update the belief without full state observation:
-- **DamageObserved** at one of our techs from direction D → updates the *hostile* tech's position estimate in direction D, with high position variance and no velocity update.
-- **ProjectileFired** observed by sight → updates the firing tech's last-known position, velocity weakly inferred.
-- **BlockDestroyed** on a hostile tech → confirms position estimate (the tech is still there).
-
-[NORMATIVE] These sparse-observation cases are handled by partial Kalman updates with `H` and `R` matching the sparse measurement. Implementation owns the per-event-type translation; the contract requires that all observation paths flow through the same Kalman update mechanism (no special-case branches outside the math).
+[NORMATIVE] Aether deliberately does **not** mix sparse observation evidence into the trace. Every trace value comes from `Observer.Submit` (the main-thread periodic sweep) or `RegisterTech` (the initial snapshot). The Sparse-Kalman-update path the v0.1 contract called for never existed in the v0.1 code and is not in v0.2.
 
 ---
 
-## SECTION 4: DECAY MODEL (OUT OF SIGHT)
+## SECTION 4: STALENESS AND COASTING (REPLACES DECAY MODEL)
 
-### 4.1 Variance growth
+### 4.1 SightState machine — discrete, age-driven
 
-[NORMATIVE] When a tech is NOT in sight, no measurement update applies; only the propagation step runs each tick. The covariance grows monotonically, bounded by the kinematic process noise (§3.1).
+[NORMATIVE] Each `BeliefState` carries a single `SightState` byte representing how recently the tech was observed. Transitions are driven by `AgeSeconds` at publish time:
 
-[NORMATIVE] After `T` ticks out of sight, the position-component variance scales approximately as `(max_accel * T * dt)^2 / 4` (the kinematic position uncertainty bound). The covariance does not grow unboundedly; once it exceeds a "fully unknown" threshold (e.g., position variance > 200 m²), Smart treats the tech as effectively lost — the belief is preserved (so re-acquisition can collapse it) but Planning treats it as "not actively tracked."
+| State | Condition | Meaning |
+|---|---|---|
+| `Fresh` | `AgeSeconds < CoastingAfterSec` (default ≈ 0.1 s) | observed this perception tick — anchors and pre-baked fields are the just-drained observation |
+| `Coasting` | `CoastingAfterSec ≤ AgeSeconds < StaleAfterSec` (default ≈ 1 s) | not observed this tick but still moving on the prior anchor; coast extrapolation is trustworthy |
+| `Stale` | `StaleAfterSec ≤ AgeSeconds < LostAfterSec` (default ≈ 4 s) | extrapolation is degrading; `ConfidenceAt` ramps linearly from 1 → 0 over this window |
+| `Lost` | `AgeSeconds ≥ LostAfterSec` (default ≈ 8 s) | trace is frozen; `PositionAt → LastSeenPosition`, `VelocityAt → Vector3.zero`, `ConfidenceAt → 0`; coast accessors do NOT extrapolate further |
 
-### 4.2 Terrain biasing
+[NORMATIVE] State thresholds (`CoastingAfterSec` / `StaleAfterSec` / `LostAfterSec`) are tunables defined in `World/AetherTuning.cs` (or equivalent), read once per fuser construction.
 
-[NORMATIVE] The unbiased kinematic spread treats all directions equally. Terrain (mountains, walls, water boundaries) constrains where the tech can plausibly be — a tech last seen heading into a narrow canyon can only spread along the canyon, not through the rock.
+[NORMATIVE] Consumers branch on `SightState` rather than computing age themselves. The compatibility shim `InSight => Sight == SightState.Fresh` preserves the v0.1 boolean for legacy callsites.
 
-[NORMATIVE] Terrain biasing is applied as a directional shaping of the covariance after the propagation step:
+### 4.2 ThreatField Lost-gate — D1 decision pending
 
-```
-P_biased = T * P_propagated * T^T
+[NORMATIVE] `ThreatField.Build` (`Pathing/ThreatField.cs`) currently splats every non-friendly belief regardless of sight state — the pre-Aether behavior. The Aether design **D1** decision proposes skipping threat sources at `SightState.Lost`, so long-lost enemies stop dragging threat splats across the field.
 
-where T is a rotation/scale matrix that:
-  - Shrinks the position covariance along directions blocked by terrain (within sampling radius of the mean).
-  - Preserves the determinant approximately (so biasing redistributes uncertainty, not eliminates it).
-```
+[NORMATIVE] D1 is **deferred to a follow-up tuning pass** under a tunable so the user can A/B in-game (per the `organic-vs-bug design value` memory — "ghost enemy still warns me" may be preferred behavior). Until that lands, ThreatField behavior matches v0.1.
 
-[NORMATIVE] Terrain sampling reads from a Smart-internal terrain map maintained by Pathing (see [PATHING-CONTRACT.md] when authored). Until Pathing exists, terrain biasing is a no-op (no shaping applied).
+### 4.3 Terrain biasing — INFORMATIVE, NOT IN AETHER
 
-[RATIONALE] Implementing terrain biasing requires Pathing's terrain map. Until that arrives, World's decay is kinematic-only — slightly worse predictions, but functionally correct. The contract names the biasing requirement and the dependency.
+[INFORMATIVE] The v0.1 contract called for directional shaping of the covariance using a terrain map (constraining uncertainty along blocked directions). With Aether's single-scalar `UncertaintyMeters` (no covariance to shape), this feature has no natural home in the trace. The semantic — "a tech last seen heading into a canyon can only spread along the canyon" — would now belong to **path-aware uncertainty** in `PathingService` (sample reachable cells within `UncertaintyMeters` of `PositionMean`), not in `World`.
 
-### 4.3 Velocity decay
-
-[NORMATIVE] After T ticks out of sight, the velocity-component mean SHOULD damp toward zero, with a rate proportional to plausible braking acceleration. (A tech we haven't seen for 10 seconds is increasingly likely to have stopped — most techs don't travel indefinitely without stimulus.)
-
-[NORMATIVE] The damping is mild: an exponential decay with time constant ~10 seconds. The covariance does NOT decay (uncertainty about velocity remains).
+[INFORMATIVE] No v0.2 work item delivers this; flagged here so a v0.3 design pass knows the responsibility moved from World to Pathing.
 
 ---
 

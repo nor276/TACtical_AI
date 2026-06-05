@@ -44,6 +44,15 @@ namespace TAC_AI.AI.Forms.Smart.World
         // Aether/T4: per-daemon circuit breaker. Trips on sustained exceptions; daemon exits cleanly.
         private readonly CircuitBreaker _breaker = new CircuitBreaker("AetherFuser");
 
+        // P9 Item 32: per-tick spike profiler. Captures snapshots of slow ticks (>100ms) into
+        // a ring of 256 entries for post-session inspection. Pure observability.
+        private readonly AetherFuserSpikeProfiler _spikeProfiler = new AetherFuserSpikeProfiler();
+
+        /// <summary>P9 Item 32: external accessor for the most-recent spike snapshot.</summary>
+        public AetherSpikeReport LastSpike => _spikeProfiler.Snapshot();
+        /// <summary>P9 Item 32: total spike count since AetherFuser construction.</summary>
+        public long TotalSpikes => _spikeProfiler.TotalSpikes;
+
         public AetherFuser(WorldModel world, DoubleBuffer<BeliefSnapshot> snapshotBuffer)
         {
             _world = world;
@@ -53,6 +62,7 @@ namespace TAC_AI.AI.Forms.Smart.World
         public void Tick(CancellationToken cancellation)
         {
             CancellationHelpers.ThrowIfCancelled(cancellation);
+            _spikeProfiler.OnTickStart();   // P9 Item 32
             long tickStartStopwatch = System.Diagnostics.Stopwatch.GetTimestamp();
             long nowMono = MonoClock.Now();
 
@@ -99,12 +109,29 @@ namespace TAC_AI.AI.Forms.Smart.World
                 updated[techId] = newBelief;
                 _world.PublishPerTechBelief(techId, newBelief);
 
+                // P4 Item 14 (REV 7): TechLost edge producer. Fire on the Coasting/Stale →
+                // Lost transition exactly once per transition. Threading: AetherFuser runs
+                // on the WorkerPool, so PublishFromWorker (not Publish) — the relay marshals
+                // to the main thread via WorldEventBus.DrainMainThreadQueue per EventBus.cs:218.
+                // Inlined edge check (no separate SightStateEdgeDetector helper — over-engineering
+                // per REV 7 plan: "9/10 recommended inlining").
+                if (prior.Sight != SightState.Lost && newBelief.Sight == SightState.Lost)
+                {
+                    WorldEventBus.PublishFromWorker(new TechLost(techId, newBelief.LastSeenPosition));
+                }
+
                 if (HasSignificantChange(prior, newBelief))
                     WorldEventBus.PublishFromWorker(new BeliefUpdated(techId));
             }
 
             var snapshot = new BeliefSnapshot(nowMono, updated);
             _snapshotBuffer.Write(snapshot);
+
+            // P9 Item 32: spike-profiler tick-end. perTechCount = total techs processed
+            // (fresh + coast). intakeCount = number of fresh-this-tick (intake-drained). The
+            // profiler logs a [AETHER-SPIKE] line + records the snapshot only when elapsed
+            // ms >= 100 — otherwise no-op fast path.
+            _spikeProfiler.OnTickEnd(freshThisTick + coastThisTick, freshThisTick);
 
             // Update window accumulators.
             long tickEndStopwatch = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -167,6 +194,13 @@ namespace TAC_AI.AI.Forms.Smart.World
 
             while (!cancellation.IsCancellationRequested)
             {
+                // L-026: pause-gate ahead of host-gate. Aether's ~30Hz cadence makes this
+                // the most CPU-impactful pause yield in the system.
+                if (SmartRuntime.IsPaused)
+                {
+                    if (cancellation.WaitHandle.WaitOne(TickPeriodMs)) return;
+                    continue;
+                }
                 if (!SmartRuntime.IsHost)
                 {
                     if (cancellation.WaitHandle.WaitOne(TickPeriodMs)) return;
@@ -179,6 +213,14 @@ namespace TAC_AI.AI.Forms.Smart.World
                 catch (System.OperationCanceledException)
                 {
                     return;
+                }
+                // L-024: explicit TAE catch ahead of catch(Exception) so the CLR doesn't
+                // auto-rethrow TAE past our generic handler. Storm-exit lets L-023 supervisor
+                // respawn us with a fresh CancellationToken; non-storm = absorb + continue.
+                catch (System.Threading.ThreadAbortException)
+                {
+                    if (TAC_AI.AI.Forms.Smart.Threading.AbortGuard.Absorb("AetherFuser")
+                        == TAC_AI.AI.Forms.Smart.Threading.AbortGuard.AbortAction.ExitForRespawn) return;
                 }
                 catch (System.Exception ex)
                 {

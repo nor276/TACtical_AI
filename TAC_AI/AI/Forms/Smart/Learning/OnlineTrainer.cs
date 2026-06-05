@@ -60,6 +60,31 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         // TrainStepResult.Empty (BatchSize == 0) when the queue held fewer than
         // minibatch-size events.
         TrainStepResult TrainOneMinibatch();
+
+        // P11 T3 Item 53: deterministic Glorot/orthogonal weight reset + Adam state zero.
+        // Each implementer re-runs its constructor's init block under MlpUtil.ResetSeed
+        // (seed XOR model id for stream independence), then re-publishes the params via its
+        // DoubleBuffer. The seed parameter makes the reset reproducible (same seed → same
+        // weights), so tests + spawn-test campaigns can compare runs.
+        void Reset(int seed);
+
+        /// <summary>
+        /// L-013: per-model mutex coordinating TrainOneMinibatch / StoreParameters /
+        /// FlushPendingForPersist. Returns the model's `private readonly object _saveMutex`
+        /// so callers can `lock(model.SaveMutex)` to serialise a save against an in-flight
+        /// training step. C# lock requires a reference type, so this is `object`, not a
+        /// value-typed primitive.
+        /// </summary>
+        object SaveMutex { get; }
+
+        /// <summary>
+        /// L-013: drain whatever queued events the trainer has not yet folded into model
+        /// params, run a final partial-minibatch step if possible, and publish the
+        /// resulting params. Called from QuitSaveCoordinator (L-078) before SaveProfile so
+        /// the disk image includes the very latest training. Returns the number of events
+        /// folded into the partial step (0 if the queue was empty).
+        /// </summary>
+        int FlushPendingForPersist();
     }
 
     /// <summary>
@@ -85,6 +110,18 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             V = new float[paramCount];
             T = 0;
             LearningRate = learningRate;
+        }
+
+        /// <summary>
+        /// P11 T3 Item 53: zero the Adam moments + tick counter. Called from
+        /// <see cref="ILearnedModel.Reset(int)"/> right after the weights are re-initialized
+        /// so the optimizer doesn't push fresh Glorot weights with stale momentum (which
+        /// would undo the variance scaling Glorot just established).
+        /// </summary>
+        public void Reset()
+        {
+            for (int i = 0; i < M.Length; i++) { M[i] = 0f; V[i] = 0f; }
+            T = 0;
         }
 
         /// <summary>Apply one Adam step in-place. <paramref name="grad"/> length must equal <paramref name="parameters"/>.</summary>
@@ -130,6 +167,56 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         public static void ZeroFill(float[] dest, int offset, int count)
         {
             for (int i = 0; i < count; i++) dest[offset + i] = 0f;
+        }
+
+        /// <summary>
+        /// P11 T3 Item 53: orthogonal initialization for square recurrent weight matrices
+        /// (GRU's U_r / U_z / U_h hidden-hidden gates). Generates an n×n Gaussian matrix
+        /// then applies modified Gram-Schmidt to produce an orthonormal basis — important
+        /// for recurrent stability under BPTT (orthogonal matrices have unit singular
+        /// values, so gradients neither explode nor vanish through repeated multiplication).
+        /// Deterministic given the static seed; <see cref="ResetSeed"/> controls reproducibility.
+        /// </summary>
+        public static void OrthogonalInit(float[] dest, int offset, int n)
+        {
+            // Step 1: fill n×n with Gaussian samples (Box-Muller from two NextUniform calls).
+            int total = n * n;
+            for (int i = 0; i < total; i += 2)
+            {
+                float u1 = Math.Max(NextUniform(), 1e-9f);
+                float u2 = NextUniform();
+                float r = (float)Math.Sqrt(-2.0 * Math.Log(u1));
+                float theta = 2f * (float)Math.PI * u2;
+                dest[offset + i] = r * (float)Math.Cos(theta);
+                if (i + 1 < total) dest[offset + i + 1] = r * (float)Math.Sin(theta);
+            }
+            // Step 2: modified Gram-Schmidt to orthonormalize rows (row-major n×n).
+            for (int row = 0; row < n; row++)
+            {
+                int rOff = offset + row * n;
+                // Subtract projections onto previously-orthonormalized rows.
+                for (int prev = 0; prev < row; prev++)
+                {
+                    int pOff = offset + prev * n;
+                    float dot = 0f;
+                    for (int k = 0; k < n; k++) dot += dest[rOff + k] * dest[pOff + k];
+                    for (int k = 0; k < n; k++) dest[rOff + k] -= dot * dest[pOff + k];
+                }
+                // Normalize this row.
+                float norm = 0f;
+                for (int k = 0; k < n; k++) norm += dest[rOff + k] * dest[rOff + k];
+                norm = (float)Math.Sqrt(norm);
+                if (norm < 1e-9f)
+                {
+                    // Degenerate row (vanishingly small after projection) — fall back to identity.
+                    for (int k = 0; k < n; k++) dest[rOff + k] = (k == row) ? 1f : 0f;
+                }
+                else
+                {
+                    float inv = 1f / norm;
+                    for (int k = 0; k < n; k++) dest[rOff + k] *= inv;
+                }
+            }
         }
 
         public static void ResetSeed(int seed) { _seed = seed; }
@@ -197,8 +284,53 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     {
         public int MillisecondsPerPoll { get; set; } = 100;
 
+        /// <summary>
+        /// L-071: TTL on the holding buffer for paused trainers. Default 5 minutes — if
+        /// a trainer stays Paused longer (extended host migration), discard any drained
+        /// minibatch slots so the resume doesn't replay stale events. int.MaxValue =
+        /// effectively disabled (test override).
+        /// </summary>
+        public int HoldingBufferTtlMs { get; set; } = 5 * 60 * 1000;
+        private int _pausedAtTickMs;
+        private long _ttlDiscardsTotal;
+        public long TtlDiscardsTotal => System.Threading.Interlocked.Read(ref _ttlDiscardsTotal);
+
+        // L-058: trainer FSM. Active = normal training; Pausing = drain-in-flight; Paused
+        // = parked at barrier (signaled); Resuming = transitioning back to Active. All
+        // transitions happen on the trainer thread itself; HostChanged event flips _hostLost
+        // which the trainer reads at the top of each iteration.
+        public enum Phase { Active, Pausing, Paused, Resuming }
+
         private readonly ILearnedModel _model;
-        public TrainerWorker(ILearnedModel model) { _model = model; }
+        private readonly string _trainerName;
+        private volatile bool _hostLost;
+        private volatile Phase _phase = Phase.Active;
+        public Phase CurrentPhase => _phase;
+
+        public TrainerWorker(ILearnedModel model)
+        {
+            _model = model;
+            _trainerName = "Trainer-" + model.Id;
+            // L-058 barrier register so HostAuthorityCoordinator's WaitAll (L-070 caller)
+            // can synchronize across all trainers when host is lost.
+            TAC_AI.AI.Forms.Smart.Coordination.TrainerBarrier.Register(_trainerName);
+            // L-058: subscribe to HostChanged so we can flip _hostLost without polling
+            // SmartRuntime.IsHost (which is also read for legacy gate compatibility).
+            try
+            {
+                TAC_AI.AI.Forms.Smart.World.WorldEventBus.Subscribe<TAC_AI.AI.Forms.Smart.World.HostChanged>(OnHostChanged);
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarning("TrainerWorker[" + _trainerName + "] HostChanged subscribe failed: " + ex.Message);
+            }
+        }
+
+        private void OnHostChanged(TAC_AI.AI.Forms.Smart.World.HostChanged ev)
+        {
+            // Worker reads _hostLost on next iteration and walks the FSM.
+            _hostLost = !ev.IsHost;
+        }
 
         public void RunLoop(CancellationToken cancellation)
         {
@@ -209,6 +341,69 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 // mutate their local copy of the learning profile while the host's
                 // canonical profile is the source of truth. The worker stays loaded so
                 // a future host-handover does not pay cold-start cost.
+                // L-026: pause-gate ahead of host-gate. Trainer parks during pause to keep
+                // all CPU cores yielded to the host process.
+                if (SmartRuntime.IsPaused)
+                {
+                    if (cancellation.WaitHandle.WaitOne(MillisecondsPerPoll)) return;
+                    continue;
+                }
+
+                // L-058: host-loss FSM. Transition Active→Pausing→Paused (signal barrier)
+                // → wait for !_hostLost → Resuming → Active. The legacy IsHost gate below
+                // still works as a fallback (single-player + tests).
+                if (_hostLost && _phase == Phase.Active)
+                {
+                    _phase = Phase.Pausing;
+                    _pausedAtTickMs = System.Environment.TickCount;
+                    DebugTAC_AI.LogWarnFileOnly("trainer-hostchange-" + _trainerName + "-pausing",
+                        "[TRAINER-HOSTCHANGE] trainer='" + _trainerName + "' Active→Pausing (draining minibatch)");
+                    // Drain remaining queue work via FlushPendingForPersist (L-013) so we
+                    // checkpoint a clean param image.
+                    try { _model.FlushPendingForPersist(); }
+                    catch (Exception ex) { DebugTAC_AI.LogWarning("TrainerWorker drain: " + ex.Message); }
+                    _phase = Phase.Paused;
+                    TAC_AI.AI.Forms.Smart.Coordination.TrainerBarrier.Signal(_trainerName);
+                    DebugTAC_AI.LogWarnFileOnly("trainer-hostchange-" + _trainerName + "-paused",
+                        "[TRAINER-HOSTCHANGE] trainer='" + _trainerName + "' Paused (barrier signaled)");
+                }
+                if (_phase == Phase.Paused)
+                {
+                    // L-071: TTL discard. If we've been Paused longer than the TTL, drain
+                    // the queue to prevent stale-event replay on resume.
+                    int pausedMs = unchecked(System.Environment.TickCount - _pausedAtTickMs);
+                    if (pausedMs > HoldingBufferTtlMs)
+                    {
+                        try
+                        {
+                            int discarded = _model.FlushPendingForPersist();
+                            if (discarded > 0)
+                            {
+                                System.Threading.Interlocked.Add(ref _ttlDiscardsTotal, discarded);
+                                DebugTAC_AI.LogWarnFileOnly("trainer-hold-discard-" + _trainerName,
+                                    "[TRAINER-HOLD-DISCARD] trainer='" + _trainerName
+                                    + "' discarded=" + discarded + " pausedMs=" + pausedMs);
+                            }
+                            _pausedAtTickMs = System.Environment.TickCount; // re-stamp to throttle log
+                        }
+                        catch (Exception ex) { DebugTAC_AI.LogWarning("TrainerWorker TTL drain: " + ex.Message); }
+                    }
+                    if (!_hostLost)
+                    {
+                        _phase = Phase.Resuming;
+                        DebugTAC_AI.LogWarnFileOnly("trainer-hostchange-" + _trainerName + "-resuming",
+                            "[TRAINER-HOSTCHANGE] trainer='" + _trainerName + "' Paused→Resuming");
+                        _phase = Phase.Active;
+                        DebugTAC_AI.LogWarnFileOnly("trainer-hostchange-" + _trainerName + "-active",
+                            "[TRAINER-HOSTCHANGE] trainer='" + _trainerName + "' Active");
+                    }
+                    else
+                    {
+                        if (cancellation.WaitHandle.WaitOne(MillisecondsPerPoll)) return;
+                        continue;
+                    }
+                }
+
                 if (!SmartRuntime.IsHost)
                 {
                     if (cancellation.WaitHandle.WaitOne(MillisecondsPerPoll)) return;
@@ -216,7 +411,15 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 }
                 try
                 {
-                    var result = _model.TrainOneMinibatch();
+                    // L-013: serialise TrainOneMinibatch against StoreParameters/
+                    // FlushPendingForPersist so a save in flight does not snapshot a torn
+                    // half-step (Adam Step mid-pass over _params). Lock granularity is the
+                    // whole minibatch — fine because batches are 32 events / ~1ms typical.
+                    TrainStepResult result;
+                    lock (_model.SaveMutex)
+                    {
+                        result = _model.TrainOneMinibatch();
+                    }
                     // If no batch was ready, sleep to avoid busy-spin.
                     if (result.BatchSize == 0)
                     {
@@ -224,6 +427,14 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                     }
                 }
                 catch (OperationCanceledException) { return; }
+                // L-024: explicit TAE catch before generic Exception — CLR auto-rethrows
+                // TAE past catch(Exception). Trainer label embeds model id so AbortGuard's
+                // per-worker storm window is per-model (not per-process).
+                catch (System.Threading.ThreadAbortException)
+                {
+                    if (TAC_AI.AI.Forms.Smart.Threading.AbortGuard.Absorb("Trainer-" + _model.Id)
+                        == TAC_AI.AI.Forms.Smart.Threading.AbortGuard.AbortAction.ExitForRespawn) return;
+                }
                 catch (Exception ex)
                 {
                     DebugTAC_AI.LogWarning("Smart.Learning.Trainer[" + _model.Id + "]: " + ex.GetType().Name + ": " + ex.Message);

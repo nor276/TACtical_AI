@@ -16,6 +16,10 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
         public readonly int TypeKey;
         public readonly BlockKindFlags Kinds;
         public readonly float SpecMass;              // block.CurrentMass at probe time on the prefab
+        // P3 Item 5: per-archetype spec HP from ModuleDamage.maxHealth on the prefab.
+        // Falls back to SpecMass on probe miss (preserves v0.1 mass-as-HP magnitudes).
+        // Consumed by ArmorMap.Compute (catalog overload) — pose.HpFraction * archetype.SpecHP.
+        public readonly float SpecHP;
         public readonly int CellCount;
         public readonly ThrustEmitter[] Emitters;    // length 0 if non-propulsion; never null
         public readonly bool HasWeapon;
@@ -30,11 +34,16 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
             ThrustEmitter[] emitters,
             bool hasWeapon,
             WeaponSpec weapon,
-            Bounds localBounds)
+            Bounds localBounds,
+            float specHP = -1f)
         {
             TypeKey = typeKey;
             Kinds = kinds;
             SpecMass = specMass;
+            // Default sentinel -1 means "not probed" — fall back to specMass so v0.1
+            // mass-as-HP magnitudes are preserved when the catalog/probe is older or
+            // ArmorHpProbe was never called for this archetype.
+            SpecHP = specHP > 0f ? specHP : specMass;
             CellCount = cellCount;
             Emitters = emitters ?? System.Array.Empty<ThrustEmitter>();
             HasWeapon = hasWeapon;

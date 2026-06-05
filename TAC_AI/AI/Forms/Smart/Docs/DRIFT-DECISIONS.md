@@ -266,3 +266,70 @@ engineering reality." Apply case-by-case.
 - **Why:** Vertical authority is hover/lift capacity, not forward acceleration;
   a flat-driving wheeled tech got Q≈25 m²/s⁴ regardless of how fast it could
   actually accelerate.
+
+## D.33 — v0.2 P6 Item 27: GenericGoalSource IS registered (reverses v0.1 §7.3 decision)
+- **v0.1 decision (SMART-IDENTITY-DESIGN.md §7.3):** No `GenericGoalSource` class.
+  `SmartIdentityRegistry` does not contain Generic. Dispatch bypasses identity for
+  Generic via `if (src.Identity != Generic) src.Produce(...) else _tactical.Step(...)`.
+- **v0.2 decision (REV 7 P6 Item 27):** `GenericGoalSource` IS registered. Per-
+  controller `IdentityContext.TacticalGoalHandle` delegate (captured in
+  `ContinuousController` ctor as `(b,v,s) => _tactical.Step(b,v,s)`) is wrapped
+  onto the ctx at dispatch via `WithTacticalGoalHandle(_tacticalHandle)`.
+  `GenericGoalSource.Produce` invokes the handle — same `_tactical.Step` call,
+  same instance, same args, same Adam state.
+- **Why the reversal:** Symmetric registry dispatch + IdentityOutcome telemetry
+  visibility for Generic-classified techs (previously invisible in per-identity
+  routing). Per-instance Adam state preserved because the handle CLOSES over
+  the controller's own `_tactical` field — no singleton state, no contamination.
+- **Behavior preservation:** Bit-identical at the optimizer-call level (~10ns
+  Func.Invoke overhead is the only delta). Call-equivalence proof: v0.1 `_tactical.Step(b,v,s)`
+  ≡ v0.2 `src.Produce → ctx.TacticalGoalHandle.Invoke(b,v,s) → _tactical.Step(b,v,s)`.
+- **S1 safety:** `ContinuousController` keeps the direct `else { _tactical.Step(...) }`
+  fallback when `src == null` (registry init race / test harness). Defends against
+  the REV 4 worst case where dispatch deletion left a `default(TacticalGoal)`
+  drive-to-world-origin failure mode.
+- **Telemetry:** Generic techs now log `branch=IDENTITY=Generic` instead of
+  `branch=TACTICAL`. P10 parity-catcher treats both as v0.1-equivalent.
+
+## D.34 — v0.2 P6 Item 26: RepairSupport identity ships via HealthSidecar (not BeliefState.HpFraction)
+- **REV 4 plan attempt:** Add `HpFraction` field to `BeliefState`; P3 ArmorMap
+  migration populates it.
+- **REV 5 reframe (shipped):** No `HpFraction` on `BeliefState`. New
+  `HealthSidecar` sealed class at `World/HealthSidecar.cs` —
+  `ConcurrentDictionary<TechId, (current, max)>` populated by
+  `SmartForm.ObserveWorldTechsIfDue` via `tank.blockman.blockCount` (matches the
+  production multi-block HP semantic at TankAIHelper.cs:3267, where damage is
+  measured as `1 - blockC/maxBlockCount`).
+- **Why the sidecar instead of BeliefState field:** P3's ArmorMap HP migration
+  adds per-archetype SpecHP + per-instance HpFraction to `BlockArchetype` and
+  `BlockInstancePose`, but neither flows into `BeliefState`. Sidecar is the
+  smallest change that gets tank-wide HpFraction into RepairSupport's goal source
+  without churning the immutable BeliefState shape.
+- **Behavior preservation:** Default-OFF via `SmartIdentityTuning.EnableRepairSupport`.
+  When OFF, classifier Row 6 skipped; RepairSupportGoalSource registered but never
+  invoked; HealthSidecar populates but no v0.2 consumer reads.
+- **Deferred to v0.3:** Facing-threat orbit refinement — needs
+  `DamageHintBuffer.DirectionWorld` which is permanently dead per
+  SmartEventBridge.cs:314-319 (engine struct has no HitPosition/HitForceDir).
+  v0.2 ships plain orbit-around-damaged-ally; v0.3 lights up facing-threat when
+  engine-side hit reflection lands.
+
+## D.35 — v0.2 P6 Item 28: Patrol classifier uses spawn-time signals only
+- **REV 1 plan attempt:** Classifier-time check for "no nearby hostile" before
+  routing to Patrol.
+- **Engine reality:** `SmartIdentityClassifier.Classify(helper, vehicle, teamId)`
+  signature has no `BeliefSnapshot` parameter — classifier runs ONCE at
+  `OnTechSpawn` and identity is immutable (design L2 invariant per
+  SMART-IDENTITY-DESIGN.md). Per-tick threat scan is structurally impossible
+  in Classify.
+- **REV 2 reshape (shipped):** Classify on spawn-time signals only —
+  `armed && mobile && !aircraftLike && !HasSameTeamAlly(helper.tank)`. Move the
+  per-tick threat reaction into `PatrolGoalSource.Produce` which DOES receive
+  `BeliefSnapshot`. When a hostile is within ProvocationRadius (80m), pursue;
+  else Lissajous meander around `Stamp.SpawnAnchor`.
+- **Behavior preservation:** Default-OFF via `SmartIdentityTuning.EnablePatrol`.
+  When OFF, classifier Row 6.5 skipped; solo armed mobile techs continue to
+  classify as Hunter (Row 7).
+- **Largest combat-feel delta in v0.2:** When flipped ON, every solo armed mobile
+  ground tech that today classifies as Hunter reroutes to Patrol. Requires P6.1
+  spawn-test gate before flip.

@@ -23,6 +23,12 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
         {
             while (!cancellation.IsCancellationRequested)
             {
+                // L-026: pause-gate ahead of host-gate. See GlobalPlannerDaemon for rationale.
+                if (SmartRuntime.IsPaused)
+                {
+                    if (cancellation.WaitHandle.WaitOne(CyclePeriodMs)) return;
+                    continue;
+                }
                 if (!SmartRuntime.IsHost)
                 {
                     if (cancellation.WaitHandle.WaitOne(CyclePeriodMs)) return;
@@ -35,10 +41,20 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
                     foreach (var team in SmartRuntime.EnumerateTeams())
                     {
                         if (cancellation.IsCancellationRequested) return;
+                        // L-045: skip teams that are not Active. Draining teams stop
+                        // receiving new work even though they still own state; Disposed
+                        // shouldn't appear (reaper TryRemove'd them) but the guard is cheap.
+                        if (team.State != TeamLifecycleState.Active) continue;
                         team.Coordinator.StepOnce();
                     }
                 }
                 catch (System.OperationCanceledException) { return; }
+                // L-024: explicit TAE catch ahead of generic Exception.
+                catch (System.Threading.ThreadAbortException)
+                {
+                    if (TAC_AI.AI.Forms.Smart.Threading.AbortGuard.Absorb("GlobalCoordinator")
+                        == TAC_AI.AI.Forms.Smart.Threading.AbortGuard.AbortAction.ExitForRespawn) return;
+                }
                 catch (System.Exception ex)
                 {
                     DebugTAC_AI.LogWarning("Smart.GlobalCoordinatorDaemon: " + ex.GetType().Name + ": " + ex.Message);

@@ -30,6 +30,7 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
         Bidirectional     = 1 << 0,  // wheels brake/reverse with ReverseForceN > 0
         AerodynamicScaling = 1 << 1, // contributes to AeroLiftBudget (Decision #13)
         ConsumesFuel      = 1 << 2,  // boosters / fan-jets (placeholder, no v0.1 consumer)
+        Spooling          = 1 << 3,  // fan-jets that gate force on spool state (P2 Item 6)
     }
 
     /// <summary>

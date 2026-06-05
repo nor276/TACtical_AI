@@ -58,11 +58,9 @@ namespace TAC_AI.AI.Forms.Smart.World
     public readonly struct TechDespawned { public readonly TechId Id; public TechDespawned(TechId id) { Id = id; } }
     public readonly struct TechTeamChanged { public readonly TechId Id; public readonly TeamId OldTeam, NewTeam; public TechTeamChanged(TechId id, TeamId oldT, TeamId newT) { Id = id; OldTeam = oldT; NewTeam = newT; } }
     public readonly struct TechSeen { public readonly TechId Id; public readonly Vector3 Position; public readonly Vector3 Velocity; public readonly float Heading; public TechSeen(TechId id, Vector3 p, Vector3 v, float h) { Id = id; Position = p; Velocity = v; Heading = h; } }
-    // Aether v0.1: no producer wired. The categorical SightState.Lost transition is the
-    // mechanism — AetherFuser could fire this on the Coasting/Stale → Lost edge if a
-    // consumer asks for it. Marked [Obsolete] so consumers don't subscribe expecting it
-    // to fire. Re-enable in v0.2 when a consumer needs the edge signal.
-    [System.Obsolete("Aether v0.1: no producer. Reactivate when a consumer needs the SightState.Lost edge.", error: false)]
+    // P4 Item 14 (REV 7): TechLost producer REACTIVATED. AetherFuser fires this on the
+    // Coasting/Stale → Lost edge (per AetherFuser.cs:100-104 insertion). Obsolete attribute
+    // removed; consumers can subscribe normally.
     public readonly struct TechLost { public readonly TechId Id; public readonly Vector3 LastKnownPosition; public TechLost(TechId id, Vector3 pos) { Id = id; LastKnownPosition = pos; } }
     public readonly struct DamageObserved { public readonly TechId Id; public readonly SanitizedDamageInfo Damage; public DamageObserved(TechId id, SanitizedDamageInfo info) { Id = id; Damage = info; } }
     // No block-attach/detach producer in v0.1.0 — VehicleModel rebuild
@@ -89,6 +87,59 @@ namespace TAC_AI.AI.Forms.Smart.World
     public readonly struct WorldLoading { }
     public readonly struct WorldLoaded { }
     public readonly struct BeliefUpdated { public readonly TechId Id; public BeliefUpdated(TechId id) { Id = id; } }
+
+    /// <summary>
+    /// L-012: published by HostAuthorityCoordinator (L-030) when SmartRuntime.IsHost flips.
+    /// Subscribed by LearningService (L-070, OnHostLost/OnHostGained) for checkpoint flush
+    /// and trainer pause/resume. PhaseSource tags which Unity hook detected the change so
+    /// the [HOSTAUTH-CHANGE] log can distinguish first-tick vs main-thread vs IsHost-poll.
+    /// </summary>
+    public enum HostAuthorityPhase : byte
+    {
+        Unknown = 0,
+        Initial = 1,       // first detection after Init
+        IsHostPoll = 2,    // detected by HostAuthorityCoordinator's main-thread poll
+        Forced = 3,        // SMART_DEV test forced a transition
+    }
+
+    /// <summary>L-036: published by SmartForm.OnWorldReset before any reset hook runs.</summary>
+    public readonly struct WorldResetting { public readonly long TickMono; public WorldResetting(long t) { TickMono = t; } }
+    /// <summary>L-036: published after all reset hooks complete (success OR partial).</summary>
+    public readonly struct WorldResetCompleted
+    {
+        public readonly long TickMono;
+        public readonly int HookCountOk;
+        public readonly int HookCountTotal;
+        public WorldResetCompleted(long t, int ok, int total) { TickMono = t; HookCountOk = ok; HookCountTotal = total; }
+    }
+
+    public readonly struct HostChanged
+    {
+        public readonly bool WasHost;
+        public readonly bool IsHost;
+        public readonly long TickMono;
+        public readonly HostAuthorityPhase PhaseSource;
+        public HostChanged(bool wasHost, bool isHost, long tickMono, HostAuthorityPhase phase)
+        {
+            WasHost = wasHost; IsHost = isHost; TickMono = tickMono; PhaseSource = phase;
+        }
+    }
+
+    // P7 Item 17: published by Coordinator.TickOnce when the observed plan type changes
+    // (edge tracker on the Coordinator side per REV 2 C10 fix). Consumed by
+    // ActionValueEstimator's training queue (placeholder reward=0f at v0.2 ship).
+    public readonly struct PlanTransition
+    {
+        public readonly TeamId Team;
+        public readonly TAC_AI.AI.Forms.Smart.Planning.PlanLibrary.PlanType OldType, NewType;
+        public readonly float Reward;
+        public readonly long TickMono;
+        public PlanTransition(TeamId team, TAC_AI.AI.Forms.Smart.Planning.PlanLibrary.PlanType oldType,
+            TAC_AI.AI.Forms.Smart.Planning.PlanLibrary.PlanType newType, float reward, long tickMono)
+        {
+            Team = team; OldType = oldType; NewType = newType; Reward = reward; TickMono = tickMono;
+        }
+    }
 
     // Identity-tagged outcome event. Published whenever a Smart-driven tech achieves an
     // identity-appropriate success: Hunter / Sniper / AircraftHunter kill a hostile,
@@ -260,12 +311,21 @@ namespace TAC_AI.AI.Forms.Smart.World
             ClearSubscribers<WorldLoading>();
             ClearSubscribers<WorldLoaded>();
             ClearSubscribers<BeliefUpdated>();
+            // P4 Item 14 (REV 7): TechLost now has a producer (AetherFuser), so it's no
+            // longer Obsolete — move outside the pragma block.
+            ClearSubscribers<TechLost>();
+            // P7 Item 17 (REV 7): PlanTransition published by Coordinator.TickOnce edge tracker.
+            ClearSubscribers<PlanTransition>();
+            ClearSubscribers<HostChanged>();   // L-012
+            ClearSubscribers<WorldResetting>();        // L-036
+            ClearSubscribers<WorldResetCompleted>();   // L-036
+            // P6 Item 27 + P7 Item 21: IdentityOutcome consumer in IdentityOutcomeConsumer.
+            ClearSubscribers<IdentityOutcome>();
             // Phase 10 (FIX-PLAN.md): obsolete event types still allocate per-T statics
             // when first JITted; clear them inside #pragma so the [Obsolete] warning is
-            // contained to this one place. When v0.2 wires their producers, remove the
-            // pragma block.
+            // contained to this one place. When v0.2+ wires their producers, remove from
+            // the pragma block (TechLost already moved out in P4 Item 14).
 #pragma warning disable CS0618
-            ClearSubscribers<TechLost>();
             ClearSubscribers<BlockAttached>();
             ClearSubscribers<BlockDetached>();
             ClearSubscribers<PlayerJoined>();

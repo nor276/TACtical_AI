@@ -27,6 +27,12 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
             // (most techs are < 100 blocks) and the per-rebuild cost is one allocation.
             var poses = new List<BlockInstancePose>(64);
 
+            // P3 Item 5: HpFraction read is opt-in via ArmorMapPolicy. When the policy is
+            // off (default), every pose ships HpFraction=1.0 — bit-identical to v0.1.
+            // When on, ArmorHpProbe.ReadHpFraction does one GetComponent<ModuleDamage> +
+            // damageable.Health read per block. Cost paid only when the consumer asks.
+            bool readHp = ArmorMapPolicy.UseRealSpecHP;
+
             foreach (TankBlock block in tank.blockman.IterateBlocks())
             {
                 if (block == null) continue;
@@ -53,7 +59,9 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
                 catch { /* keep default */ }
                 if (mass <= 0f) mass = 1f;
 
-                poses.Add(new BlockInstancePose(typeKey, pos, rot, mass));
+                float hpFraction = readHp ? ArmorHpProbe.ReadHpFraction(block) : 1f;
+
+                poses.Add(new BlockInstancePose(typeKey, pos, rot, mass, hpFraction));
             }
 
             var arr = poses.ToArray();

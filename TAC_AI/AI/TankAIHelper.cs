@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using TAC_AI.AI.Enemy;
+using TAC_AI.AI.Forms;
 using TAC_AI.AI.Movement;
 using TAC_AI.Templates;
 using TAC_AI.World;
@@ -91,6 +92,13 @@ namespace TAC_AI.AI
         /// <summary> v2: per-tech state OWNED by the active AI form (the form casts this to its own type). Built in
         /// IAIForm.OnTechSpawn, cleared in OnTechRecycle. Keeps the shell form-agnostic - it never inspects this. </summary>
         public object FormState = null;
+        /// <summary>
+        /// L-008: routing decision stamped exactly once per spawn (success or failure) by
+        /// AIFormRegistry.RouteTech (L-027). After DelayedSubscribe completes Routing.FormId
+        /// must be non-null — RoutingCompletenessCatcher (L-081) enforces this invariant.
+        /// Cleared by Pool.Recycled() / Subscribe() (L-052).
+        /// </summary>
+        public RoutingDecision Routing = default(RoutingDecision);
         /// <summary> v2: set true while the active form is "Vanilla" - guards the alignment FSM from auto-promoting
         /// RunState Default->Advanced, so the tech stays handed back to TerraTech's own AI. </summary>
         public bool ForceVanillaAI = false;
@@ -774,6 +782,15 @@ namespace TAC_AI.AI
             RequestMovementControllerSwap(MovementSwapReason.Subscribe);
             AIECore.AddHelper(this);
             ResetAISettings();
+            // L-052: Subscribe-time routing stamp. FormId stays null (DelayedSubscribe is
+            // what actually calls RouteTech with the active form). This stamp tells the
+            // RoutingCompletenessCatcher (L-081) "this tech is in flight; don't scream yet".
+            Routing = new RoutingDecision
+            {
+                FormId = null,
+                TimestampMs = System.Environment.TickCount,
+                Reason = "Subscribed",
+            };
             Invoke(nameof(DelayedSubscribe), AIGlobals.AISubscribeDelay);
             return this;
         }
@@ -792,6 +809,10 @@ namespace TAC_AI.AI
                 delayedSubscribeRetries = 0;
                 return;
             }
+            // L-050: split try-block. Inner try around HandlingDetermine/ExecuteAutoSet/
+            // SetDriverType — a NRE here used to swallow OnTechSpawn too. Now: on
+            // HandlingDetermine failure, fall back to DriverType=Tank + stamp the failure
+            // reason on the Routing record; either way OnTechSpawn ALWAYS runs (via funnel).
             try
             {
                 lastTechExtents = (tank.blockBounds.size.magnitude / 2) + 2;
@@ -801,18 +822,44 @@ namespace TAC_AI.AI
                     lastTechExtents = 1;
                 }
                 maxBlockCount = tank.blockman.blockCount;
-                if (DriverType == AIDriverType.AutoSet)
-                    ExecuteAutoSetNoCalibrate();
-                else
-                    SetDriverType(DriverType);
-                // v2: active form per-tech init (e.g. Vanilla stock-AI handback on new techs).
-                TAC_AI.AI.Forms.AIFormRegistry.Active?.OnTechSpawn(this);
+
+                // Inner try — HandlingDetermine is the prime NRE source.
+                string handlingReason = "DelayedSubscribe";
+                try
+                {
+                    if (DriverType == AIDriverType.AutoSet)
+                        ExecuteAutoSetNoCalibrate();
+                    else
+                        SetDriverType(DriverType);
+                }
+                catch (Exception eh) when (eh is NullReferenceException || eh is MissingReferenceException)
+                {
+                    DriverType = AIDriverType.Tank;   // safe default — Modified handles Tank baseline
+                    handlingReason = "HandlingDetermineFailed";
+                    DebugTAC_AI.LogWarnFileOnly("delayed-subscribe-handling-fail-" + tank.name,
+                        "[TECH-ROUTE] HandlingDetermine threw " + eh.GetType().Name
+                        + " for tech='" + tank.name + "' — falling back to Tank driver");
+                    // Stamp failure on Routing for the funnel to pick up.
+                    Routing.ExceptionType = eh.GetType().Name;
+                    Routing.ExceptionMessage = eh.Message;
+                }
+
+                // L-050/L-027: OnTechSpawn ALWAYS runs via the funnel (was conditional on
+                // HandlingDetermine succeeding). RouteTech is idempotent (FormId==ActiveId
+                // fast-path) so the Subscribe-time stamp doesn't cause double-spawn.
+                TAC_AI.AI.Forms.AIFormRegistry.RouteTech(this, handlingReason);
                 delayedSubscribeRetries = 0;
             }
-            catch (Exception e) when (e is NullReferenceException || e is MissingReferenceException)
+            catch (Exception e)
             {
+                // L-050: outer catch is now generic Exception (was NRE/MRE only). Any
+                // surviving exception is logged + we still stamp routing as failed so
+                // the orphan watchdog (L-081) doesn't see a null FormId.
                 DebugTAC_AI.LogWarnPlayerOncePerKey("DelayedSubscribe.partial:" + tank.name,
                     "DelayedSubscribe partial init for " + tank.name, e);
+                Routing.ExceptionType = e.GetType().Name;
+                Routing.ExceptionMessage = e.Message;
+                TAC_AI.AI.Forms.AIFormRegistry.RouteTech(this, "DelayedSubscribeFailed");
             }
             finally
             {
@@ -882,6 +929,16 @@ namespace TAC_AI.AI
             CancelInvoke(nameof(DelayedSubscribe));
             delayedSubscribeRetries = 0;
             beEvilRegenAttempted = false;
+            // L-052: drop the routing record so pool-reuse starts with FormId=null and
+            // the OnPreUpdate reclaim path (L-051) can re-route the helper fresh.
+            // Same-key remove from LiveRoutings is best-effort — GetInstanceID is stable
+            // across Unity recycle.
+            try
+            {
+                TAC_AI.AI.Forms.AIFormRegistry.LiveRoutings.TryRemove(GetInstanceID(), out _);
+            }
+            catch { /* harmless if registry not present */ }
+            Routing = default(TAC_AI.AI.Forms.RoutingDecision);
             try { if (ManWorldTreadmill.inst != null) ManWorldTreadmill.inst.RemoveListener(this); } catch { }
             try { if (tank != null) tank.DamageEvent.Unsubscribe(OnHit); } catch { }
             DropBlock();
@@ -2739,8 +2796,38 @@ namespace TAC_AI.AI
             TAC_AI.AI.Forms.AIFormRegistry.Active?.RunEnemyRTSCombat(this, tank, mind);
         }
 
+        // L-051: per-frame cap on reclaim work — at most 3 helpers re-routed per frame.
+        // Counter is keyed by Time.frameCount so it auto-resets each new frame.
+        private static int _reclaimFrameCount;
+        private static int _reclaimCountThisFrame;
+        private const int MaxReclaimsPerFrame = 3;
+
         internal void OnPreUpdate()
         {
+            // L-051: routing-reclaim hook. If DelayedSubscribe's Invoke was dropped (FMOD
+            // pause, Pool.Return mid-fade), the helper still has Routing.FormId==null when
+            // OnPreUpdate first runs. Re-route via the funnel — idempotent if a late
+            // DelayedSubscribe eventually fires. Capped at 3/frame to bound the cost of a
+            // mass-spawn batch where every helper needs reclaim same-frame.
+            if (Routing.FormId == null && tank != null && tank.blockman != null && enabled)
+            {
+                int frame = UnityEngine.Time.frameCount;
+                if (_reclaimFrameCount != frame)
+                {
+                    _reclaimFrameCount = frame;
+                    _reclaimCountThisFrame = 0;
+                }
+                if (_reclaimCountThisFrame < MaxReclaimsPerFrame)
+                {
+                    _reclaimCountThisFrame++;
+                    try { TAC_AI.AI.Forms.AIFormRegistry.RouteTech(this, "Reclaimed"); }
+                    catch (Exception ex)
+                    {
+                        DebugTAC_AI.LogWarning("OnPreUpdate.Reclaim: " + ex.Message);
+                    }
+                }
+            }
+
             if (MovementController == null)
             {
                 DebugTAC_AI.Assert(MovementController == null, "MOVEMENT CONTROLLER IS NULL");

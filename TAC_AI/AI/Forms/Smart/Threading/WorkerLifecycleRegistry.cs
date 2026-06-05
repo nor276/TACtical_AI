@@ -36,6 +36,16 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         private static readonly List<WorkerHandle> _live = new List<WorkerHandle>();
         private static bool _cancelAllInProgress;
 
+        /// <summary>
+        /// L-002: read-only view of <see cref="_cancelAllInProgress"/>. Consumed by
+        /// DaemonWatchdog (L-049) so it does not attempt respawn while shutdown is draining,
+        /// and by WorkerHealthMonitor (L-047) which suppresses [SMART-WORKERS-DEAD] during
+        /// teardown. Reads outside the lock are intentional — visibility is best-effort and
+        /// the worst case is one extra respawn attempt that the underlying pool's IsRunning
+        /// guard then rejects.
+        /// </summary>
+        public static bool IsTearingDown => _cancelAllInProgress;
+
         public static void Register(WorkerHandle worker)
         {
             if (worker == null) return;
@@ -63,8 +73,23 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             }
         }
 
-        /// <summary>Snapshot of currently-live workers. Safe to enumerate.</summary>
-        public static IReadOnlyList<WorkerHandle> Live()
+        // P11 T7 Item 63 reverted by L-020: SnapshotLive() re-added with named consumers
+        // baked into the doc so it cannot be cleaned up again without breaking them.
+
+        /// <summary>
+        /// L-020: snapshot of every live worker handle. Returns a defensive copy under the
+        /// lock so callers can enumerate without seeing partial Register/Deregister state.
+        ///
+        /// Canonical consumers (must remain wired):
+        ///   - <c>WorkerHealthMonitor.Tick</c> (L-047): scans for missing canonical daemons.
+        ///   - <c>SmartTestSuite.Threads_AllBackground_AfterInit</c> (L-005): locks the
+        ///     IsBackground invariant so a future refactor cannot silently re-introduce the
+        ///     pre-P11 shutdown freeze.
+        ///
+        /// Not for hot-path use — allocates per call. Watchdog calls it at 1Hz; tests call
+        /// it once. Both are fine.
+        /// </summary>
+        public static IReadOnlyList<WorkerHandle> SnapshotLive()
         {
             lock (_lock)
             {

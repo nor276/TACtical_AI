@@ -27,6 +27,26 @@ namespace TAC_AI.AI.Forms.Smart.Identity
 
         public static SmartIdentityStamp Classify(TankAIHelper helper, VehicleModelSnapshot vehicle, int teamId)
         {
+            // P11 T1 Item 47: read the live SmartIdentityTuning statics once at the dispatch
+            // boundary and delegate to ClassifyWithFlags. The explicit-flags overload exists
+            // so the parity catcher at SmartForm.OnTechSpawn can classify once with current
+            // flags and once with all-false to detect v0.1→v0.2 reroutes.
+            return ClassifyWithFlags(helper, vehicle, teamId,
+                enableRepairSupport: SmartIdentityTuning.EnableRepairSupport,
+                enablePatrol: SmartIdentityTuning.EnablePatrol,
+                useHarvesterModulesForGatherer: SmartIdentityTuning.UseHarvesterModulesForGatherer);
+        }
+
+        /// <summary>
+        /// P11 T1 Item 47: explicit-flag overload used by the IdentityClassifierParityGate
+        /// dispatch site. Runs the same row evaluation as <see cref="Classify"/>, but reads
+        /// the three SmartIdentityTuning flags from the parameters instead of the statics —
+        /// so a parity caller can pin all flags false to get the v0.1 baseline classification
+        /// without mutating static state.
+        /// </summary>
+        public static SmartIdentityStamp ClassifyWithFlags(TankAIHelper helper, VehicleModelSnapshot vehicle, int teamId,
+            bool enableRepairSupport, bool enablePatrol, bool useHarvesterModulesForGatherer)
+        {
             Vector3 spawnAnchor = Vector3.zero;
             if (helper != null && helper.tank != null)
                 spawnAnchor = helper.tank.boundsCentreWorldNoCheck;
@@ -82,6 +102,25 @@ namespace TAC_AI.AI.Forms.Smart.Identity
                 }
             }
 
+            // ---- Row 2.5 (P6 Item 25, REV 2): Gatherer-via-harvester-modules extension ----
+            // Default OFF (SmartIdentityTuning.UseHarvesterModulesForGatherer = false). When ON,
+            // techs with Conveyor>0 OR Holder>0 AND ≤1 weapon classify as Gatherer composition
+            // EVEN IF they don't meet the speed/aerial gates above (catches cargo-block-carrying
+            // techs that today fall through to Hunter). Phantom-module-free: uses already-live
+            // BlockKindCounts.Conveyor/Holder (P2 verified). Sniper-purpose still suppresses.
+            if (useHarvesterModulesForGatherer
+                && weaponCount <= 1
+                && (vehicle.KindCounts.Conveyor > 0 || vehicle.KindCounts.Holder > 0))
+            {
+                bool authoredOverridesHarvester = purposes != null
+                    && (purposes.Contains(BasePurpose.Sniper));
+                if (!authoredOverridesHarvester)
+                {
+                    return new SmartIdentityStamp(SmartIdentity.Gatherer, fromAuthored: false,
+                        classifiedAtTick: 0L, spawnAnchor: spawnAnchor);
+                }
+            }
+
             // ---- Aircraft team split (rows 3 / 4) ----
             // Authored aircraft via terrain. Air / Chopper / Space all route to Aircraft*;
             // the team-population check picks Support vs Hunter.
@@ -117,15 +156,46 @@ namespace TAC_AI.AI.Forms.Smart.Identity
                     classifiedAtTick: 0L, spawnAnchor: spawnAnchor);
             }
 
-            // ---- Row 6: Hunter ----
+            // ---- Row 6 prelude (P6 Item 26/28): hoisted composition locals ----
+            // The armed/mobile/aircraftLike trio is needed by Row 6 RepairSupport (Item 26)
+            // and Row 6.5 Patrol (Item 28) BEFORE the Hunter row evaluates. Hoisting them
+            // here doesn't change any predicate or default — Hunter's composition check at
+            // Row 7 reuses these same locals verbatim.
+            bool armed = vehicle.Weapons != null && vehicle.Weapons.Count >= 1;
+            bool mobile = vehicle.Mobility.TopSpeedForward >= HunterCompositionMinTopSpeed;
+            bool aircraftLike = vehicle.Mobility.VerticalAuthority >= AircraftCompositionMinVerticalAuth;
+
+            // ---- Row 6: RepairSupport (P6 Item 26) ----
+            // Composition: armed + mobile + ground-class + has Shield blocks.
+            // Default OFF preserves v0.1 classification bit-identically (Row 7 Hunter still
+            // catches what would otherwise route here).
+            if (enableRepairSupport
+                && armed && mobile && !aircraftLike
+                && vehicle.KindCounts.Shield > 0)
+            {
+                return new SmartIdentityStamp(SmartIdentity.RepairSupport, fromAuthored: false,
+                    classifiedAtTick: 0L, spawnAnchor: spawnAnchor);
+            }
+
+            // ---- Row 6.5: Patrol (P6 Item 28) ----
+            // Composition: armed + mobile + ground-class + solo (no same-team ally).
+            // Default OFF preserves v0.1 (Row 7 Hunter still catches solo armed mobile ground).
+            // Per REV 2 reshape: classifier-time check uses spawn-time signals only; the per-tick
+            // threat reaction lives in PatrolGoalSource.Produce (BeliefSnapshot only exists there).
+            if (enablePatrol
+                && armed && mobile && !aircraftLike
+                && helper != null && helper.tank != null && !HasSameTeamAlly(helper.tank))
+            {
+                return new SmartIdentityStamp(SmartIdentity.Patrol, fromAuthored: false,
+                    classifiedAtTick: 0L, spawnAnchor: spawnAnchor);
+            }
+
+            // ---- Row 7 (was Row 6): Hunter ----
             if (authoredHintValid && (terrain == BaseTerrain.Land || terrain == BaseTerrain.Sea))
             {
                 return new SmartIdentityStamp(SmartIdentity.Hunter, fromAuthored: true,
                     classifiedAtTick: 0L, spawnAnchor: spawnAnchor);
             }
-            bool armed = vehicle.Weapons != null && vehicle.Weapons.Count >= 1;
-            bool mobile = vehicle.Mobility.TopSpeedForward >= HunterCompositionMinTopSpeed;
-            bool aircraftLike = vehicle.Mobility.VerticalAuthority >= AircraftCompositionMinVerticalAuth;
             if (armed && mobile && !aircraftLike)
             {
                 return new SmartIdentityStamp(SmartIdentity.Hunter, fromAuthored: false,

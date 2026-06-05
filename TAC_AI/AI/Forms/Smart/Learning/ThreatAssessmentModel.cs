@@ -41,6 +41,10 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private readonly AdamState _adam;
         private readonly DoubleBuffer<float[]> _publishedParams;
         private readonly BoundedQueue<ThreatEvent> _events;
+        // L-013: ref-type lock target; TrainerWorker.RunLoop locks this around
+        // TrainOneMinibatch; SnapshotManager + QuitSaveCoordinator lock around StoreParameters.
+        private readonly object _saveMutex = new object();
+        public object SaveMutex => _saveMutex;
 
         private readonly int _w1Offset, _b1Offset, _w2Offset, _b2Offset, _w3Offset, _b3Offset, _totalParams;
 
@@ -155,11 +159,43 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             return 0.5f * d * d;
         }
 
+        /// <summary>
+        /// L-013: drain whatever events are in the queue (up to MinibatchSize) and run a
+        /// final partial-minibatch step under the SaveMutex. Returns event count consumed.
+        /// </summary>
+        public int FlushPendingForPersist()
+        {
+            lock (_saveMutex)
+            {
+                var result = TrainOneMinibatch();
+                return result.BatchSize;
+            }
+        }
+
         public void StoreParameters(float[] dest) => Array.Copy(_params, dest, _params.Length);
         public void LoadParameters(float[] src)
         {
             if (src == null || src.Length != _params.Length) throw new ArgumentException("ThreatModel: parameter length mismatch.");
             Array.Copy(src, _params, _params.Length);
+            _publishedParams.Write(Clone(_params));
+        }
+
+        /// <summary>
+        /// P11 T3 Item 53: real Glorot reset. Seeds MlpUtil with seed XOR ModelId so two
+        /// models reset in sequence don't get correlated weight streams, re-runs the
+        /// ctor's Glorot init for the 3 weight matrices, zero-fills biases, resets the
+        /// Adam optimizer state, and publishes the new params via the inference DoubleBuffer.
+        /// </summary>
+        public void Reset(int seed)
+        {
+            MlpUtil.ResetSeed(seed ^ (int)Id);
+            MlpUtil.GlorotInit(_params, _w1Offset, FeatureDim, H1);
+            MlpUtil.ZeroFill(_params, _b1Offset, H1);
+            MlpUtil.GlorotInit(_params, _w2Offset, H1, H2);
+            MlpUtil.ZeroFill(_params, _b2Offset, H2);
+            MlpUtil.GlorotInit(_params, _w3Offset, H2, 1);
+            MlpUtil.ZeroFill(_params, _b3Offset, 1);
+            _adam.Reset();
             _publishedParams.Write(Clone(_params));
         }
 

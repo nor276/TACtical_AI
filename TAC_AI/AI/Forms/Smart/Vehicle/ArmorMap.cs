@@ -133,35 +133,21 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
         }
 
         /// <summary>
-        /// Build an armor map by binning blocks into voxels and accumulating mass-as-HP.
-        ///
-        /// TODO v0.2: replace mass-as-HP placeholder with actual per-block HP read from
-        /// TerraTech's block damage component (ModuleDamage on each block, likely).
+        /// v0.1 path: build an armor map by binning blocks into voxels and accumulating
+        /// <c>b.CurrentMass</c> as the per-cell HP proxy. Bit-identical to v0.1 behavior;
+        /// retained as the default path so face-weakness ranking is unchanged when
+        /// <see cref="ArmorMapPolicy.UseRealSpecHP"/> is false.
         /// </summary>
         public static ArmorMap Compute(BlockInstancePose[] poses, Vector3Int desiredResolution)
         {
             if (poses == null || poses.Length == 0) return Empty;
 
-            // Compute the bounds in local space.
-            Vector3 minP = poses[0].LocalPosition;
-            Vector3 maxP = poses[0].LocalPosition;
-            for (int i = 1; i < poses.Length; i++)
-            {
-                Vector3 p = poses[i].LocalPosition;
-                if (p.x < minP.x) minP.x = p.x; else if (p.x > maxP.x) maxP.x = p.x;
-                if (p.y < minP.y) minP.y = p.y; else if (p.y > maxP.y) maxP.y = p.y;
-                if (p.z < minP.z) minP.z = p.z; else if (p.z > maxP.z) maxP.z = p.z;
-            }
-            Vector3 size = maxP - minP;
-            if (size.x < 0.1f) size.x = 0.1f;
-            if (size.y < 0.1f) size.y = 0.1f;
-            if (size.z < 0.1f) size.z = 0.1f;
-            var bounds = new Bounds(minP + size * 0.5f, size);
-
-            int nx = Mathf.Max(1, desiredResolution.x);
-            int ny = Mathf.Max(1, desiredResolution.y);
-            int nz = Mathf.Max(1, desiredResolution.z);
-            var cells = new float[nx * ny * nz];
+            Vector3 minP, maxP, size;
+            Bounds bounds;
+            int nx, ny, nz;
+            float[] cells;
+            BuildVoxelGrid(poses, desiredResolution, out minP, out maxP, out size, out bounds,
+                           out nx, out ny, out nz, out cells);
 
             for (int i = 0; i < poses.Length; i++)
             {
@@ -173,6 +159,76 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
             }
 
             return new ArmorMap(new Vector3Int(nx, ny, nz), bounds, cells);
+        }
+
+        /// <summary>
+        /// P3 Item 5: catalog-backed overload. Accumulates per-voxel HP as
+        /// <c>archetype.SpecHP * pose.HpFraction</c> — real per-block HP from ModuleDamage
+        /// modulated by per-instance damage state. Falls back gracefully when the catalog
+        /// has no entry for a block's TypeKey: uses <c>b.CurrentMass</c> for that block
+        /// (matches v0.1 mass-as-HP semantics so unprobed blocks don't poison the map).
+        ///
+        /// Gated by <see cref="ArmorMapPolicy.UseRealSpecHP"/> at the call site
+        /// (SmartRuntime.cs:238).
+        /// </summary>
+        public static ArmorMap Compute(BlockInstancePose[] poses, TypedBlockCatalog catalog,
+                                       Vector3Int desiredResolution)
+        {
+            if (poses == null || poses.Length == 0) return Empty;
+            if (catalog == null) return Compute(poses, desiredResolution); // graceful degrade
+
+            Vector3 minP, maxP, size;
+            Bounds bounds;
+            int nx, ny, nz;
+            float[] cells;
+            BuildVoxelGrid(poses, desiredResolution, out minP, out maxP, out size, out bounds,
+                           out nx, out ny, out nz, out cells);
+
+            for (int i = 0; i < poses.Length; i++)
+            {
+                var b = poses[i];
+                int x = Mathf.Clamp((int)((b.LocalPosition.x - minP.x) / size.x * nx), 0, nx - 1);
+                int y = Mathf.Clamp((int)((b.LocalPosition.y - minP.y) / size.y * ny), 0, ny - 1);
+                int z = Mathf.Clamp((int)((b.LocalPosition.z - minP.z) / size.z * nz), 0, nz - 1);
+
+                // Per-block HP via archetype lookup. Unknown archetype → fall back to
+                // b.CurrentMass (v0.1 path) so a single missed probe doesn't zero the voxel.
+                var arch = catalog.TryGet(b.TypeKey);
+                float hp;
+                if (arch != null && arch.SpecHP > 0f)
+                    hp = arch.SpecHP * Mathf.Clamp01(b.HpFraction);
+                else
+                    hp = b.CurrentMass;
+
+                cells[(x * ny + y) * nz + z] += hp;
+            }
+
+            return new ArmorMap(new Vector3Int(nx, ny, nz), bounds, cells);
+        }
+
+        // Shared bounds + grid setup for both Compute overloads.
+        private static void BuildVoxelGrid(BlockInstancePose[] poses, Vector3Int desiredResolution,
+            out Vector3 minP, out Vector3 maxP, out Vector3 size, out Bounds bounds,
+            out int nx, out int ny, out int nz, out float[] cells)
+        {
+            minP = poses[0].LocalPosition;
+            maxP = poses[0].LocalPosition;
+            for (int i = 1; i < poses.Length; i++)
+            {
+                Vector3 p = poses[i].LocalPosition;
+                if (p.x < minP.x) minP.x = p.x; else if (p.x > maxP.x) maxP.x = p.x;
+                if (p.y < minP.y) minP.y = p.y; else if (p.y > maxP.y) maxP.y = p.y;
+                if (p.z < minP.z) minP.z = p.z; else if (p.z > maxP.z) maxP.z = p.z;
+            }
+            size = maxP - minP;
+            if (size.x < 0.1f) size.x = 0.1f;
+            if (size.y < 0.1f) size.y = 0.1f;
+            if (size.z < 0.1f) size.z = 0.1f;
+            bounds = new Bounds(minP + size * 0.5f, size);
+            nx = Mathf.Max(1, desiredResolution.x);
+            ny = Mathf.Max(1, desiredResolution.y);
+            nz = Mathf.Max(1, desiredResolution.z);
+            cells = new float[nx * ny * nz];
         }
     }
 }

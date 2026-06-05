@@ -226,9 +226,9 @@ DebugTAC_AI.Log("Smart.Identity: '" + helper.tank.name + "' = " + stamp.Identity
 
 ### 7.3 Wire-in at `ContinuousController.OnOperationsTick`
 
-The existing goal-selection block at [ContinuousController.cs:153-168](../../../Control/ContinuousController.cs#L153-L168) becomes a 3-tier precedence: **Coordinator → Identity (when non-null) → TacticalOptimizer fallback**.
+The existing goal-selection block at [ContinuousController.cs:212-224](../../../Control/ContinuousController.cs#L212-L224) becomes a 3-tier precedence: **Coordinator → Identity (always, when registered) → TacticalOptimizer fallback**.
 
-**No `GenericGoalSource` class** — review found it unreachable as designed. Generic identities skip the source-dispatch path entirely and use the existing `TacticalOptimizer.Step` inline. The dispatch becomes:
+**REV 7 P6 Item 27 supersede**: the original v0.1 design said "no `GenericGoalSource` class" and bypassed dispatch for Generic. **v0.2 reverses that decision via the `TacticalGoalHandle` pattern** — Generic IS registered; its `Produce` delegates to the per-controller `_tactical.Step` through a delegate captured at controller construction. Per-instance Adam state stays on `ContinuousController._tactical` (no singleton contamination); behavior at the optimizer-call level is bit-identical to the v0.1 inline path. The dispatch is now:
 
 ```csharp
 TacticalGoal goal;
@@ -245,15 +245,28 @@ else
         _tactical.Reset(ownBelief.PositionMean, ownBelief.HeadingMean);
         _lastTickHadExternalGoal = false;
     }
-    var src = _readGoalSource?.Invoke();    // new ctor param: Func<ISmartGoalSource>
-    if (src != null && src.Identity != SmartIdentity.Generic)
-        goal = src.Produce(ownBelief, vehicle, beliefs, _readIdentityCtx());
+    var src = _readGoalSource?.Invoke();
+    if (src != null)
+    {
+        // P6 Item 27 (v0.2): wrap the per-tech IdentityContext with this controller's
+        // TacticalGoalHandle before invoking Produce. GenericGoalSource.Produce then
+        // delegates back to _tactical.Step via the handle — identical call, identical
+        // Adam state, identical args. Non-Generic sources ignore the handle field.
+        var baseCtx = _readIdentityCtx != null ? _readIdentityCtx() : default(IdentityContext);
+        var ctx = baseCtx.WithTacticalGoalHandle(_tacticalHandle);
+        goal = src.Produce(ownBelief, vehicle, beliefs, ctx);
+    }
     else
-        goal = _tactical.Step(ownBelief, vehicle, beliefs);   // Generic + fallback path
+    {
+        // S1 SAFETY: direct fallback if registry returns null (init race / test harness).
+        goal = _tactical.Step(ownBelief, vehicle, beliefs);
+    }
 }
 ```
 
-The `src.Identity != Generic` guard intentionally bypasses identity dispatch for Generic, so `TacticalOptimizer.Step` runs directly. The `SmartIdentityRegistry` only contains non-Generic identities — there is no `GenericGoalSource`.
+**Behavior preservation (call-equivalence)**: for Generic-classified techs, the call chain is `src.Produce → ctx.TacticalGoalHandle.Invoke(b, v, s) → _tactical.Step(b, v, s)` — same `_tactical` instance, same `Step` call, same three args, same Adam state. Delta: one extra Func invocation (~10ns). For all 7 non-Generic identities, dispatch path is unchanged shape; `ctx` now has a non-null handle that those sources ignore.
+
+**`SmartIdentityRegistry` contains all 9 identities** (Generic + Hunter + Sniper + Base + Gatherer + AircraftSupport + AircraftHunter + RepairSupport + Patrol). Registration site is `SmartRuntime.Init` at the block of `Register(...)` calls.
 
 **`_readGoalSource` / `_readIdentityCtx` plumbing**: two new `Func<>` parameters added to the `ContinuousController` constructor (currently has 7 params, none for identity). `SmartPerTechState` wires `_readGoalSource = () => this.GoalSource` and `_readIdentityCtx = () => this.BuildIdentityContext()`. `BuildIdentityContext()` reads pre-aggregated team data from the owning `TeamRuntime`.
 
@@ -435,7 +448,9 @@ Once approved, Phase 1 lands the seam + the one shared-helper change; Phase 2 (H
 - **§5.2**: `Space` consistently in both Aircraft rows (was inconsistently split).
 - **§6**: `IdentityContext.TeamCentroid` no longer uses `Vector3.zero` sentinel — world origin is a valid position. Consumers MUST gate on `HasAllies` before reading.
 - **§7.2**: Classifier insertion moved AFTER `SmartRuntime.World.RegisterTech` (was before) so the BeliefState is registered before identity stamps.
-- **§7.3**: `GenericGoalSource` removed — the `!= Generic` guard made it unreachable. Generic falls through inline to `TacticalOptimizer.Step`. The `SmartIdentityRegistry` only contains non-Generic identities.
+- **§7.3 (v0.1)**: `GenericGoalSource` removed — the `!= Generic` guard made it unreachable. Generic falls through inline to `TacticalOptimizer.Step`. The `SmartIdentityRegistry` only contains non-Generic identities.
+- **§7.3 (v0.2 REV 7 P6 Item 27 — REVERSES the above)**: `GenericGoalSource` IS registered. Dispatch wraps `IdentityContext` with a per-controller `TacticalGoalHandle` delegate; `GenericGoalSource.Produce` invokes the handle which calls `_tactical.Step` — same `_tactical` instance, same args, same Adam state. Behavior bit-identical at the optimizer-call level (~10ns Func overhead). The `!= Generic` guard is removed; dispatch is now uniform across all registered identities. Telemetry note: Generic techs now log `branch=IDENTITY=Generic` instead of `branch=TACTICAL` — P10 parity-catcher treats both as v0.1-equivalent.
+- **v0.2 P6 expansion**: `RepairSupport` (Item 26, enum=7) + `Patrol` (Item 28, enum=8) added as registered identities. Both gated default-OFF via `SmartIdentityTuning.EnableRepairSupport` / `EnablePatrol` — classifier rows are skipped, registry entries sit unused at default. `RepairSupportGoalSource` reads tank-wide HpFraction from the new `HealthSidecar` (P6 Item 26; populated by `SmartForm.ObserveWorldTechsIfDue` per-tank block-survival ratio). `PatrolGoalSource` does per-tick threat scan over `BeliefSnapshot.ByTech` in Produce (classifier signature lacks BeliefSnapshot — threat check must live in Produce per REV 2 reshape).
 - **§7.3**: New `TeamRuntime.TryGetCentroid(out Vector3)` aggregation explicitly called out as a Phase 1 add.
 - **§8**: File paths corrected — `Templates/RawTechLoader.cs` not `AI/RawTechLoader.cs`; `World/EventBus.cs` (class `WorldEventBus`) not `World/WorldEventBus.cs`. Line citations refined.
 - **§11 Q4, Q5**: Resolved per above; marked DECIDED.

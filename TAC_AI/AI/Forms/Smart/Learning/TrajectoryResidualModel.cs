@@ -45,6 +45,10 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private readonly AdamState _adam;
         private readonly DoubleBuffer<float[]> _publishedParams;
         private readonly BoundedQueue<ResidualEvent> _events;
+        // L-013: per-model save mutex; TrainerWorker locks around TrainOneMinibatch, saves
+        // lock around StoreParameters / FlushPendingForPersist.
+        private readonly object _saveMutex = new object();
+        public object SaveMutex => _saveMutex;
 
         private readonly int _w1Offset, _b1Offset, _w2Offset, _b2Offset, _w3Offset, _b3Offset, _totalParams;
 
@@ -181,11 +185,35 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             return 0.5f * (d.x * d.x + d.y * d.y + d.z * d.z);
         }
 
+        /// <summary>L-013: see ThreatAssessmentModel.FlushPendingForPersist.</summary>
+        public int FlushPendingForPersist()
+        {
+            lock (_saveMutex)
+            {
+                var result = TrainOneMinibatch();
+                return result.BatchSize;
+            }
+        }
+
         public void StoreParameters(float[] dest) => Array.Copy(_params, dest, _params.Length);
         public void LoadParameters(float[] src)
         {
             if (src == null || src.Length != _params.Length) throw new ArgumentException("ResidualModel: parameter length mismatch.");
             Array.Copy(src, _params, _params.Length);
+            _publishedParams.Write(Clone(_params));
+        }
+
+        /// <summary>P11 T3 Item 53: real Glorot reset — same shape as ThreatAssessmentModel.</summary>
+        public void Reset(int seed)
+        {
+            MlpUtil.ResetSeed(seed ^ (int)Id);
+            MlpUtil.GlorotInit(_params, _w1Offset, FeatureDim, H1);
+            MlpUtil.ZeroFill(_params, _b1Offset, H1);
+            MlpUtil.GlorotInit(_params, _w2Offset, H1, H2);
+            MlpUtil.ZeroFill(_params, _b2Offset, H2);
+            MlpUtil.GlorotInit(_params, _w3Offset, H2, OutDim);
+            MlpUtil.ZeroFill(_params, _b3Offset, OutDim);
+            _adam.Reset();
             _publishedParams.Write(Clone(_params));
         }
 

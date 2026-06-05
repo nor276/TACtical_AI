@@ -71,18 +71,64 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
         public DoubleBuffer<CoordinationState> StateBuffer { get; } = new DoubleBuffer<CoordinationState>(CoordinationState.Empty);
 
         private Dictionary<TechId, TargetAssignment> _previousAssignments = new Dictionary<TechId, TargetAssignment>();
+        // L-029: lock for _previousAssignments — TechLifecycleRegistry.ForgetAll fires
+        // from the sweep thread; the assignments dict is read+rewritten on the coordinator
+        // tick thread. ReaderWriterLockSlim isn't worth the kernel cost here (writes are
+        // every tick, reads are rare); plain Object lock.
+        private readonly object _assignmentsLock = new object();
+
+        /// <summary>L-029: drop per-tech assignment state. Called via sidecar adapter.</summary>
+        public void ForgetTech(TechId id)
+        {
+            lock (_assignmentsLock) { _previousAssignments.Remove(id); }
+        }
+
+        /// <summary>L-029: snapshot of TechIds with active assignments. Called via sidecar adapter at leak-watch cadence.</summary>
+        public System.Collections.Generic.IReadOnlyCollection<TechId> SnapshotAssignmentKeys()
+        {
+            lock (_assignmentsLock)
+            {
+                var arr = new TechId[_previousAssignments.Count];
+                int i = 0;
+                foreach (var k in _previousAssignments.Keys) arr[i++] = k;
+                return arr;
+            }
+        }
         private long _publishTickCounter;
+        // P7 Item 17 (REV 2 C10): plan-transition edge tracker — lives on Coordinator
+        // (Coordinator-worker side) rather than TeamRuntime's _lastPlanType (Planner-worker
+        // side). Avoids cross-worker races and keeps the publish-step concern local.
+        private TAC_AI.AI.Forms.Smart.Planning.PlanLibrary.PlanType _lastObservedPlanType
+            = TAC_AI.AI.Forms.Smart.Planning.PlanLibrary.PlanType.Hold;
+
+        // P11 T2 Item 51: snapshot of friendly/hostile counts at the start of the current plan,
+        // used to compute the reward fed to ActionValueEstimator when the plan transitions.
+        // Reward = ΔfriendlyAlive · 1.0 - ΔhostileAlive · 0.5 (positive = good for us). The
+        // count proxy is coarser than per-tech HP delta but doesn't require an extra HP-sum pass
+        // through the team snapshot every tick; the HealthSidecar HP fix (also Item 51) refines
+        // the Friendly[].Health signal that downstream StrategicValueFunction consumes.
+        private int _planStartFriendlyCount;
+        private int _planStartHostileCount;
+
+        // L-046: predicate returning true while the owning team is in Active lifecycle
+        // state. Optional — null means "always run" (test harness pattern). TeamRuntime
+        // passes a lambda capturing its own State so StepOnce can hard-stop if the team
+        // transitioned to Draining/Disposed between the daemon's iteration snapshot
+        // (L-045 gate) and StepOnce dispatch.
+        private readonly Func<bool> _isActive;
 
         public Coordinator(
             DoubleBuffer<PlanLibrary.StrategicPlan> planBuffer,
             Func<TeamSnapshot> readTeam,
             Action<Dictionary<TechId, TacticalGoal>> publishGoals,
-            Action<Dictionary<TechId, TargetAssignment>> publishTargets = null)
+            Action<Dictionary<TechId, TargetAssignment>> publishTargets = null,
+            Func<bool> isActive = null)
         {
             _planBuffer = planBuffer;
             _readTeam = readTeam;
             _publishGoals = publishGoals;
             _publishTargets = publishTargets;
+            _isActive = isActive;
         }
 
         /// <summary>
@@ -94,6 +140,11 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
         /// </summary>
         public void StepOnce()
         {
+            // L-046: hard-stop if the owning team is no longer Active. Catches the race
+            // where L-045's iteration snapshot saw Active but the reaper transitioned the
+            // team to Draining/Disposed between iteration and dispatch. Cheap predicate
+            // call; null guard preserves test-harness behaviour.
+            if (_isActive != null && !_isActive()) return;
             try
             {
                 var team = _readTeam?.Invoke();
@@ -101,6 +152,13 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
                 if (team != null) TickOnce(plan, team);
             }
             catch (OperationCanceledException) { throw; }
+            // L-024: explicit TAE catch ahead of generic Exception. Per-team Coordinator
+            // shares AbortGuard storm window with the global coordinator daemon.
+            catch (System.Threading.ThreadAbortException)
+            {
+                if (TAC_AI.AI.Forms.Smart.Threading.AbortGuard.Absorb("GlobalCoordinator")
+                    == TAC_AI.AI.Forms.Smart.Threading.AbortGuard.AbortAction.ExitForRespawn) throw;
+            }
             catch (Exception ex)
             {
                 DebugTAC_AI.LogWarning("Smart.Coordinator: " + ex.GetType().Name + ": " + ex.Message);
@@ -159,6 +217,36 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
                 publishTick: _publishTickCounter);
             StateBuffer.Write(unified);
 
+            // P7 Item 17 (REV 2 C10): plan-transition edge fire. After unified state
+            // is published — consumer (ActionValueEstimator via WorldEventBus) sees a
+            // transition tied to a globally-consistent state snapshot.
+            //
+            // P11 T2 Item 51: real reward = friendly-count delta + (hostile-count delta inverted),
+            // measured between the start of the prior plan and the moment of transition. Coarse
+            // count proxy (HP-delta is recorded inside StrategicState.Friendly[].Health via the
+            // HealthSidecar fix at SmartRuntime.SummarizeBelief). On the very first transition,
+            // both deltas are zero — the initial plan's reward is "no information yet".
+            if (plan.Type != _lastObservedPlanType)
+            {
+                var prior = _lastObservedPlanType;
+                _lastObservedPlanType = plan.Type;
+
+                int currentFriendly = team.OurTechs != null ? team.OurTechs.Count : 0;
+                int currentHostile = team.HostileBeliefs != null ? team.HostileBeliefs.Count : 0;
+                int dFriendly = currentFriendly - _planStartFriendlyCount;
+                int dHostile = currentHostile - _planStartHostileCount;
+                float reward = (float)dFriendly * 1.0f + (float)(-dHostile) * 0.5f;
+                _planStartFriendlyCount = currentFriendly;
+                _planStartHostileCount = currentHostile;
+
+                TAC_AI.AI.Forms.Smart.Learning.PlanTransitionPublisher.OnPlanPublished(
+                    team.TeamId,
+                    prior,
+                    plan.Type,
+                    reward: reward,
+                    tickMono: MonoClock.Now());
+            }
+
             _publishGoals?.Invoke(goals);
             _publishTargets?.Invoke(targets);
         }
@@ -172,19 +260,25 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
         public BeliefSnapshot HostileSnapshot { get; }
         public IReadOnlyDictionary<TechId, VehicleModelSnapshot> VehiclesByTech { get; }
         public IReadOnlyDictionary<TechId, List<TechId>> LosCoverage { get; }
+        // P7 Item 17 (REV 2 C10): TeamId stamp added so Coordinator.TickOnce edge tracker
+        // can pass the team to PlanTransitionPublisher without needing a TeamRuntime ref.
+        // Default-constructed (zero) when caller passes no explicit teamId.
+        public TeamId TeamId { get; }
 
         public TeamSnapshot(
             IReadOnlyList<TechId> ourTechs,
             IReadOnlyList<BeliefState> hostileBeliefs,
             BeliefSnapshot hostileSnapshot,
             IReadOnlyDictionary<TechId, VehicleModelSnapshot> vehiclesByTech,
-            IReadOnlyDictionary<TechId, List<TechId>> losCoverage)
+            IReadOnlyDictionary<TechId, List<TechId>> losCoverage,
+            TeamId teamId = default(TeamId))
         {
             OurTechs = ourTechs;
             HostileBeliefs = hostileBeliefs;
             HostileSnapshot = hostileSnapshot;
             VehiclesByTech = vehiclesByTech;
             LosCoverage = losCoverage;
+            TeamId = teamId;
         }
     }
 }

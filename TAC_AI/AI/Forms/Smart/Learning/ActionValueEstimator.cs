@@ -52,6 +52,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private readonly AdamState _adam;
         private readonly DoubleBuffer<float[]> _publishedParams;
         private readonly BoundedQueue<ActionValueEvent> _events;
+        // L-013: per-model save mutex; TrainerWorker locks around TrainOneMinibatch.
+        private readonly object _saveMutex = new object();
+        public object SaveMutex => _saveMutex;
 
         private readonly int _w1Offset, _b1Offset, _w2Offset, _b2Offset, _w3Offset, _b3Offset;
         private readonly int _totalParams;
@@ -224,6 +227,16 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         }
 
         // ---- Serialization ----
+        /// <summary>L-013: see ThreatAssessmentModel.FlushPendingForPersist.</summary>
+        public int FlushPendingForPersist()
+        {
+            lock (_saveMutex)
+            {
+                var result = TrainOneMinibatch();
+                return result.BatchSize;
+            }
+        }
+
         public void StoreParameters(float[] dest)
         {
             Array.Copy(_params, dest, _params.Length);
@@ -233,6 +246,20 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             if (src == null || src.Length != _params.Length)
                 throw new ArgumentException("ActionValueEstimator: parameter length mismatch.");
             Array.Copy(src, _params, _params.Length);
+            _publishedParams.Write(CloneFloats(_params));
+        }
+
+        /// <summary>P11 T3 Item 53: real Glorot reset — 3-weight + 3-bias MLP.</summary>
+        public void Reset(int seed)
+        {
+            MlpUtil.ResetSeed(seed ^ (int)Id);
+            MlpUtil.GlorotInit(_params, _w1Offset, StateDim, H1);
+            MlpUtil.ZeroFill(_params, _b1Offset, H1);
+            MlpUtil.GlorotInit(_params, _w2Offset, H1, H2);
+            MlpUtil.ZeroFill(_params, _b2Offset, H2);
+            MlpUtil.GlorotInit(_params, _w3Offset, H2, 1);
+            MlpUtil.ZeroFill(_params, _b3Offset, 1);
+            _adam.Reset();
             _publishedParams.Write(CloneFloats(_params));
         }
 

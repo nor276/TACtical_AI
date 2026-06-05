@@ -29,6 +29,8 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
         public readonly float CooldownRemaining;
         public readonly WeaponFireMode FireMode;
         public readonly bool IsEnergyWeapon;
+        // P11 T6 Item 57: reflected per-shot energy cost. 0f for non-energy weapons.
+        public readonly float EnergyCostPerShot;
 
         public WeaponProfile(
             WeaponId id,
@@ -36,7 +38,7 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
             float yawArc, float pitchArc,
             float range, float projVel, float damage, float fireRateHz,
             int ammoCurrent, int ammoCapacity, float cooldown,
-            WeaponFireMode fireMode, bool isEnergy)
+            WeaponFireMode fireMode, bool isEnergy, float energyCostPerShot = 0f)
         {
             Id = id;
             MountPositionLocal = mount;
@@ -52,6 +54,7 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
             CooldownRemaining = cooldown;
             FireMode = fireMode;
             IsEnergyWeapon = isEnergy;
+            EnergyCostPerShot = energyCostPerShot;
         }
     }
 
@@ -90,12 +93,19 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
                 // WeaponSpec real reflected scalars.
                 var spec = arch.Weapon;
 
-                // ForwardDirectionLocal: Decision #2 keeps v0.1 at today's lossy formula.
-                // pose.LocalRotation already encodes block-to-chassis orientation; applying
-                // it to Vector3.forward yields the same value the old path computed via
-                // `tank.transform.InverseTransformDirection(block.transform.forward)` because
-                // block.transform.forward is the block-local +Z rotated into chassis frame.
-                Vector3 forwardDirLocal = pose.LocalRotation * Vector3.forward;
+                // ForwardDirectionLocal: P1 Item 2 gate. WeaponSpecPolicy.UseHonestBarrelGeometry
+                // selects between v0.1 lossy formula (block-+Z assumption) and the reflected
+                // barrel-direction stored on spec.BarrelDirBlockLocal (probed at
+                // ArchetypeProbe.cs:139 via InverseTransformDirection). Default OFF preserves
+                // v0.1 combat feel until flipped + P1.1 spawn-test gate.
+                //
+                // Geometrically: for forward-facing barrels both formulas produce identical
+                // chassis-frame vectors. They diverge for side-mounted / canted turrets where
+                // the weapon.transform.forward != block.transform.forward — IsAimedWithinArc
+                // and CostFunction make different decisions on those weapons under the gate.
+                Vector3 forwardDirLocal = WeaponSpecPolicy.UseHonestBarrelGeometry
+                    ? pose.LocalRotation * spec.BarrelDirBlockLocal
+                    : pose.LocalRotation * Vector3.forward;
 
                 bool isTurret = spec.Kind == WeaponKindFlag.GunTurret;
 
@@ -110,7 +120,8 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
                     spec.Range, spec.ProjectileVelocity, spec.DamagePerShot, spec.FireRateHz,
                     ammoCurrent: spec.AmmoCapacity, ammoCapacity: spec.AmmoCapacity,
                     cooldown: 0f,
-                    fireMode: mode, isEnergy: spec.IsEnergyWeapon));
+                    fireMode: mode, isEnergy: spec.IsEnergyWeapon,
+                    energyCostPerShot: spec.EnergyCostPerShot));
             }
             return list.ToArray();
         }

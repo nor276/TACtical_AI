@@ -80,5 +80,26 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
             Interlocked.Exchange(ref _hits, 0L);
             Interlocked.Exchange(ref _misses, 0L);
         }
+
+        /// <summary>
+        /// P2 Item 9: drop a single archetype so the next sighting re-probes. Worker-safe
+        /// (ConcurrentDictionary remove); the next TryGet returns null, the next GetOrProbe
+        /// re-probes.
+        /// </summary>
+        public bool InvalidateType(int typeKey)
+        {
+            BlockArchetype _;
+            return _byType.TryRemove(typeKey, out _);
+        }
+
+        /// <summary>
+        /// P2 Item 9: drop every cached archetype. Worker-safe. Used by mod hot-reload
+        /// triggers via CatalogInvalidation.OnAllInvalidated. Hit/miss counters NOT
+        /// reset (they're cumulative diagnostics).
+        /// </summary>
+        public void InvalidateAll()
+        {
+            _byType.Clear();
+        }
     }
 }

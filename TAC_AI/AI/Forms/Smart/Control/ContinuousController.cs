@@ -95,6 +95,12 @@ namespace TAC_AI.AI.Forms.Smart.Control
         private readonly DoubleBuffer<ControlProfile> _controlProfileBuffer;
 
         private readonly TacticalOptimizer _tactical = new TacticalOptimizer();
+
+        // P6 Item 27: per-controller delegate that closes over _tactical.Step so the
+        // Generic dispatch can route through the registry symmetrically with the other
+        // identities. Allocated once in the ctor; reused every tick (no per-tick GC).
+        // Signature matches TacticalOptimizer.Step verified at TacticalOptimizer.cs:59.
+        private readonly System.Func<BeliefState, VehicleModelSnapshot, BeliefSnapshot, TacticalGoal> _tacticalHandle;
         // Phase 7 (FIX-PLAN.md) — AUDIT R1 2.4: SamplingMPC was zero-arg-constructed,
         // which seeds Random() with a time-based clock — so two techs spawned in the
         // same ms saw identical sample streams (lock-step trajectories) and training
@@ -168,6 +174,12 @@ namespace TAC_AI.AI.Forms.Smart.Control
             _readGoalSource = readGoalSource;
             _readIdentityCtx = readIdentityCtx;
 
+            // P6 Item 27: capture per-controller TacticalGoalHandle that closes over _tactical.
+            // GenericGoalSource.Produce invokes this via ctx.TacticalGoalHandle to delegate
+            // back to the same _tactical.Step call the v0.1 inline-bypass branch used —
+            // preserves per-instance Adam state, behavior bit-identical at the optimizer.
+            _tacticalHandle = (belief, vehicle, beliefs) => _tactical.Step(belief, vehicle, beliefs);
+
             // Initialize buffers with neutral values so ControlFrame never reads null.
             _tacticalGoalBuffer = new DoubleBuffer<TacticalGoal>(TacticalGoal.AtCurrent(Vector3.zero, 0f));
             _controlProfileBuffer = new DoubleBuffer<ControlProfile>(ControlProfile.Neutral(0));
@@ -210,15 +222,24 @@ namespace TAC_AI.AI.Forms.Smart.Control
                     _lastTickHadExternalGoal = false;
                 }
                 var src = _readGoalSource?.Invoke();
-                if (src != null && src.Identity != SmartIdentity.Generic)
+                if (src != null)
                 {
-                    var ctx = _readIdentityCtx != null ? _readIdentityCtx() : default(IdentityContext);
+                    // P6 Item 27: registered Generic dispatches via the handle pattern, so
+                    // we no longer special-case Identity == Generic here. The wrap with
+                    // _tacticalHandle is what lets GenericGoalSource invoke _tactical.Step
+                    // (per-instance Adam state preserved) via the symmetric registry path.
+                    var baseCtx = _readIdentityCtx != null ? _readIdentityCtx() : default(IdentityContext);
+                    var ctx = baseCtx.WithTacticalGoalHandle(_tacticalHandle);
                     goal = src.Produce(ownBelief, vehicle, beliefs, ctx);
                     usedIdentity = true;
                     dispatchIdentity = src.Identity;
                 }
                 else
                 {
+                    // S1 SAFETY: preserve direct fallback when registry returns null for the
+                    // identity (e.g. init order race, test harness). Without this, src.Produce
+                    // on a null src would throw; this branch keeps v0.1 behavior on the
+                    // unhappy path.
                     goal = _tactical.Step(ownBelief, vehicle, beliefs);
                     usedTactical = true;
                 }
@@ -238,6 +259,11 @@ namespace TAC_AI.AI.Forms.Smart.Control
             // [TEMP DIAGNOSTIC] Log the first N goal-dispatch outcomes per controller so we
             // can see which branch fires + the goal-vs-current-position delta. If the delta
             // is large but the tech still isn't moving, the issue is MPC or actuator-side.
+            //
+            // P6 Item 27: Generic-classified techs now log branch="IDENTITY=Generic" instead
+            // of the pre-v0.2 "TACTICAL" label. The underlying _tactical.Step call is
+            // bit-identical (handle delegate wraps the same call) — P10 parity-catcher must
+            // treat "IDENTITY=Generic" as equivalent to "TACTICAL" for v0.1 parity comparison.
             if (_goalDispatchLogCount < GoalDispatchLogCap)
             {
                 _goalDispatchLogCount++;
@@ -306,8 +332,49 @@ namespace TAC_AI.AI.Forms.Smart.Control
             // happens here against the Operations cadence (the only fixed timebase we
             // share with the fire pass).
             _weapons.ApplyEnergyRefillTick(Time.fixedDeltaTime);
-            var decision = _weapons.ComputeFireCommits(vehicle, kinematic, beliefs, coordinationTarget, friendlies, terrain);
+            // P4 Item 12: pass nowMono so WeaponFireController can call PositionAt/VelocityAt
+            // when AetherTuning.UseCoastAwareLead is true. When false (default), nowMono is
+            // ignored and the raw-mean path is byte-identical to v0.1.
+            long fireNowMono = World.MonoClock.Now();
+            var decision = _weapons.ComputeFireCommits(vehicle, kinematic, beliefs, coordinationTarget, friendlies, terrain, fireNowMono);
             OverlayFireDecisionOntoProfile(decision);
+
+            // P7 Item 18: record fire-commit for residual learning. When the decision fires,
+            // capture (predicted impact point, own position, projected flight time, fire-tick).
+            // A later observation of the same target inside the slop window will trigger
+            // LeadResidualRecorder.OnObservation to enqueue a ResidualEvent.
+            if (decision != null && decision.FireAny)
+            {
+                var recorder = TAC_AI.AI.Forms.Smart.Learning.LeadResidualRecorder.Instance;
+                if (recorder != null)
+                {
+                    // Approximate projTime from aim radius and target distance: aim radius
+                    // is bounded by the lead solver's accuracy, distance is the lead-time
+                    // proxy here. WeaponFireController doesn't currently expose per-target
+                    // projTime in the WeaponFireDecision (v0.3 surface); use the distance/
+                    // muzzle-velocity approximation from the primary weapon's spec.
+                    float dist = (decision.AimPointWorld - kinematic.PositionWorld).magnitude;
+                    float bestMuzzle = 0f;
+                    if (vehicle.Weapons != null)
+                    {
+                        for (int wi = 0; wi < vehicle.Weapons.Count; wi++)
+                        {
+                            float mv = vehicle.Weapons[wi].ProjectileVelocity;
+                            if (mv > bestMuzzle) bestMuzzle = mv;
+                        }
+                    }
+                    float projTime = bestMuzzle > 0f ? dist / bestMuzzle : 0f;
+                    if (projTime > 0f)
+                    {
+                        recorder.OnFireCommit(
+                            decision.AimTargetId,
+                            decision.AimPointWorld,
+                            kinematic.PositionWorld,
+                            projTime,
+                            fireNowMono);
+                    }
+                }
+            }
         }
 
         private void OverlayFireDecisionOntoProfile(WeaponFireDecision decision)

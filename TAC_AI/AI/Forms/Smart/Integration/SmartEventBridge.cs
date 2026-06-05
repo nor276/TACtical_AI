@@ -34,6 +34,13 @@ namespace TAC_AI.AI.Forms.Smart.Integration
         // Per-tank damage handlers keyed by Tank reference so we can detach cleanly on recycle.
         private static readonly Dictionary<Tank, Action<ManDamage.DamageInfo>> _damageHandlers =
             new Dictionary<Tank, Action<ManDamage.DamageInfo>>();
+        // L-010: shadow map keyed by TechId so the orphan-sweep path can detach without
+        // needing a live Tank reference. Populated in AttachPerTank, drained in DetachPerTank
+        // (both overloads). ConcurrentDictionary because the orphan sweep can fire from the
+        // observation tick while the OnTechRecycle path fires from main-thread engine events
+        // (they collide rarely but the race exists).
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<TechId, Tank> _damageHandlersByTechId =
+            new System.Collections.Concurrent.ConcurrentDictionary<TechId, Tank>();
 
         // Bound delegate so subscribe/unsubscribe target the same Action instance.
         // Engine signature verified against TankAIManager.cs:191 — the real shape is
@@ -157,6 +164,7 @@ namespace TAC_AI.AI.Forms.Smart.Integration
                 catch { /* tank may already be gone */ }
             }
             _damageHandlers.Clear();
+            _damageHandlersByTechId.Clear();   // L-010 shadow map
 
             try { _harmony?.UnpatchAll(HarmonyId); } catch { }
             _harmony = null;
@@ -173,11 +181,14 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             if (_damageHandlers.ContainsKey(tank)) return;
             Action<ManDamage.DamageInfo> handler = info => OnTankDamage(tank, info);
             _damageHandlers[tank] = handler;
+            // L-010: stash by TechId for the orphan-sweep detach path.
+            _damageHandlersByTechId[TechId.FromTank(tank)] = tank;
             try { tank.DamageEvent.Subscribe(handler); }
             catch (Exception ex)
             {
                 DebugTAC_AI.LogWarning("SmartEventBridge.AttachPerTank: " + ex.Message);
                 _damageHandlers.Remove(tank);
+                _damageHandlersByTechId.TryRemove(TechId.FromTank(tank), out _);
             }
         }
 
@@ -187,8 +198,25 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             if (tank == null) return;
             if (!_damageHandlers.TryGetValue(tank, out var handler)) return;
             _damageHandlers.Remove(tank);
+            _damageHandlersByTechId.TryRemove(TechId.FromTank(tank), out _);
             try { tank.DamageEvent.Unsubscribe(handler); }
             catch { /* swallow; tank may be partially recycled */ }
+        }
+
+        /// <summary>
+        /// L-010: TechId-keyed detach for the orphan-sweep path. Used when the engine has
+        /// already purged the GameObject and the Tank reference is gone. Looks up the
+        /// (still-alive) Tank ref via the shadow map; if found, unsubscribes; if the shadow
+        /// map says we never attached (or already detached), no-ops silently.
+        /// </summary>
+        public static void DetachPerTank(TechId id)
+        {
+            if (!_damageHandlersByTechId.TryRemove(id, out var tank)) return;
+            if (tank == null) return;
+            if (!_damageHandlers.TryGetValue(tank, out var handler)) return;
+            _damageHandlers.Remove(tank);
+            try { tank.DamageEvent.Unsubscribe(handler); }
+            catch { /* tank may have been purged by the engine */ }
         }
 
         // ------------------ Event handlers ------------------
@@ -304,17 +332,18 @@ namespace TAC_AI.AI.Forms.Smart.Integration
                 var attackerId = hasAttacker
                     ? TechId.FromTank(info.SourceTank)
                     : default(TechId);
-                // Phase 11 (verify-build): ManDamage.DamageInfo's verified fields in this
-                // codebase are .Damage, .SourceTank, .SourceTeamID (see TankAIHelper.cs:1326,
-                // EnemyMind.cs:212-217). Hit position and force-direction fields previously
-                // assumed (.HitPosition, .HitForceDir) don't exist on the engine struct —
-                // SanitizedDamageInfo's position/direction fields drop to Vector3.zero
-                // until a verified hit-point access surfaces. Downstream Learning consumers
-                // don't read these fields at v0.1.0, so no behavior is lost.
+                // P11 T6 Item 68 (post-decompile correction): the previous "fields don't exist"
+                // comment was wrong. Decompile of F:\Tac-AI\Decompiled\AssemblyCSharp\ManDamage.cs:54-88
+                // proves ManDamage.DamageInfo exposes public Vector3 HitPosition and
+                // public Vector3 DamageDirection (auto-normalized in the ctor at line 85),
+                // both NetSerialize-safe (lines 134-135 + 156-157). Wiring them through
+                // SanitizedDamageInfo unblocks the facing-threat orbit refinement that was
+                // mistakenly deferred to "v0.3" — RepairSupportGoalSource now reads the
+                // averaged attacker bearing from DamageHintBuffer.TryGetRecent.
                 var sanitized = new SanitizedDamageInfo(
                     info.Damage,
-                    Vector3.zero,
-                    Vector3.zero,
+                    info.HitPosition,
+                    info.DamageDirection,
                     attackerId,
                     hasAttacker);
                 WorldEventBus.Publish(new DamageObserved(victimId, sanitized));
@@ -346,13 +375,36 @@ namespace TAC_AI.AI.Forms.Smart.Integration
                 {
                     // We track this tech — its prior team is what Smart had on file.
                     WorldEventBus.Publish(new TechTeamChanged(techId, state.TeamId, newTeamId));
-                    SmartRuntime.GetTeam(state.TeamId)?.DeregisterTech(state.TechId);
-                    state.UpdateTeam(newTeamId);
                     // Also rebind the World's BeliefState so threat-field hostile
                     // classification follows. Without this the world-side allegiance
                     // would stay stuck on the original team forever.
                     SmartRuntime.World?.UpdateTeam(state.TechId, newTeamId);
-                    SmartRuntime.GetOrCreateTeam(newTeamId)?.RegisterTech(state);
+                    // L-043: atomic two-team migration under both RW locks (replaces the
+                    // pre-L-043 Deregister + Update + Register sequence that left a window
+                    // where the tech was in neither team's snapshot). On false, the new
+                    // team refused or the old team had no entry — log + let routing reclaim.
+                    var sourceTeamId = state.TeamId;
+                    bool migrated = SmartRuntime.MigrateTech(sourceTeamId, newTeamId, state.TechId);
+                    if (!migrated)
+                    {
+                        DebugTAC_AI.LogWarnFileOnly(
+                            "smart-team-changed-migrate-failed-" + state.TechId.Value,
+                            "SmartEventBridge.OnTankTeamChanged: MigrateTech failed (tech="
+                            + state.TechId.Value + " from=" + sourceTeamId.Value
+                            + " to=" + newTeamId.Value + ") — tech detached from oldTeam, unattached to newTeam");
+                    }
+                    else
+                    {
+                        // L-061: source team may have emptied; drop its per-team threat-field
+                        // cache eagerly rather than waiting for the 30s reaper grace. The reaper
+                        // still owns TeamRuntime disposal — this is the cache hint only.
+                        var source = SmartRuntime.GetTeam(sourceTeamId);
+                        if (source != null && source.TechCount == 0)
+                        {
+                            try { TAC_AI.AI.Forms.Smart.Pathing.PathingService.ForgetTeam(sourceTeamId); }
+                            catch (System.Exception ex) { DebugTAC_AI.LogWarning("SmartEventBridge: ForgetTeam: " + ex.Message); }
+                        }
+                    }
                 }
                 else
                 {

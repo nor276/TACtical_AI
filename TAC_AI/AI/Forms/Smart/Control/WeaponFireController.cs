@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using TAC_AI.AI.Forms.Smart.Learning;
 using TAC_AI.AI.Forms.Smart.Pathing;
 using TAC_AI.AI.Forms.Smart.Vehicle;
 using TAC_AI.AI.Forms.Smart.World;
@@ -106,7 +107,8 @@ namespace TAC_AI.AI.Forms.Smart.Control
             BeliefSnapshot beliefs,
             TechId? coordinationTarget,
             IReadOnlyList<Vector3> friendlyPositionsExcludingSelf,
-            ITerrainMap terrain)
+            ITerrainMap terrain,
+            long nowMono = 0L)
         {
             int wCount = vehicle.Weapons.Count;
             if (wCount == 0) return WeaponFireDecision.Hold;
@@ -174,10 +176,38 @@ namespace TAC_AI.AI.Forms.Smart.Control
                 var target = beliefList[targetSlot];
 
                 // Lead computation (CONTROL §10.3).
+                // P4 Item 12 (REV 7): AetherTuning.UseCoastAwareLead gates between v0.1
+                // raw-mean path and coast-aware extrapolation. Default OFF preserves v0.1
+                // byte-identically. Flip requires P4.1 spawn-test gate per REV 3 S2
+                // (Lost-state lead shifts as well — VelocityAt zeros out on Lost).
                 float dist = (target.PositionMean - own.PositionWorld).magnitude;
                 float projTime = dist / Mathf.Max(w.ProjectileVelocity, 1f);
-                Vector3 predictedPos = target.PositionMean + target.VelocityMean * projTime
-                                     + LearnedResidual(target.Id, projTime);
+                Vector3 targetPos, targetVel;
+                bool usingCoastAware = AetherTuning.UseCoastAwareLead && nowMono != 0L;
+                if (usingCoastAware)
+                {
+                    targetPos = target.PositionAt(nowMono);
+                    targetVel = target.VelocityAt(nowMono);
+                }
+                else
+                {
+                    targetPos = target.PositionMean;
+                    targetVel = target.VelocityMean;
+                }
+                Vector3 roughLead = targetPos + targetVel * projTime;
+                Vector3 predictedPos = roughLead
+                                     + LearnedResidual(target.Id, own.PositionWorld, roughLead, projTime);
+
+                // P11 T1 Item 45: when coast-aware lead is live, compute the v0.1 raw-mean
+                // prediction in parallel and feed both to LeadResidualParityGate. Gate dedups
+                // per target id; subsequent fire commits on the same target skip the second
+                // arithmetic. Per the gate's REV 3 S2 design we also flag Lost-state targets.
+                if (usingCoastAware)
+                {
+                    Vector3 v01Predicted = target.PositionMean + target.VelocityMean * projTime;
+                    LeadResidualParityGate.TryEmitOnce(target.Id.Value, predictedPos, v01Predicted, projTime,
+                        target.Sight == SightState.Lost);
+                }
                 Vector3 toAim = predictedPos - own.PositionWorld;
                 float toAimLen = toAim.magnitude;
                 Vector3 requiredAim = toAimLen > 1e-3f ? toAim / toAimLen : Vector3.forward;
@@ -385,13 +415,50 @@ namespace TAC_AI.AI.Forms.Smart.Control
 
         /// <summary>
         /// Learned trajectory residual per CONTROL-CONTRACT §10.3 + LEARNING-CONTRACT §3.3.
-        /// Slot for the trained <see cref="TrajectoryResidualModel"/>; returns zero when the
-        /// model has not yet been trained on observable lead-prediction outcomes for the
-        /// target tech. Phase 1.4 (FIX-PLAN.md): signature corrected to TechId — the slot
-        /// is keyed by the target tech being aimed at, not by the firing weapon, matching
-        /// both contract texts and the existing call site.
+        ///
+        /// P11 T2 Item 49: wired to the trained <see cref="TrajectoryResidualModel"/>. The
+        /// model trains on tuples published by <see cref="LeadResidualRecorder"/> whose feature
+        /// shape is documented at LeadResidualRecorder.OnObservation. The features here MUST
+        /// match: shape [15] with [0]=distance, [1]=projTime, [2]=elapsedSec (==projTime at
+        /// predict-time — predict is "what's the residual at the projected-impact moment"),
+        /// [3..5]=normalized direction from own→roughLead, [6..8]=residual (zero at predict-time;
+        /// recorder writes actual residual at observation), [9..14]=reserved zeros for v0.3.
+        ///
+        /// Returns Vector3.zero if the model is null (LearningService not running) or if the
+        /// model hasn't seen training data yet — published params are Glorot-initialized, so
+        /// the early-session output is near-zero noise rather than wild jitter.
         /// </summary>
-        private static Vector3 LearnedResidual(TechId targetId, float dt) => Vector3.zero;
+        private static Vector3 LearnedResidual(TechId targetId, Vector3 ownPos, Vector3 roughLead, float projTime)
+        {
+            var model = LearningService.Residual;
+            if (model == null) return Vector3.zero;
+
+            var features = new float[TrajectoryResidualModel.FeatureDim];
+            Vector3 toTarget = roughLead - ownPos;
+            float distance = toTarget.magnitude;
+            features[0] = distance;
+            features[1] = projTime;
+            features[2] = projTime;     // elapsedSec at predict-time == projTime ("at impact")
+            if (distance > 1e-3f)
+            {
+                Vector3 dir = toTarget / distance;
+                features[3] = dir.x;
+                features[4] = dir.y;
+                features[5] = dir.z;
+            }
+            // features[6..8]: residual is the LABEL the model predicts; pass zero at evaluate.
+            // features[9..14]: reserved for v0.3 VehicleModelSnapshot features.
+            try
+            {
+                return model.Evaluate(features);
+            }
+            catch (System.Exception ex)
+            {
+                DebugTAC_AI.LogWarnFileOnly("learned-residual-eval",
+                    "TrajectoryResidualModel.Evaluate threw " + ex.GetType().Name + ": " + ex.Message);
+                return Vector3.zero;
+            }
+        }
 
         private void EnforceEnergyBudget(VehicleModelSnapshot vehicle, bool[] commits)
         {
@@ -402,11 +469,24 @@ namespace TAC_AI.AI.Forms.Smart.Control
 
             energyWeapons.Sort((a, b) => Priority(vehicle.Weapons[b]).CompareTo(Priority(vehicle.Weapons[a])));
 
+            // P11 T6 Item 57: per-weapon cost from reflected ModuleWeapon.m_FiringEnergyRequired
+            // (carried on WeaponProfile.EnergyCostPerShot, populated at probe time per the
+            // decompile at ModuleWeapon.cs:36-38). Replaces the v0.1 0.02f magic constant.
+            // Cost-fraction normalization: a typical TerraTech energy weapon costs 50 units/shot
+            // out of a 5000-unit tank battery (~1% per shot). 50f matches that baseline; cheaper
+            // weapons drain the reserve more slowly, expensive ones (lasers, etc.) faster.
+            // Fallback when reflection failed (EnergyCostPerShot=0): preserve the 0.02f magic
+            // so v0.1 spawn-test behavior is recovered for any reflection-failing block.
+            const float CostPerShotBaselineUnits = 50f;
+            const float FallbackCostFraction = 0.02f;
             float reserve = _energyReserveFraction;
-            const float CostPerEnergyShot = 0.02f; // provisional; TODO v0.2 verify against tank energy state.
             for (int i = 0; i < energyWeapons.Count; i++)
             {
-                if (reserve >= CostPerEnergyShot) reserve -= CostPerEnergyShot;
+                var w = vehicle.Weapons[energyWeapons[i]];
+                float costFrac = w.EnergyCostPerShot > 0f
+                    ? Mathf.Clamp(w.EnergyCostPerShot / CostPerShotBaselineUnits, 0.001f, 1f)
+                    : FallbackCostFraction;
+                if (reserve >= costFrac) reserve -= costFrac;
                 else commits[energyWeapons[i]] = false;
             }
             _energyReserveFraction = Mathf.Clamp01(reserve);

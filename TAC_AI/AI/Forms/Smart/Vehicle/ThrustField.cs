@@ -136,12 +136,16 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
                         }
                     }
 
-                    Vector3 forwardForce = chassisAxis * em.MaxForceN;
+                    // P2 Item 37: per-EmitterKind multiplier applied immediately before
+                    // bucket aggregation. Defaults all 1.0f -> bit-identical to v0.1.
+                    // CMA-ES (Training) can mutate these to bias per-kind effective output.
+                    float kindMul = EmitterKindMultipliers.For(em.Kind);
+                    Vector3 forwardForce = chassisAxis * (em.MaxForceN * kindMul);
                     AccumulateSigned(ref posF, ref negF, forwardForce);
 
                     if (em.ReverseForceN > 0f)
                     {
-                        Vector3 reverseForce = -chassisAxis * em.ReverseForceN;
+                        Vector3 reverseForce = -chassisAxis * (em.ReverseForceN * kindMul);
                         AccumulateSigned(ref posF, ref negF, reverseForce);
                     }
 

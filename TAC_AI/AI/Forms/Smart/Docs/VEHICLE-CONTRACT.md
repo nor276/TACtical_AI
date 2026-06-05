@@ -152,42 +152,57 @@ public readonly struct PropulsionBlock
 
 ## SECTION 5: WEAPON PROFILE TABLE
 
-### 5.1 What it computes
+> **REV 7 (v0.2):** §5 is updated to reflect the Chassis honest-geometry pipeline + the P1 `WeaponSpecPolicy.UseReflectedScalars` gate. Pre-v0.2 §5.1/§5.2/§5.3 narrative is replaced; semantics are preserved.
 
-[NORMATIVE] One `WeaponProfile` per weapon block on the tech:
-- Mount position (tech-local).
-- Forward direction (tech-local) — where the weapon points before turret rotation.
-- Arc cone (max turret rotation in pitch/yaw, in radians).
-- Range (effective max range; projectile dies past this).
-- Projectile velocity (m/s).
-- Damage per projectile.
-- Fire rate (rounds per second).
-- Ammo state (current count, capacity).
-- Current cooldown (seconds until next shot ready).
+### 5.1 What it computes — separated static spec vs dynamic profile
 
-[NORMATIVE] Static data (mount, range, fire rate, damage, projectile velocity) is captured at rebuild time. Dynamic data (current cooldown, ammo state) is updated continuously by the kinematic tracker pass per-tick (it reads these from the weapon block).
+[NORMATIVE] The Chassis pipeline (P1 / `Vehicle/ChassisCapture.cs`) splits the weapon model into two concerns:
 
-### 5.2 Why include dynamic data in the snapshot
+1. **`WeaponSpec` (static, per-block-type)** — captured once at archetype probe time (`Vehicle/ArchetypeProbe.cs`) and cached in `Vehicle/TypedBlockCatalog`:
+   - `EmitterKind` (see §11) — Fixed / Turreted / Drone / Missile / Beam / etc.
+   - Mount position + forward direction (block-local).
+   - Yaw + pitch arc (radians) — turret rotation envelope.
+   - Range, projectile velocity, damage-per-projectile, fire rate.
+   - Per-`EmitterKind` multipliers (`Vehicle/EmitterKindMultipliers.cs`) — pure switch; defaults all `1.0f` (v0.1 bit-identical).
+2. **`WeaponProfile` (per-tech-instance, dynamic)** — built by `Vehicle/WeaponProfileBuilder.cs` at vehicle-rebuild time, one per equipped weapon block, joining the static `WeaponSpec` with this instance's:
+   - World-space mount transform (from `BlockInstancePose`).
+   - Ammo state, cooldown remaining, current charge level.
 
-[RATIONALE] Planning needs to know "can this enemy fire at me right now?" — that requires current cooldown and ammo. Including dynamic data in the snapshot means Planning reads a coherent view; it does not need to dual-source.
+[NORMATIVE] Static data flows through the catalog; dynamic data flows through the per-tech rebuild. Planning reads `VehicleModelSnapshot.Weapons` (List<WeaponProfile>) — a coherent view of both.
 
-### 5.3 API sketch
+### 5.2 The `UseReflectedScalars` parity gate
 
-```
-public readonly struct WeaponProfile
+[NORMATIVE] **P1 Item:** `Vehicle/WeaponSpecPolicy.cs` carries a `UseReflectedScalars` boolean (default **OFF**). When OFF, `WeaponSpec` values come from the v0.1 reflection-and-fallback path; bit-identical to v0.1 behavior. When ON, values are read from the live `Module*` instances via `Vehicle/WeaponReflectionCache.cs`.
+
+[NORMATIVE] The flip is gated by `WeaponSpecParityGate` (`Vehicle/WeaponSpecParityGate.cs`): the gate emits one `[WEAPON-PARITY]` log line per archetype-key on first observation, tagged `[PARITY-DRIFT]` when the new value diverges from the old beyond tolerance. This is **diagnostic only** — the live spec is whichever side the policy gate selects.
+
+### 5.3 API sketch (v0.2)
+
+```csharp
+public readonly struct WeaponSpec    // static, in TypedBlockCatalog; one per block type
 {
-    public readonly WeaponId Id;
-    public readonly Vector3 MountPositionLocal;
-    public readonly Vector3 ForwardDirectionLocal;
-    public readonly float YawArcRadians;
-    public readonly float PitchArcRadians;
-    public readonly float Range;
-    public readonly float ProjectileVelocity;
-    public readonly float DamagePerProjectile;
-    public readonly float FireRateHz;
-    public readonly int AmmoCurrent;
-    public readonly int AmmoCapacity;
-    public readonly float CooldownRemaining;
+    public readonly EmitterKind Kind;
+    public readonly Vector3     MountPositionLocal;
+    public readonly Vector3     ForwardDirectionLocal;
+    public readonly float       YawArcRadians;
+    public readonly float       PitchArcRadians;
+    public readonly float       Range;
+    public readonly float       ProjectileVelocity;
+    public readonly float       DamagePerProjectile;
+    public readonly float       FireRateHz;
+
+    public static WeaponSpec PlaceholderFixed(Vector3 forwardLocal);   // safe default
+}
+
+public readonly struct WeaponProfile   // dynamic, in VehicleModelSnapshot; one per equipped weapon
+{
+    public readonly WeaponId    Id;
+    public readonly WeaponSpec  Spec;                   // join to static catalog
+    public readonly Vector3     MountPositionWorld;     // from BlockInstancePose
+    public readonly Vector3     ForwardDirectionWorld;
+    public readonly int         AmmoCurrent;
+    public readonly int         AmmoCapacity;
+    public readonly float       CooldownRemaining;
 }
 ```
 
@@ -195,39 +210,54 @@ public readonly struct WeaponProfile
 
 ## SECTION 6: ARMOR MAP (VOXELIZED GRID)
 
+> **REV 7 (v0.2):** §6 is updated for P3 `ArmorMapPolicy.UseRealSpecHP` + `ArmorMapParityGate`. The voxel-grid shape and query semantics are preserved.
+
 ### 6.1 Structure
 
-[NORMATIVE] `ArmorMap` is a 3D voxel grid covering the tech's bounding volume, with resolution adaptive to tech extents.
+[NORMATIVE] `ArmorMap` (`Vehicle/ArmorMap.cs`) is a 3D voxel grid covering the tech's bounding volume. v0.2 default resolution is **8×8×8** (`new Vector3Int(8, 8, 8)`), set at `SmartPerTechState.RebuildVehicleSnapshotInternal`.
 
-- Grid resolution: chosen so that each voxel is approximately one block-cell on a side. Typical: 6×6×6 to 16×16×16 for small-to-large techs.
-- Per-voxel data: aggregate hit-points + material type (worst-case among contained blocks) + occupancy density (fraction of cell filled by blocks).
+- Per-voxel data: aggregate hit-points + density (fraction of cell filled).
 - Coordinate origin: tech-local, axis-aligned to tech axes (NOT world axes).
 
-### 6.2 Face-direction queries
+### 6.2 The `UseRealSpecHP` policy gate
 
-[NORMATIVE] The primary query: "given an attack direction `d` (in tech-local), what's the weak face?" Implementation:
+[NORMATIVE] **P3 Item 5:** `Vehicle/ArmorMapPolicy.cs` carries a `UseRealSpecHP` boolean (default **OFF**). The compute call branches on it:
 
+```csharp
+var armor = Vehicle.ArmorMapPolicy.UseRealSpecHP
+    ? ArmorMap.Compute(poses, SmartRuntime.BlockCatalog, new Vector3Int(8, 8, 8))   // v0.2 path
+    : ArmorMap.Compute(poses, new Vector3Int(8, 8, 8));                              // v0.1 fallback
+```
+
+| Policy | HP source per voxel |
+|---|---|
+| **OFF (default)** | block mass aggregated into the voxel — the v0.1 "mass-as-HP" approximation; face-weakness ranking is bit-identical to v0.1 |
+| **ON** | catalog-backed `ModuleDamage.maxHealth × pose.HpFraction` per block, aggregated into the voxel — physically grounded HP that survives armor-fraction reductions |
+
+[NORMATIVE] **`ArmorMapParityGate`** (`Vehicle/ArmorMapParityGate.cs`) compares total HP across both grids when the policy is flipped, with `DriftTolerance = 0.25` (25% of total HP). One log line per tech-id; `[PARITY-DRIFT]` tag when total-HP delta exceeds tolerance.
+
+### 6.3 Face-direction queries — unchanged from v0.1
+
+[NORMATIVE] Primary query: "given an attack direction `d` (tech-local), what's the weak face?"
 1. Compute the cardinal/intercardinal direction nearest to `-d` (the side facing the attack).
 2. Walk the slab of voxels on that side; sum hit-points; find the minimum-HP face.
 3. Return: face index, total HP of that face, weakest sub-region within the face.
 
-[NORMATIVE] Queries are constant-time (per the voxel grid traversal — the grid is small). No raycasts at query time; raycasts are not part of this design.
-
-### 6.3 Why voxels and not raycast-on-demand
-
-[RATIONALE] The cost trade-off (Q&A Layer 4): voxel grid takes ~few KB per tech and constant-time queries; raycast costs 1-2ms per query when the tech is large and the ray sampling is dense. Planning issues many face-direction queries per planning tick (one per candidate engagement angle); the voxel grid amortizes far better.
+[NORMATIVE] Queries are constant-time (small grid; no raycasts at query time). The voxel grid trades a few KB per tech and a one-shot rebuild cost for many cheap face queries during planning — far better-amortized than per-query raycasts.
 
 ### 6.4 API sketch
 
-```
+```csharp
 public sealed class ArmorMap
 {
     public readonly Vector3Int GridResolution;
     public readonly Bounds LocalBounds;
-    // Internal voxel data: per-cell HP + material + density.
 
     public ArmorQueryResult QueryWeakFace(Vector3 attackDirectionLocal);
     public ArmorQueryResult QueryRegion(Bounds regionLocal);
+
+    public static ArmorMap Compute(BlockInstancePose[] poses, Vector3Int gridResolution);
+    public static ArmorMap Compute(BlockInstancePose[] poses, TypedBlockCatalog catalog, Vector3Int gridResolution);  // v0.2 (real HP)
 }
 
 public readonly struct ArmorQueryResult
@@ -243,9 +273,11 @@ public readonly struct ArmorQueryResult
 
 ## SECTION 7: KINEMATIC TRACKER
 
+> **REV 7 (v0.2):** §7 is updated to reflect that smoothing landed as the EWMA design but is **not pre-filtering rbody velocity reads** — Aether's D2 decision keeps raw rbody.velocity as the trace anchor (see [WORLD-CONTRACT.md §3.2](WORLD-CONTRACT.md#section-3-aether-fusion-replaces-kalman-update)).
+
 ### 7.1 What it tracks
 
-[NORMATIVE] Per-tech estimator for instantaneous physical state:
+[NORMATIVE] Per-tech estimator for instantaneous physical state. The fields surfaced via `KinematicState` are unchanged from v0.1:
 - Position (world-space).
 - Linear velocity (world-space).
 - Linear acceleration (world-space; estimated from velocity history).
@@ -255,22 +287,24 @@ public readonly struct ArmorQueryResult
 
 ### 7.2 Update cadence
 
-[NORMATIVE] The kinematic tracker runs on the **main thread** during the perception pass (driven from `Operations`). Each tick:
-1. Read `Tank.boundsCentreWorldNoCheck`, `Tank.rbody.velocity`, `Tank.rbody.angularVelocity`, `Tank.transform.forward`.
+[NORMATIVE] The kinematic tracker (`Vehicle/KinematicTracker.cs`) runs on the **main thread** during `SmartPerTechState.TickMainThread`, driven by `SmartForm.Operations` at the engine's fixed-update rate (~33 ms target — see [WORLD-CONTRACT.md §3.1](WORLD-CONTRACT.md#section-3-aether-fusion-replaces-kalman-update)). Per tick:
+1. Read `Tank.boundsCentreWorldNoCheck`, `Tank.rbody.velocity`, `Tank.rbody.angularVelocity`, `Tank.rootBlockTrans.forward`.
 2. Update internal history buffer (last N samples).
-3. Estimate acceleration as `(velocity_now - velocity_prev) / dt`.
+3. Estimate acceleration as `(velocity_now − velocity_prev) / dt`.
 4. Estimate jerk similarly.
-5. Publish the new `KinematicState` snapshot.
+5. Publish the new `KinematicState` via `SmartPerTechState.KinematicBuffer.Write`.
 
-[NORMATIVE] Updates run on main thread because they read engine objects. Heavy filtering (smoothing, outlier rejection) is permitted but kept lightweight; the tracker MUST complete in O(1) regardless of how many techs are tracked.
+[NORMATIVE] All five steps execute on the main thread because they read engine objects. The tracker MUST complete in O(1) regardless of how many techs are tracked.
 
-### 7.3 Smoothing
+### 7.3 Smoothing — derived fields only
 
-[NORMATIVE] Acceleration and jerk MUST be smoothed (e.g., a 4-sample exponentially-weighted moving average) to suppress single-frame numerical noise. The smoothing parameter is provisional (per [FORM-SPECIFICATION.md §1 disclaimer](FORM-SPECIFICATION.md)); tune during self-play.
+[NORMATIVE] **Smoothing applies to derived fields (acceleration, jerk) only.** Velocity is NOT pre-filtered — `LastSeenVelocity` in the Aether trace is the raw `rbody.velocity` read at observation time. This is the Aether D2 decision: explicit, no incidental smoothing from a Kalman gain. Single-frame collision spikes are bounded by `MaxAccelerationEstimate × dt` and visible to consumers.
+
+[NORMATIVE] Acceleration and jerk MUST be smoothed (the 4-sample EWMA pattern v0.1 prescribed). Smoothing parameter remains provisional; tune during self-play.
 
 ### 7.4 API sketch
 
-```
+```csharp
 public readonly struct KinematicState
 {
     public readonly Vector3 PositionWorld;
@@ -280,6 +314,8 @@ public readonly struct KinematicState
     public readonly Vector3 JerkWorld;
     public readonly Vector3 HeadingWorld;
     public readonly long TickStamp;
+
+    public static KinematicState Zero { get; }
 }
 ```
 
@@ -346,7 +382,139 @@ The worker computes the new `MassDistribution`, `ThrustMap`, `Weapons`, `ArmorMa
 
 ---
 
-## SECTION 10: FILE LAYOUT
+## SECTION 10: HOW TO WRITE A NEW GOALSOURCE
+
+> **REV 7 (v0.2):** Author-facing guide added per P10 Item 43. GoalSources are the per-identity "what does this tech want to do this tick" producers consumed by `ContinuousController.OnOperationsTick`. The 9-source registry is in `Identity/`; adding a 10th follows this template.
+
+### 10.1 Anatomy of an `ISmartGoalSource`
+
+[NORMATIVE] An `ISmartGoalSource` implementation is a stateless singleton that maps `IdentityContext + BeliefSnapshot + own VehicleModelSnapshot → TacticalGoal`. Contract: `Identity/SmartIdentity.cs:73-78`.
+
+```csharp
+public sealed class MyNewGoalSource : ISmartGoalSource
+{
+    public SmartIdentity Identity => SmartIdentity.MyNewKind;
+
+    public TacticalGoal Produce(in IdentityContext ctx,
+                                BeliefSnapshot beliefs,
+                                VehicleModelSnapshot vehicle)
+    {
+        // 1. Pull facts: ctx.TechId, ctx.TeamCentroid (gate on ctx.HasAllies), ctx.Stamp.IsAuthored.
+        // 2. Scan beliefs.ByTech for the most relevant tech (hostile/ally/objective per role).
+        // 3. Build a goal: TacticalGoal.AtPosition(target, urgency) or TacticalGoal.AtCurrent(...).
+        // 4. Return — caller (ContinuousController) writes the goal into the tech's external-goal buffer.
+        if (TryFindHostile(beliefs, ctx.TechId, out var hostilePos))
+            return TacticalGoal.AtPosition(hostilePos, urgency: 1.0f);
+        return TacticalGoal.AtCurrent(vehicle.Kinematics.PositionWorld, urgency: 0f);
+    }
+}
+```
+
+### 10.2 Registration
+
+[NORMATIVE] Register the singleton in `SmartRuntime.Init` alongside the existing 9 entries:
+
+```csharp
+SmartIdentityRegistry.Register(new MyNewGoalSource());
+```
+
+[NORMATIVE] The classifier (`Identity/SmartIdentityClassifier.cs`) MUST be able to produce `SmartIdentity.MyNewKind` for at least one composition rule, or the new source will be registered but never selected. Add a classifier branch; gate it behind a default-OFF `SmartIdentityTuning` flag if the rule is experimental.
+
+### 10.3 csproj registration
+
+[NORMATIVE] Old-style csproj — every new `.cs` file needs an explicit entry:
+
+```xml
+<Compile Include="AI\Forms\Smart\Identity\MyNewGoalSource.cs" />
+```
+
+### 10.4 Worker safety
+
+[NORMATIVE] `Produce` is called from `ContinuousController.OnOperationsTick` on the **main thread**. It is safe to read engine objects through `vehicle.Kinematics`. It is NOT safe to subscribe to worker-side events from inside `Produce`; sidecars (e.g., `HealthSidecar`, `DamageHintBuffer`) are the supported cross-thread surface and are populated by main-thread observers (`SmartForm.ObserveWorldTechsIfDue`).
+
+[NORMATIVE] The singleton MUST be reentrant — multiple techs of the same identity hit `Produce` per tick. Hold no per-tech state in the source; use `ctx.TechId` to key into sidecars if persistent state is needed.
+
+### 10.5 Bit-identical preservation pattern
+
+[NORMATIVE] When the new source is meant as a **refinement** of existing behavior (not new behavior), gate it default-OFF behind a `SmartIdentityTuning` flag and have the classifier route the affected composition to the new identity only when the flag is true. This preserves v0.1 behavior under default tunings and lets a spawn-test campaign flip the gate without re-deploying.
+
+[NORMATIVE] Reference implementations to study before authoring a 10th source:
+- **`HunterGoalSource`** — minimal closing-on-hostile template.
+- **`GathererGoalSource`** — deterministic Lissajous + Conveyor/Holder composition gating.
+- **`PatrolGoalSource`** — TechId-seeded meander + Produce-time hostile scan.
+- **`GenericGoalSource`** — `TacticalGoalHandle` indirection so per-instance Adam state in `TacticalOptimizer` is preserved (the v0.1 inline-bypass behavior is call-equivalent).
+
+---
+
+## SECTION 11: HOW TO ADD A NEW EMITTERKIND
+
+> **REV 7 (v0.2):** Author-facing guide added per P10 Item 43. EmitterKinds (`Vehicle/EmitterKind.cs`) classify thrust-producing block subtypes so `ThrustField` aggregation can apply per-kind multipliers (`Vehicle/EmitterKindMultipliers.cs`). The enum is **closed for v0.2** by design — adding a new kind is a v0.3 procedure.
+
+### 11.1 When to add a new EmitterKind
+
+[INFORMATIVE] Add a new `EmitterKind` only when the engine introduces a thrust block that:
+1. Produces meaningfully different force characteristics from existing kinds (e.g., a directional spool-up effect that none of `WheelDrive` / `BoosterStraight` / `HoverPad` / `JetForward` model), AND
+2. Has at least one downstream consumer that wants to bias against it (multiplier ≠ 1.0).
+
+[INFORMATIVE] Adding a kind whose multiplier stays 1.0 forever adds enum churn without behavior change. Prefer extending an existing kind's probe rules.
+
+### 11.2 Four-site checklist
+
+[NORMATIVE] Adding a new `EmitterKind` requires edits at **four** sites (per `V0.2-PLAN.md §769`):
+
+1. **`Vehicle/EmitterKind.cs`** — add the enum entry. Append; do not reorder (multiplier table is index-keyed in spirit even though the switch is name-keyed — keep entries stable for grep continuity).
+
+   ```csharp
+   public enum EmitterKind
+   {
+       Unknown = 0,
+       WheelDrive,
+       BoosterStraight,
+       HoverPad,
+       JetForward,
+       JetReverse,
+       // ...
+       MyNewKind,   // append
+   }
+   ```
+
+2. **`Vehicle/ArchetypeProbe.cs`** — add a branch that detects the new kind during prefab probing. Use the same reflection + name-pattern pattern the existing branches follow; fall through to `Unknown` on miss.
+
+   ```csharp
+   else if (IsMyNewKindBlock(prefab, modules))
+       em.Kind = EmitterKind.MyNewKind;
+   ```
+
+3. **`Vehicle/ThrustField.cs::Compute`** — the per-block aggregation loop reads `EmitterKindMultipliers.For(em.Kind)` and multiplies it into `em.MaxForceN` and `em.ReverseForceN` immediately before bucket aggregation. **No code change needed at this site** if the multiplier table covers the new kind (next step).
+
+4. **`Vehicle/EmitterKindMultipliers.cs`** — add a `case` to the switch. Default the multiplier to **1.0f** unless there's a downstream behavior reason to bias.
+
+   ```csharp
+   public static float For(EmitterKind k)
+   {
+       switch (k)
+       {
+           case EmitterKind.WheelDrive:    return 1.0f;
+           // ...
+           case EmitterKind.MyNewKind:     return 1.0f;   // bit-identical to v0.1 default
+           default:                        return 1.0f;
+       }
+   }
+   ```
+
+### 11.3 csproj registration
+
+[NORMATIVE] No new `.cs` files are introduced for an `EmitterKind` add — all four edits are to existing files. No csproj entry needed.
+
+### 11.4 Spawn-test gate
+
+[NORMATIVE] Even when the multiplier defaults to 1.0f (bit-identical), spawn-test the affected tech compositions: the `ArchetypeProbe` branch is a new code path and probe misclassification would re-route blocks between kinds in `ThrustField.Compute`'s aggregation. Verify via `WeaponSpecParityGate` analog or by enabling `CatalogPrewarm` and grepping the probe output.
+
+[NORMATIVE] When the multiplier is set ≠ 1.0f (behavior-shifting), gate the kind behind a default-OFF flag in `SmartIdentityTuning` or equivalent — the same default-OFF discipline P1-P9 used. Flip it during a spawn-test campaign; revert via `smart.preset.load` if regressions show up.
+
+---
+
+## SECTION 12: FILE LAYOUT
 
 [NORMATIVE] `TAC_AI/AI/Forms/Smart/Vehicle/` contains seven files:
 
@@ -364,7 +532,7 @@ Seven files sits at the upper end of [FORM-SPECIFICATION.md §5.10](FORM-SPECIFI
 
 ---
 
-## SECTION 11: DIAGNOSTICS INTEGRATION
+## SECTION 13: DIAGNOSTICS INTEGRATION
 
 [NORMATIVE] Vehicle exposes the following diagnostic events to the Diagnostics subsystem (when authored):
 
@@ -377,7 +545,7 @@ Seven files sits at the upper end of [FORM-SPECIFICATION.md §5.10](FORM-SPECIFI
 
 ---
 
-## SECTION 12: OPEN ITEMS
+## SECTION 14: OPEN ITEMS
 
 [OPEN] **Voxel grid resolution scaling formula.** Adaptive to tech extents, but the specific formula (cells per meter? cells per block? log scale?) is decided at implementation. Trigger for pinning: profiling armor-query cost against grid size.
 
@@ -389,7 +557,7 @@ Seven files sits at the upper end of [FORM-SPECIFICATION.md §5.10](FORM-SPECIFI
 
 ---
 
-## SECTION 13: WHAT THIS CONTRACT IS NOT
+## SECTION 15: WHAT THIS CONTRACT IS NOT
 
 [INFORMATIVE]
 

@@ -34,8 +34,18 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         public CircuitBreaker(string daemonName, int maxFailures = DefaultMaxFailures, int windowMs = DefaultWindowMs)
         {
             _daemonName = daemonName;
-            _maxFailures = maxFailures;
-            _windowMs = windowMs;
+            // P9 Item 31 (REV 7 C12): sentinel-overlay pattern. Caller passing the literal
+            // const default opts into AetherTuning override; explicit non-default values
+            // bypass tuning (per-daemon override). Trade-off: a caller explicitly passing
+            // literal 10 (matching DefaultMaxFailures) triggers the override — acceptable
+            // because 10 IS the documented default. Per-daemon explicit-overrides that need
+            // to bypass tuning should pass a sentinel like int.MinValue + custom factory.
+            _maxFailures = (maxFailures == DefaultMaxFailures)
+                ? World.AetherTuning.CircuitBreakerMaxFailures
+                : maxFailures;
+            _windowMs = (windowMs == DefaultWindowMs)
+                ? World.AetherTuning.CircuitBreakerWindowMs
+                : windowMs;
         }
 
         /// <summary>
@@ -61,6 +71,9 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                     + "' tripped after " + _failureCount + " exceptions within "
                     + _windowMs + "ms. Terminating worker (TerminationReason.RetryBudgetExhausted).");
                 ThreadingDiagnostics.RaiseWorkerTerminated(_daemonName, TerminationReason.RetryBudgetExhausted);
+                // P9 Item 31: register the trip in the session-wide calibration aggregator
+                // so SmartRuntime.Shutdown can emit the CircuitBreaker.log session report.
+                CircuitBreakerCalibration.RegisterTrip(_daemonName);
                 return true;
             }
             return false;

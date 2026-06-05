@@ -25,12 +25,21 @@ namespace TAC_AI.AI.Forms.Smart.Tests
 
         public static int PassCount { get; private set; }
         public static int FailCount { get; private set; }
+        public static int SkipCount { get; private set; }
         public static List<Result> Results { get; } = new List<Result>();
+
+        // P10 (REV 7): control-flow exception type used by Skip(). Wraps a reason; the
+        // runner converts it to a SKIPPED result instead of a FAILED one.
+        internal sealed class SkippedException : Exception
+        {
+            public SkippedException(string reason) : base(reason) { }
+        }
 
         public static void Reset()
         {
             PassCount = 0;
             FailCount = 0;
+            SkipCount = 0;
             Results.Clear();
         }
 
@@ -43,6 +52,12 @@ namespace TAC_AI.AI.Forms.Smart.Tests
                 r.Passed = true;
                 PassCount++;
             }
+            catch (SkippedException sx)
+            {
+                r.Passed = false;
+                r.FailureMessage = "SKIPPED: " + sx.Message;
+                SkipCount++;
+            }
             catch (Exception ex)
             {
                 r.Passed = false;
@@ -52,10 +67,24 @@ namespace TAC_AI.AI.Forms.Smart.Tests
             Results.Add(r);
         }
 
-        public static string Summary()
+        /// <summary>P10 (REV 7): one-arg assert convenience. Throws when condition is false.</summary>
+        public static void Assert(bool condition, string label)
         {
-            return "Smart.Tests: " + PassCount + " passed, " + FailCount + " failed";
+            if (!condition) throw new InvalidOperationException("Assert failed: " + label);
         }
+
+        /// <summary>P10 (REV 7): skip the current test with a reason — runner records as SKIPPED.</summary>
+        public static void Skip(string reason)
+        {
+            throw new SkippedException(reason ?? "(no reason)");
+        }
+
+        /// <summary>Property-form access for callers that prefer it; same content as the method form.</summary>
+        public static string Summary
+            => "Smart.Tests: " + PassCount + " passed, " + FailCount + " failed, " + SkipCount + " skipped";
+
+        // Method form kept for back-compat with any caller using SummaryAsString().
+        public static string SummaryAsString() => Summary;
 
         // --- Assertions ---
 

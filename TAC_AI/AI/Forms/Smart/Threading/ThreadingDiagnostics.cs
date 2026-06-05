@@ -13,6 +13,8 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         RetryBudgetExhausted,
         /// <summary>Worker exited unexpectedly (bug in worker loop). Should not happen.</summary>
         UnexpectedExit,
+        /// <summary>L-003: worker exited after AbortGuard tripped storm threshold (8/10s). DaemonWatchdog respawns.</summary>
+        AbortStorm,
     }
 
     /// <summary>
@@ -29,8 +31,9 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         public static event Action<string> WorkerStarted;
         public static event Action<string, TerminationReason> WorkerTerminated;
         public static event Action<string, Exception, int> WorkerException;
-        public static event Action<string, int> QueueDepthSampled;
-        public static event Action<string, TimeSpan> WorkerIdle;
+        // P11 T7 Item 63: QueueDepthSampled + WorkerIdle deleted — no producer ever raised
+        // them (verified by global grep on RaiseQueueDepth / RaiseWorkerIdle). Reintroduce
+        // with their Raise* helpers when a real producer materializes.
         public static event Action<string, int> RequestsDropped;
 
         private static bool _defaultHandlersInstalled;
@@ -52,6 +55,11 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             {
                 if (reason == TerminationReason.Clean)
                     DebugTAC_AI.Log("Smart.Threading: worker '" + name + "' exited cleanly.");
+                else if (reason == TerminationReason.AbortStorm)
+                    // L-003: AbortStorm is recoverable (DaemonWatchdog will respawn). File-only,
+                    // distinct tag so the watchdog log + this terminate log correlate.
+                    DebugTAC_AI.LogWarnFileOnly("worker-abort-storm-exit-" + name,
+                        "[WORKER-ABORT-STORM] worker '" + name + "' exited for respawn (storm threshold tripped)");
                 else
                     DebugTAC_AI.LogError("Smart.Threading: worker '" + name + "' terminated: " + reason);
             };
@@ -91,19 +99,8 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             try { handler(name, ex, retryCount); } catch { }
         }
 
-        internal static void RaiseQueueDepthSampled(string queueName, int depth)
-        {
-            var handler = QueueDepthSampled;
-            if (handler == null) return;
-            try { handler(queueName, depth); } catch { }
-        }
-
-        internal static void RaiseWorkerIdle(string name, TimeSpan idleDuration)
-        {
-            var handler = WorkerIdle;
-            if (handler == null) return;
-            try { handler(name, idleDuration); } catch { }
-        }
+        // P11 T7 Item 63: RaiseQueueDepthSampled + RaiseWorkerIdle deleted alongside
+        // their never-raised events.
 
         internal static void RaiseRequestsDropped(string queueName, int count)
         {

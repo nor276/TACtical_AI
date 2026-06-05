@@ -337,7 +337,7 @@ Six types carry `TickStamp` (or close variant) with **four different underlying 
 - **[WeaponProfile.cs:60-67](../../Vehicle/WeaponProfile.cs)** — doc says "builder emits an empty list"; code populates placeholder values.
 - **[TrajectoryOptimizer.cs:221](../../Pathing/TrajectoryOptimizer.cs)** — comment claims "Trapezoidal weighting"; body is left-Riemann sum.
 - **[MarshallingPatterns.cs:63-67](../../Threading/MarshallingPatterns.cs)** — comment says "freshest pending wins"; actually FIFO drains oldest survivor.
-- **[TeamBelief.cs:10-12](../../Coordination/TeamBelief.cs)** — promises "multiple observers contributing sequentially"; only one observation slot.
+- ~~**[TeamBelief.cs:10-12](../../Coordination/TeamBelief.cs)**~~ — **REV 7 P5 Item 22: file DELETED** (orphaned class — zero `new TeamBelief(` callers tree-wide). The audit finding is moot; LOS aggregation now lives inline in `TeamRuntime.BuildTeamSnapshot` at `SmartRuntime.cs:401-429`.
 
 ---
 

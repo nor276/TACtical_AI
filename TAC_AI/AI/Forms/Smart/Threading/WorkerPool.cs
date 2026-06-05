@@ -37,12 +37,13 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         }
 
         /// <summary>
-        /// Default worker count per FORM-SPEC §7 OD-4 + ARCHITECTURE §2.1:
-        /// <c>Math.Max(2, Environment.ProcessorCount - 2)</c>. The -2 reserves cores
-        /// for the Unity main thread and renderer; the Max(2, …) keeps Smart
-        /// parallelizable on dual-core systems. No hard upper cap (FORM-SPEC §5.4).
+        /// Default worker count per FORM-SPEC §7 OD-4 + ARCHITECTURE §2.1.
+        /// P9 Item 29 (REV 7): delegates to <see cref="WorkerPoolSizing.Resolve"/>. The
+        /// policy default is <c>Math.Max(2, Environment.ProcessorCount - 2)</c>; a runtime
+        /// <see cref="WorkerPoolSizing.Override"/> &gt; 0 lets test harnesses pin a count.
+        /// No hard upper cap (FORM-SPEC §5.4).
         /// </summary>
-        public static int DefaultWorkerCount => Math.Max(2, Environment.ProcessorCount - 2);
+        public static int DefaultWorkerCount => WorkerPoolSizing.Resolve();
 
         private readonly string _name;
         private readonly Thread[] _workers;
@@ -85,6 +86,11 @@ namespace TAC_AI.AI.Forms.Smart.Threading
 
                 WorkerLifecycleRegistry.Register(handle);
                 ThreadingDiagnostics.RaiseWorkerStarted(workerName);
+                // L-005: lock the IsBackground=true invariant. Anchored by SMART_DEV test
+                // Threads_AllBackground_AfterInit in SmartTestSuite (enumerates registry,
+                // asserts every WorkerHandle.Thread.IsBackground == true). The historical
+                // shutdown freeze re-emerges the moment this line is dropped.
+                System.Diagnostics.Debug.Assert(thread.IsBackground, "WorkerPool worker must be IsBackground=true");
                 thread.Start(handle);
             }
         }
@@ -118,30 +124,68 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         /// Dedicated threads bypass the pool's worker count budget entirely. They still
         /// participate in <see cref="WorkerLifecycleRegistry"/> for clean shutdown.
         /// </summary>
-        public void EnqueueLongRunning(Action<CancellationToken> work, string label = null)
+        public string EnqueueLongRunning(Action<CancellationToken> work, string label = null)
         {
-            if (work == null) return;
-            if (_disposed) return;
+            // L-021: return thread name so callers (WorkerHealthMonitor registration in L-066,
+            // DaemonWatchdog roster wiring in L-049) can correlate enqueue-time identity with
+            // the WorkerLifecycleRegistry handle. null return signals "not started" (disposed
+            // or null work).
+            if (work == null) return null;
+            if (_disposed) return null;
 
             string threadName = "SmartLR-" + (label ?? "anon") + "-" + _longRunningCounter;
             System.Threading.Interlocked.Increment(ref _longRunningCounter);
 
             var cts = CancellationTokenSource.CreateLinkedTokenSource(_rootCts.Token);
+            // L-023: self-respawning supervisor. The pre-L-023 lambda caught TAE + ResetAbort
+            // but the thread exited permanently on the very next line — that's why the 9
+            // long-running daemons all died silently on FMOD pause. The supervisor loops
+            // back into work() after AbortGuard.Absorb returns Continue. Continue on TAE;
+            // exit on storm trip (DaemonWatchdog respawns); exit on OCE (clean cancel);
+            // exit on Exception (let the watchdog respawn — better than infinite throw loop).
+            //
+            // RISK noted in plan §3.1: re-entering work() restarts the RunLoop's outer while
+            // shell; mid-iteration state inside work() (Adam Step partial, AetherFuser
+            // _lastBelief mid-fuse, Coordinator _previousAssignments mid-reassign) is left
+            // in whatever state TAE interrupted it. L-058 TrainerWorker FSM mitigates the
+            // trainer case; other RunLoops are idempotent across mid-iteration TAE
+            // (verified during each daemon's L-024 catch landing).
             var thread = new Thread(_ =>
             {
-                try
+                while (!cts.IsCancellationRequested)
                 {
-                    work(cts.Token);
-                }
-                catch (OperationCanceledException) { }
-                catch (System.Threading.ThreadAbortException)
-                {
-                    try { System.Threading.Thread.ResetAbort(); } catch { }
-                }
-                catch (Exception ex)
-                {
-                    DebugTAC_AI.LogWarning("Smart.WorkerPool: long-running '" + threadName
-                        + "' threw " + ex.GetType().Name + ": " + ex.Message);
+                    try
+                    {
+                        work(cts.Token);
+                        // work() returned of its own accord (normal shutdown) — exit loop.
+                        return;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Clean cancellation — exit loop.
+                        return;
+                    }
+                    catch (System.Threading.ThreadAbortException)
+                    {
+                        // L-023: supervisor absorbs + decides whether to re-enter work().
+                        if (AbortGuard.Absorb(threadName) == AbortGuard.AbortAction.ExitForRespawn)
+                        {
+                            // Storm threshold tripped — exit so DaemonWatchdog can respawn
+                            // with a fresh CancellationToken + clean local state.
+                            return;
+                        }
+                        // else: loop back into work() — daemon's outer while resumes.
+                    }
+                    catch (Exception ex)
+                    {
+                        // Deterministic bug in work() — let the watchdog respawn so we don't
+                        // tight-loop on the same exception. ThreadingDiagnostics records the
+                        // exception so the operator sees what happened.
+                        DebugTAC_AI.LogWarning("Smart.WorkerPool: long-running '" + threadName
+                            + "' threw " + ex.GetType().Name + ": " + ex.Message
+                            + " — exiting for watchdog respawn");
+                        return;
+                    }
                 }
             })
             {
@@ -152,7 +196,10 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             var handle = new WorkerHandle(threadName, thread, cts);
             WorkerLifecycleRegistry.Register(handle);
             ThreadingDiagnostics.RaiseWorkerStarted(threadName);
+            // L-005: lock the invariant on the long-running spawn path as well.
+            System.Diagnostics.Debug.Assert(thread.IsBackground, "WorkerPool long-running worker must be IsBackground=true");
             thread.Start();
+            return threadName;
         }
         private int _longRunningCounter;
 
@@ -166,69 +213,83 @@ namespace TAC_AI.AI.Forms.Smart.Threading
 
             try
             {
+                // L-022: outer try wraps BOTH the work-dispatch branch AND the idle
+                // SpinWait/Sleep(0) branch. The pre-L-022 code only caught TAE inside
+                // work() — so an abort delivered to a worker idling in SpinWait fell
+                // through to `finally` and the worker died with UnexpectedExit (matches
+                // the output_log.txt cascade across all 22 Smart#N workers). Catch order
+                // OCE→TAE→Exception per ECMA-335 §12.4.2.5 (TAE auto-rethrows past a
+                // generic catch(Exception) unless explicitly handled before).
                 while (!token.IsCancellationRequested)
                 {
-                    if (_queue.TryDequeue(out var work))
+                    try
                     {
-                        try
+                        if (_queue.TryDequeue(out var work))
                         {
-                            work(token);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            // Expected during shutdown; loop ends on the next IsCancellationRequested check.
-                        }
-                        catch (System.Threading.ThreadAbortException)
-                        {
-                            // External Thread.Abort (observed on Unity 2018.4 / Mono around the
-                            // OnApplicationPause path — FMOD's PauseManual coincides with the
-                            // abort cascade in output_log.txt). ThreadAbortException is special:
-                            // the CLR auto-rethrows it at the end of any catch unless
-                            // ResetAbort is called, so a generic catch (Exception) would log
-                            // "Retry 1/3" and then immediately terminate the worker — which is
-                            // exactly the UnexpectedExit cascade observed across all 22 workers.
-                            //
-                            // Per THREADING-CONTRACT §6.1 intent ("retry budget reserved for
-                            // unexpected failures"), an external abort is NOT a worker fault;
-                            // it is a transient pause-path signal. Reset the abort, log
-                            // informatively, do NOT count against the retry budget, continue.
-                            //
-                            // THREADING-CONTRACT gap: §3 / §6.1 don't explicitly address
-                            // ThreadAbortException. This handler implements the intent; the
-                            // spec needs a normative entry to make the policy explicit.
-                            try { System.Threading.Thread.ResetAbort(); }
-                            catch { /* may fail if abort source is unusual; not fatal */ }
-                            DebugTAC_AI.Log("Smart.Threading: worker '" + handle.Name
-                                + "' absorbed ThreadAbortException (external pause); continuing.");
-                        }
-                        catch (Exception ex)
-                        {
-                            retryCount++;
-                            ThreadingDiagnostics.RaiseWorkerException(handle.Name, ex, retryCount);
-
-                            if (retryCount >= RetryBudgetPerSession)
+                            try
                             {
-                                exitReason = TerminationReason.RetryBudgetExhausted;
-                                return; // permanent termination
+                                work(token);
                             }
-                            // Otherwise: continue; the loop attempts the next dequeue.
+                            catch (OperationCanceledException)
+                            {
+                                // Expected during shutdown; loop ends on the next IsCancellationRequested check.
+                            }
+                            catch (System.Threading.ThreadAbortException)
+                            {
+                                // L-022: AbortGuard owns ResetAbort + storm detection. On
+                                // storm trip, exit cleanly with TerminationReason.AbortStorm
+                                // so DaemonWatchdog/WorkerHealthMonitor can respawn us.
+                                if (AbortGuard.Absorb(handle.Name) == AbortGuard.AbortAction.ExitForRespawn)
+                                {
+                                    exitReason = TerminationReason.AbortStorm;
+                                    return;
+                                }
+                                // Continue the loop — work was interrupted but the worker survives.
+                            }
+                            catch (Exception ex)
+                            {
+                                retryCount++;
+                                ThreadingDiagnostics.RaiseWorkerException(handle.Name, ex, retryCount);
+
+                                if (retryCount >= RetryBudgetPerSession)
+                                {
+                                    exitReason = TerminationReason.RetryBudgetExhausted;
+                                    return; // permanent termination
+                                }
+                                // Otherwise: continue; the loop attempts the next dequeue.
+                            }
+                        }
+                        else
+                        {
+                            // Idle branch — protected by the outer try so an abort delivered
+                            // during SpinWait/Sleep(0) doesn't bypass our handler. SpinWait
+                            // to absorb short idle gaps, then Sleep(0) to yield. Phase 2.1
+                            // fix (FIX-PLAN.md R2 1.R2-G): the prior destructive second
+                            // TryDequeue here silently discarded work items; gone.
+                            Thread.SpinWait(IdleSpinIterations);
+                            Thread.Sleep(0);
                         }
                     }
-                    else
+                    catch (OperationCanceledException)
                     {
-                        // Phase 2.1 (FIX-PLAN.md): the previous idle branch did a SECOND
-                        // _queue.TryDequeue(out _) which removed any work item that
-                        // landed during SpinWait but silently DISCARDED it (out _). Under
-                        // contention this dropped MPC requests, path requests, and
-                        // marshalled compute lambdas with no diagnostic. R2 1.R2-G.
-                        //
-                        // Fix: SpinWait to absorb short idle gaps, then Sleep(0) to yield.
-                        // Any work item that landed during SpinWait is picked up by the
-                        // NEXT outer-loop TryDequeue at line 119, not destructively
-                        // re-tested here. Zero work-loss under contention.
-                        Thread.SpinWait(IdleSpinIterations);
-                        Thread.Sleep(0);
+                        // Outer OCE — also a normal shutdown signal. Fall through to the
+                        // IsCancellationRequested check on the next iteration.
                     }
+                    catch (System.Threading.ThreadAbortException)
+                    {
+                        // L-022: idle-branch abort. Same Absorb + storm-exit policy as the
+                        // inner work-frame catch above.
+                        if (AbortGuard.Absorb(handle.Name) == AbortGuard.AbortAction.ExitForRespawn)
+                        {
+                            exitReason = TerminationReason.AbortStorm;
+                            return;
+                        }
+                    }
+                    // Outer Exception intentionally NOT caught — the inner work-frame
+                    // catch already absorbs work-delegate exceptions with retry budget.
+                    // Any exception that escapes the inner branch is a structural bug in
+                    // the pool itself; let it bubble to finally + UnexpectedExit so we
+                    // get a stack-traced log line.
                 }
 
                 exitedClean = true;
@@ -241,6 +302,62 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                     handle.Name,
                     exitedClean ? TerminationReason.Clean : exitReason);
             }
+        }
+
+        /// <summary>
+        /// L-048: scan pool workers, replace any whose ThreadState contains Stopped|Aborted
+        /// with fresh threads bound to fresh CancellationTokens. Called from
+        /// WorkerHealthMonitor (L-047) when a missing pool worker is detected. Returns the
+        /// count replaced. No-op when disposed or registry teardown in progress.
+        ///
+        /// The dead worker's WorkerLifecycleRegistry.Deregister runs from its own finally;
+        /// we don't try to chase its cleanup. The replacement registers normally so the
+        /// registry SnapshotLive sees `N` workers again on the next watchdog tick.
+        /// </summary>
+        public int ReplaceDeadWorkers()
+        {
+            if (_disposed) return 0;
+            if (WorkerLifecycleRegistry.IsTearingDown) return 0;
+
+            int replaced = 0;
+            for (int i = 0; i < _workers.Length; i++)
+            {
+                var t = _workers[i];
+                if (t == null) continue;
+                var s = t.ThreadState;
+                bool dead = (s & ThreadState.Stopped) != 0 || (s & ThreadState.Aborted) != 0;
+                if (!dead) continue;
+
+                var oldName = _handles[i] != null ? _handles[i].Name : ("Smart#" + i);
+                try
+                {
+                    var workerCts = CancellationTokenSource.CreateLinkedTokenSource(_rootCts.Token);
+                    var newThread = new Thread(WorkerLoop)
+                    {
+                        Name = "SmartWorker-" + oldName,
+                        IsBackground = true,
+                        Priority = ThreadPriority.Normal,
+                    };
+                    var newHandle = new WorkerHandle(oldName, newThread, workerCts);
+                    _handles[i] = newHandle;
+                    _workers[i] = newThread;
+                    WorkerLifecycleRegistry.Register(newHandle);
+                    ThreadingDiagnostics.RaiseWorkerStarted(oldName);
+                    System.Diagnostics.Debug.Assert(newThread.IsBackground,
+                        "WorkerPool replacement worker must be IsBackground=true");
+                    newThread.Start(newHandle);
+                    replaced++;
+                    DebugTAC_AI.LogWarnFileOnly("smart-worker-replaced-" + oldName,
+                        "[SMART-WORKER-RESPAWN] pool replaced dead worker name=" + oldName
+                        + " priorState=" + s);
+                }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogWarning("WorkerPool.ReplaceDeadWorkers: replace failed for slot "
+                        + i + " (" + oldName + "): " + ex.Message);
+                }
+            }
+            return replaced;
         }
 
         public void Dispose()

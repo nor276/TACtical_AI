@@ -194,6 +194,33 @@ namespace TAC_AI.AI.Forms.Smart
             {
                 RebuildVehicleSnapshotInternal();
             }
+
+            // P7 Item 16: append observation row to the per-tech sequence buffer for the
+            // intent classifier. Row is FeatureDim=12 floats derived from current kinematic
+            // state. Buffer rolls automatically; TryBuildEvent currently returns false (label
+            // inference deferred — see Implementation Gaps Log).
+            var obsBuf = Learning.LearningService.ObservationSequence;
+            if (obsBuf != null)
+            {
+                var k = KinematicTracker.Latest;
+                var row = new float[Learning.TargetObservationSequenceBuffer.FeatureDim];
+                // Slot layout (v0.2; 12 floats): position xyz, velocity xyz, heading xz,
+                // angular velocity xyz, recent-kinematic timing slot. Caller can substitute
+                // richer features when label-inference lands.
+                row[0]  = k.PositionWorld.x;
+                row[1]  = k.PositionWorld.y;
+                row[2]  = k.PositionWorld.z;
+                row[3]  = k.VelocityWorld.x;
+                row[4]  = k.VelocityWorld.y;
+                row[5]  = k.VelocityWorld.z;
+                row[6]  = k.HeadingWorld.x;
+                row[7]  = k.HeadingWorld.z;
+                row[8]  = k.AngularVelocityWorld.x;
+                row[9]  = k.AngularVelocityWorld.y;
+                row[10] = k.AngularVelocityWorld.z;
+                row[11] = LastObservationTick;
+                obsBuf.RecordRow(TechId, row, MonoClock.Now());
+            }
         }
 
         /// <summary>
@@ -235,7 +262,23 @@ namespace TAC_AI.AI.Forms.Smart
             if (doTime) { DebugTAC_AI.Log("Smart.VehicleRebuild[TIMING #" + rebuildIdx + "] ThrustField: " + swRebuild.ElapsedMilliseconds + "ms"); swRebuild.Restart(); }
             var weapons = WeaponProfileBuilder.Build(poses, SmartRuntime.BlockCatalog);
             if (doTime) { DebugTAC_AI.Log("Smart.VehicleRebuild[TIMING #" + rebuildIdx + "] WeaponProfileBuilder: " + swRebuild.ElapsedMilliseconds + "ms"); swRebuild.Restart(); }
-            var armor = ArmorMap.Compute(poses, new Vector3Int(8, 8, 8));
+            // P3 Item 5: ArmorMapPolicy.UseRealSpecHP gates the catalog-backed overload
+            // (per-block ModuleDamage.maxHealth * pose.HpFraction) vs the v0.1 mass-as-HP
+            // fallback. Default OFF preserves v0.1 face-weakness ranking bit-identically.
+            // P11 T1 Item 44: when policy is ON the v0.2 path becomes the live armor;
+            // compute the v0.1 grid in parallel ONCE per tech to feed ArmorMapParityGate.
+            // Dedup at the gate means subsequent rebuilds skip the second Compute cost.
+            ArmorMap armor;
+            if (Vehicle.ArmorMapPolicy.UseRealSpecHP)
+            {
+                armor = ArmorMap.Compute(poses, SmartRuntime.BlockCatalog, new Vector3Int(8, 8, 8));
+                var armorV01 = ArmorMap.Compute(poses, new Vector3Int(8, 8, 8));
+                Vehicle.ArmorMapParityGate.TryEmitOnce(TechId.Value, armor, armorV01);
+            }
+            else
+            {
+                armor = ArmorMap.Compute(poses, new Vector3Int(8, 8, 8));
+            }
             if (doTime) { DebugTAC_AI.Log("Smart.VehicleRebuild[TIMING #" + rebuildIdx + "] ArmorMap: " + swRebuild.ElapsedMilliseconds + "ms"); swRebuild.Restart(); }
             var mobility = MobilityProfile.Derive(mass, thrust, armor);
             if (doTime) { DebugTAC_AI.Log("Smart.VehicleRebuild[TIMING #" + rebuildIdx + "] MobilityProfile: " + swRebuild.ElapsedMilliseconds + "ms"); swRebuild.Restart(); }
@@ -268,15 +311,59 @@ namespace TAC_AI.AI.Forms.Smart
     ///
     /// Per ARCHITECTURE §3 host-authority + COORDINATION-CONTRACT §8 lifecycle.
     /// </summary>
-    internal sealed class TeamRuntime
+    /// <summary>
+    /// L-019: TeamRuntime lifecycle FSM. Transitions are one-way and atomic via
+    /// Interlocked.CompareExchange. Daemons read State via Volatile.Read so a worker mid-loop
+    /// sees the transition on the next iteration without lock acquisition.
+    ///   - Active:   normal operation; RegisterTech accepts new state
+    ///   - Draining: tech count dropped to 0 + grace timer started; RegisterTech REFUSES
+    ///   - Disposed: reaper has called Dispose() and removed from _teams; further reads no-op
+    /// </summary>
+    internal enum TeamLifecycleState : int
+    {
+        Active = 0,
+        Draining = 1,
+        Disposed = 2,
+    }
+
+    internal sealed class TeamRuntime : IDisposable
     {
         public TeamId TeamId { get; }
         public StrategicPlanner Planner { get; }
         public Coordinator Coordinator { get; }
 
+        /// <summary>
+        /// L-063: monotonic creation counter (incremented in GetOrCreateTeam every new
+        /// instance). Lets stale callers detect "the TeamRuntime I cached is a different
+        /// instance than the current one for this TeamId" — important when a team is
+        /// reaped, then a new tech joins with the same TeamId and a fresh TeamRuntime is
+        /// created. Compare via TeamId+Generation pair.
+        /// </summary>
+        public long Generation { get; internal set; }
+
+        // L-019: lifecycle FSM. Read via Volatile.Read(ref _state) from daemon threads;
+        // write via Interlocked.CompareExchange (one-way transitions only).
+        private int _state = (int)TeamLifecycleState.Active;
+        public TeamLifecycleState State => (TeamLifecycleState)System.Threading.Volatile.Read(ref _state);
+
+        // L-019: per-team RW-lock guarding _techs against the race between MigrateTech
+        // (L-043: atomic two-team operation) and daemon iteration. Reader-writer because
+        // daemon snapshots are the hot path (every coordinator tick); migrations are rare.
+        // IDisposable kernel handle — released in Dispose() so reaped teams don't leak.
+        internal readonly System.Threading.ReaderWriterLockSlim _techsLock =
+            new System.Threading.ReaderWriterLockSlim(System.Threading.LockRecursionPolicy.NoRecursion);
+
         // Snapshot of techs currently driven by Smart on this team.
         private readonly ConcurrentDictionary<TechId, SmartPerTechState> _techs =
             new ConcurrentDictionary<TechId, SmartPerTechState>();
+
+        // P5 Item 22 (REV 6): shared empty-LOS sentinel for BuildTeamSnapshot. RoleAssignment.
+        // NeedsScout only reads .Count on each entry, so a single static List instance is
+        // safe to alias across teams + across snapshots. Preserves REV 3 S1 NeedsScout
+        // TRUE-always behavior when LineOfSightProducer.Enabled=false (every tech gets a
+        // count==0 entry → NeedsScout returns TRUE on first iteration).
+        private static readonly System.Collections.Generic.List<TechId> _sharedEmptyTechIdList =
+            new System.Collections.Generic.List<TechId>(0);
 
         // Plan-tick counter used by StrategicState (resets when plan type changes).
         private int _planTickCount;
@@ -286,7 +373,9 @@ namespace TAC_AI.AI.Forms.Smart
         {
             TeamId = teamId;
             Planner = new StrategicPlanner(BuildStrategicState);
-            Coordinator = new Coordinator(Planner.PlanBuffer, BuildTeamSnapshot, PublishGoals, PublishTargets);
+            Coordinator = new Coordinator(Planner.PlanBuffer, BuildTeamSnapshot, PublishGoals, PublishTargets,
+                // L-046: hard-stop predicate. Capture `this` so StepOnce reads our live State.
+                isActive: () => this.State == TeamLifecycleState.Active);
             // Aether/T2: planner + coordinator are driven by GlobalPlannerDaemon + GlobalCoordinatorDaemon
             // (started once in SmartRuntime.Init). No per-team RunLoop threads — under heavy load the
             // prior 2-threads-per-team pattern proliferated to ~70 long-running threads, contending
@@ -294,10 +383,27 @@ namespace TAC_AI.AI.Forms.Smart
             // post-Aether diagnostic. Per the 9-agent threading review's T2 patch.
         }
 
-        public void RegisterTech(SmartPerTechState state)
+        /// <summary>
+        /// L-019: returns true when the tech was registered, false when the team is
+        /// Draining/Disposed (caller MUST log [TEAM-LIFECYCLE-REGISTER-REFUSED] and abort
+        /// the spawn cleanly — see SmartForm.cs:248 + SmartEventBridge.cs ~356).
+        /// State check MUST precede the state.OwnerTeam mutation so a refused registration
+        /// doesn't leave OwnerTeam set on a state without team membership.
+        /// </summary>
+        public bool RegisterTech(SmartPerTechState state)
         {
+            if (state == null) return false;
+            if (State != TeamLifecycleState.Active)
+            {
+                DebugTAC_AI.LogWarnFileOnly(
+                    "team-lifecycle-register-refused-" + TeamId.Value + "-" + state.TechId.Value,
+                    "[TEAM-LIFECYCLE-REGISTER-REFUSED] team=" + TeamId.Value
+                    + " tech=" + state.TechId.Value + " state=" + State);
+                return false;
+            }
             state.OwnerTeam = this;
             _techs[state.TechId] = state;
+            return true;
         }
         public bool DeregisterTech(TechId id)
         {
@@ -305,6 +411,52 @@ namespace TAC_AI.AI.Forms.Smart
             return false;
         }
         public int TechCount => _techs.Count;
+
+        /// <summary>L-056: snapshot of TechIds for the leak watchdog's live-set union.</summary>
+        public System.Collections.Generic.IEnumerable<TechId> SnapshotTechIds() => _techs.Keys;
+
+        /// <summary>
+        /// L-019: atomic one-way transition Active→Draining→Disposed. Returns true when
+        /// the caller's transition won, false when the state was already at or past target
+        /// (caller should treat as no-op, not error). Logs every winning transition.
+        /// </summary>
+        public bool TryTransitionTo(TeamLifecycleState target)
+        {
+            int targetInt = (int)target;
+            while (true)
+            {
+                int current = System.Threading.Volatile.Read(ref _state);
+                if (current >= targetInt) return false;     // already at or past target
+                if (System.Threading.Interlocked.CompareExchange(ref _state, targetInt, current) == current)
+                {
+                    DebugTAC_AI.LogWarnFileOnly("team-lifecycle-" + TeamId.Value + "-" + target,
+                        "[TEAM-LIFECYCLE] team=" + TeamId.Value
+                        + " state=" + (TeamLifecycleState)current + "→" + target);
+                    return true;
+                }
+                // CAS failed; another writer raced — re-read and retry.
+            }
+        }
+
+        /// <summary>
+        /// L-019: release the RWLockSlim kernel handle. Called from TeamReaperDaemon (L-044)
+        /// after the Disposed transition has been won AND the team has been TryRemove'd from
+        /// SmartRuntime._teams. After Dispose the TeamRuntime is unreferenced and GC-eligible.
+        /// </summary>
+        public void Dispose()
+        {
+            try { _techsLock.Dispose(); }
+            catch (System.Exception ex)
+            {
+                DebugTAC_AI.LogWarning("TeamRuntime.Dispose[" + TeamId.Value + "]: " + ex.Message);
+            }
+        }
+
+        /// <summary>P11 T4 Item 54: per-tech state lookup for cross-subsystem accessors.</summary>
+        internal SmartPerTechState TryGetTechState(TechId id)
+        {
+            return _techs.TryGetValue(id, out var state) ? state : null;
+        }
 
         /// <summary>
         /// Per-team centroid of Smart-driven tech positions, EXCLUDING <paramref name="excludeSelf"/>.
@@ -386,15 +538,20 @@ namespace TAC_AI.AI.Forms.Smart
 
         private static StrategicTechSummary SummarizeBelief(TechId id, BeliefState b, VehicleModelSnapshot v)
         {
-            // v0.1.0 proxies. Vehicle health and learned threat refine these in later steps.
-            const float HealthFallback = 1.0f;
+            // P11 T2 Item 51: HP from HealthSidecar when available; v0.1 proxy (1.0f) otherwise.
+            // This unblocks the ActionValueEstimator's reward signal — the SummarizeBelief output
+            // is what `StrategicState.Friendly[].Health` returns, which Coordinator reads.
+            float health = SmartRuntime.Health != null ? SmartRuntime.Health.Get(id) : 1.0f;
+            // Guard NaN / out-of-range to keep StrategicTechSummary consumers happy.
+            if (float.IsNaN(health) || health < 0f) health = 0f;
+            if (health > 1f) health = 1f;
             float threat = v.Weapons != null ? Mathf.Min(v.Weapons.Count, 8) / 8f : 0f;
             float mobility = v.Mobility.TopSpeedForward;
             var pv = b.PositionVariance;
             float uncertainty = pv.x + pv.z;
             return new StrategicTechSummary(
                 id, b.PositionMean, b.VelocityMean, b.HeadingMean,
-                HealthFallback, threat, mobility, uncertainty);
+                health, threat, mobility, uncertainty);
         }
 
         // ---- TeamSnapshot assembly (called from Coordinator worker) ----
@@ -407,14 +564,43 @@ namespace TAC_AI.AI.Forms.Smart
             var vehiclesByTech = new Dictionary<TechId, VehicleModelSnapshot>(_techs.Count);
             var losCoverage = new Dictionary<TechId, List<TechId>>(_techs.Count);
 
+            // P5 Item 22 (REV 6): read LOS coverage from LineOfSightProducer when Enabled.
+            // When disabled, use the shared per-tech empty sentinel to preserve REV 3 S1
+            // NeedsScout TRUE-always (per-tech count==0). When enabled, read the per-team
+            // published snapshot (Volatile.Read through DoubleBuffer — lock-free worker read).
+            // The lookup is per-tech: techs the producer reported get real lists; others get
+            // the sentinel.
+            System.Collections.Generic.IReadOnlyDictionary<TechId, List<TechId>> losSnapshot = null;
+            if (Coordination.LineOfSightProducer.Enabled)
+                losSnapshot = Coordination.LineOfSightProducer.SnapshotForTeam(TeamId);
+
             foreach (var kv in _techs)
             {
                 ourTechs.Add(kv.Key);
                 vehiclesByTech[kv.Key] = kv.Value.VehicleBuffer.Read();
-                // TODO v0.2: populate from main-thread LineOfSight raycasts (COORDINATION §3.1).
-                // v0.1.0 leaves coverage empty; RoleAssignment.NeedsScout will treat the team
-                // as needing scouts whenever any tech lacks targets.
-                losCoverage[kv.Key] = new List<TechId>();
+                List<TechId> seen;
+                if (losSnapshot != null && losSnapshot.TryGetValue(kv.Key, out seen))
+                    losCoverage[kv.Key] = seen;
+                else
+                    losCoverage[kv.Key] = _sharedEmptyTechIdList;  // REV 3 S1 sentinel
+            }
+
+            // P11 T1 Item 46: LOS coverage parity emit. When the producer is ON, count
+            // techs / total enemies seen / techs-with-zero-coverage and emit once per team.
+            // Per-team dedup at the gate (ConcurrentDictionary), so subsequent snapshots
+            // skip the count. Worker-thread call is safe — the gate uses ConcurrentDictionary.
+            if (Coordination.LineOfSightProducer.Enabled)
+            {
+                int techCount = ourTechs.Count;
+                int totalEnemiesSeen = 0;
+                int techsWithZeroCoverage = 0;
+                foreach (var lk in losCoverage)
+                {
+                    int n = lk.Value != null ? lk.Value.Count : 0;
+                    totalEnemiesSeen += n;
+                    if (n == 0) techsWithZeroCoverage++;
+                }
+                Coordination.LosCoverageParityGate.TryEmitOnce(TeamId.Value, techCount, totalEnemiesSeen, techsWithZeroCoverage);
             }
 
             var hostileBeliefs = new List<BeliefState>();
@@ -425,7 +611,9 @@ namespace TAC_AI.AI.Forms.Smart
                 hostileBeliefs.Add(pair.Value);
             }
 
-            return new TeamSnapshot(ourTechs, hostileBeliefs, beliefSnap, vehiclesByTech, losCoverage);
+            // P7 Item 17: stamp TeamId so the Coordinator-side edge tracker can pass it
+            // to PlanTransitionPublisher without needing a back-ref to TeamRuntime.
+            return new TeamSnapshot(ourTechs, hostileBeliefs, beliefSnap, vehiclesByTech, losCoverage, TeamId);
         }
 
         // ---- Per-tech goal publish (called from Coordinator worker) ----
@@ -473,6 +661,28 @@ namespace TAC_AI.AI.Forms.Smart
         /// </summary>
         public static Vehicle.TypedBlockCatalog BlockCatalog { get; private set; }
 
+        /// <summary>
+        /// P4 Item 10: per-tech intent sidecar. Producer-only at v0.2 ship (no v0.2 consumer
+        /// reads from it). Created in Init after WorldModel/BlockCatalog; cleared in Shutdown
+        /// before BlockCatalog reset. Forget hooked from Deregister + WorldModel.DeregisterTech.
+        /// </summary>
+        public static IntentRegistry IntentSidecar { get; private set; }
+
+        /// <summary>
+        /// P4 Item 11: per-victim damage-event ring buffer. Subscribes to
+        /// WorldEventBus&lt;DamageObserved&gt; via DamageHintBuffer.Wire at Init. No v0.2
+        /// consumer reads from it (P6 RepairSupport uses HpFraction only for v0.2; v0.3
+        /// facing-threat orbit would consume).
+        /// </summary>
+        public static DamageHintBuffer DamageHints { get; private set; }
+
+        /// <summary>
+        /// P6 Item 26: per-tech tank-wide HpFraction sidecar (block-survival ratio per
+        /// TankAIHelper.cs:3267 semantic). Populated by SmartForm.ObserveWorldTechsIfDue;
+        /// read by RepairSupportGoalSource. Lifecycle mirrors IntentSidecar/DamageHints.
+        /// </summary>
+        public static HealthSidecar Health { get; private set; }
+
         // Per-team runtimes (Planning + Coordination workers scoped per team).
         // Lazy creation on first OnTechSpawn for each team — happens on the main thread,
         // so the GetOrAdd factory race is not a concern in practice.
@@ -491,20 +701,88 @@ namespace TAC_AI.AI.Forms.Smart
         /// </summary>
         internal static volatile bool IsHost = true;
 
+        /// <summary>
+        /// L-004: Unity-pause flag. SmartLifecycleShim (L-025) sets this from
+        /// OnApplicationPause / OnApplicationFocus on the main thread; every daemon checks
+        /// IsPaused BEFORE IsHost (L-026) so a paused host stops doing work without losing
+        /// its authority bit. Declared volatile for the same cross-thread visibility reason
+        /// as <see cref="IsHost"/>.
+        /// </summary>
+        public static volatile bool IsPaused = false;
+
+        /// <summary>
+        /// L-059: producer-side gate for training event enqueue. Flipped to false during
+        /// the HostChanged(IsHost=false) drain (L-058 HostAuthorityCoordinator hooks set
+        /// this BEFORE signaling trainer-pause); flipped back to true after a successful
+        /// host-gained Resume. Producers (LearningService.OnDamageObserved,
+        /// LeadResidualRecorder.RecordObserved, PlanTransitionPublisher.Publish) check
+        /// this before pushing onto trainer queues. Default true so non-MP / single-player
+        /// runs work unchanged.
+        /// </summary>
+        public static volatile bool AcceptingTrainingEvents = true;
+
+        // L-004: latch protecting RequestShutdown so concurrent SmartLifecycleShim hooks
+        // (Application.quitting + Singleton.ApplicationQuitEvent + OnDestroy) all resolve to
+        // exactly one Shutdown invocation regardless of fire order or thread.
+        private static int _shutdownRequested;
+
+        /// <summary>
+        /// L-004: shutdown entry point for the SmartLifecycleShim. CompareExchange latch
+        /// ensures exactly one caller actually delegates to Shutdown; losers log a no-op
+        /// line for observability. Idempotency of the underlying Shutdown (Pool==null guard
+        /// at line 735) makes the latch defensive belt-and-suspenders — losing the race
+        /// would still produce correct behavior, but the log distinction matters for
+        /// diagnosing which Unity hook actually fired first across sessions.
+        /// </summary>
+        public static void RequestShutdown(string source)
+        {
+            int prior = System.Threading.Interlocked.CompareExchange(ref _shutdownRequested, 1, 0);
+            if (prior == 0)
+            {
+                DebugTAC_AI.Log("Smart.Runtime: RequestShutdown WIN source='" + (source ?? "<null>") + "'");
+                try { Shutdown(); }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogWarning("Smart.Runtime: RequestShutdown.Shutdown threw "
+                        + ex.GetType().Name + ": " + ex.Message);
+                }
+            }
+            else
+            {
+                DebugTAC_AI.LogWarnFileOnly("smart-shutdown-loser-" + (source ?? "anon"),
+                    "Smart.Runtime: RequestShutdown LOSER source='" + (source ?? "<null>")
+                    + "' (already shut down or in progress)");
+            }
+        }
+
         public static void Init()
         {
             if (Pool != null) return; // idempotent
 
-            // Register identity goal sources. Generic is intentionally NOT registered - the
-            // ContinuousController dispatch checks src.Identity != Generic and falls through to
-            // TacticalOptimizer.Step inline for Generic, so a Generic registry entry would be
-            // unreachable. See Docs/SMART-IDENTITY-DESIGN.md sec 7.3.
+            // P9 Item 31: reset the calibration aggregator so a fresh Init doesn't carry
+            // stale trip data from a prior Init/Shutdown cycle within the same process.
+            Threading.CircuitBreakerCalibration.ResetSession();
+            // P10 Item 41 (REV 7): reset the periodic VEHICLE-PARITY sweep counters too.
+            Tests.VehicleParityCatcher.ResetSession();
+
+            // Register identity goal sources.
+            // P6 Item 27 (REV 5/7): Generic IS registered as of v0.2. Its Produce delegates
+            // to the per-controller TacticalOptimizer via IdentityContext.TacticalGoalHandle
+            // (wrapped at the dispatch site in ContinuousController). Per-instance Adam state
+            // is preserved; behavior is bit-identical to the v0.1 inline bypass at the
+            // optimizer call level.
+            // P6 Items 26 + 28: RepairSupport + Patrol register their goal sources here.
+            // Their classifier rows are gated default-OFF on SmartIdentityTuning flags, so
+            // these entries sit unused at default until the user flips the flag + spawn-tests.
+            SmartIdentityRegistry.Register(new GenericGoalSource());          // P6 Item 27
             SmartIdentityRegistry.Register(new HunterGoalSource());
             SmartIdentityRegistry.Register(new BaseGoalSource());
             SmartIdentityRegistry.Register(new SniperGoalSource());
             SmartIdentityRegistry.Register(new GathererGoalSource());
             SmartIdentityRegistry.Register(new AircraftSupportGoalSource());
             SmartIdentityRegistry.Register(new AircraftHunterGoalSource());
+            SmartIdentityRegistry.Register(new RepairSupportGoalSource());    // P6 Item 26
+            SmartIdentityRegistry.Register(new PatrolGoalSource());           // P6 Item 28
 
             // [TEMP DIAGNOSTIC] Per-sub-call timing to bisect the observed ~3s init freeze.
             // Tagged with "[TIMING]" so the lines are greppable; remove this block once the
@@ -517,14 +795,59 @@ namespace TAC_AI.AI.Forms.Smart
             sw.Restart();
 
             World = new WorldModel();
+            TechLifecycleRegistry.Register(World);   // L-028: WorldModel.PerTechState sidecar
             DebugTAC_AI.Log("Smart.Init[TIMING] WorldModel ctor: " + sw.ElapsedMilliseconds + "ms");
             sw.Restart();
 
             // Chassis Step 2: catalog wired here, populated lazily by ChassisCapture's
-            // GetOrProbe calls. Empty at Init; no Prewarm in v0.1 (open question -- defer
-            // synchronous vs first-idle Prewarm to in-game profiling).
+            // GetOrProbe calls. Empty at Init.
             BlockCatalog = new Vehicle.TypedBlockCatalog();
             DebugTAC_AI.Log("Smart.Init[TIMING] BlockCatalog ctor: " + sw.ElapsedMilliseconds + "ms");
+            sw.Restart();
+
+            // P2 Item 8: optional eager prewarm. Default OFF — when Enabled is true,
+            // walks ManSpawn.inst.GetLoadedTankBlockNames() and primes every prefab.
+            Vehicle.CatalogPrewarm.Run(BlockCatalog);
+            DebugTAC_AI.Log("Smart.Init[TIMING] CatalogPrewarm: " + sw.ElapsedMilliseconds + "ms (Enabled="
+                + Vehicle.CatalogPrewarm.Enabled + ", probed=" + Vehicle.CatalogPrewarm.LastPrewarmCount + ")");
+            sw.Restart();
+
+            // P2 Item 9: register the hot-reload invalidation surface. Subscribes the
+            // catalog's InvalidateAll to the OnAllInvalidated event so any future external
+            // hot-reload trigger (P10 console command, v0.3 engine event) flushes the
+            // cache. RegisterHotReloadHook subscribes to InvokeHelper.BlocksPostChangeEvent
+            // (P2 cleanup pass — see Implementation Gaps Log in V0.2-PLAN-REV7).
+            var catalogRef = BlockCatalog;
+            Vehicle.CatalogInvalidation.OnAllInvalidated += () => catalogRef?.InvalidateAll();
+            Vehicle.CatalogInvalidation.OnTypeInvalidated += tk => catalogRef?.InvalidateType(tk);
+            Vehicle.CatalogInvalidation.RegisterHotReloadHook();
+            DebugTAC_AI.Log("Smart.Init[TIMING] CatalogInvalidation hook: " + sw.ElapsedMilliseconds + "ms");
+            sw.Restart();
+
+            // P4 Item 10: IntentRegistry sidecar — empty dict at startup; zero v0.2 consumer.
+            // P4 Item 11: DamageHintBuffer sidecar — subscribes to WorldEventBus<DamageObserved>
+            // via Wire; multi-subscriber-safe alongside LearningService.OnDamageObserved.
+            // P6 Item 26: HealthSidecar — populated by SmartForm.ObserveWorldTechsIfDue;
+            // read by RepairSupportGoalSource.
+            IntentSidecar = new IntentRegistry();
+            DamageHints = new DamageHintBuffer();
+            DamageHintBuffer.Wire(DamageHints);
+            Health = new HealthSidecar();
+            // L-028 + L-029: wire all 8 sidecars into TechLifecycleRegistry. L-055 (Wave 2)
+            // refactors SmartRuntime.Deregister to enumerate the registry instead of the
+            // prior hand-coded fan-out, and TechLeakWatchdog (L-056, Wave 2) walks each
+            // sidecar's SnapshotKeys at 60s cadence to detect leaks.
+            TechLifecycleRegistry.Register(IntentSidecar);                              // L-028
+            TechLifecycleRegistry.Register(DamageHints);                                // L-028
+            TechLifecycleRegistry.Register(Health);                                     // L-028
+            // L-028: 5 more — WorldModel (registered later in Init after World construction),
+            // LeadResidualRecorder (registered by LearningService.Init via its Instance),
+            // TargetObservationSequenceBuffer (registered by LearningService.Init). The
+            // 3 wired here are the runtime-state sidecars owned by SmartRuntime itself.
+            // L-029: two adapter sidecars wrapping per-service state.
+            TechLifecycleRegistry.Register(new TAC_AI.AI.Forms.Smart.World.PathingLastPathsSidecar());
+            TechLifecycleRegistry.Register(new TAC_AI.AI.Forms.Smart.World.CoordinatorAssignmentsSidecar());
+            DebugTAC_AI.Log("Smart.Init[TIMING] IntentSidecar + DamageHints + Health ctor + Wire: " + sw.ElapsedMilliseconds + "ms");
             sw.Restart();
 
             // Phase 3.1 (FIX-PLAN.md): PerceptionWorker was authored but never instantiated
@@ -546,7 +869,32 @@ namespace TAC_AI.AI.Forms.Smart
             // unchanged).
             Pool.EnqueueLongRunning(Planning.GlobalPlannerDaemon.RunLoop, "GlobalPlanner");
             Pool.EnqueueLongRunning(Coordination.GlobalCoordinatorDaemon.RunLoop, "GlobalCoordinator");
-            DebugTAC_AI.Log("Smart.Init[TIMING] GlobalPlanner+GlobalCoordinator enqueue: " + sw.ElapsedMilliseconds + "ms");
+            // L-044: TeamReaperDaemon enqueue. Reset clears prior-session grace stamps so a
+            // re-init within the same process doesn't carry forward eviction state.
+            Coordination.TeamReaperDaemon.Reset();
+            Coordination.TeamReaperDaemon.Enqueue(Pool);
+            // L-056: TechLeakWatchdog. 60s cadence; logs [TECH-LEAK] on any sidecar key
+            // not present in the live SmartRuntime + WorldModel union.
+            TAC_AI.AI.Forms.Smart.World.TechLeakWatchdog.Reset();
+            TAC_AI.AI.Forms.Smart.World.TechLeakWatchdog.Enqueue(Pool);
+            DebugTAC_AI.Log("Smart.Init[TIMING] GlobalPlanner+GlobalCoordinator+TeamReaper+TechLeakWatchdog enqueue: " + sw.ElapsedMilliseconds + "ms");
+
+            // L-049 + L-066: register canonical daemon respawn factories with both watchdogs.
+            // Each factory re-enqueues the daemon on the same pool with the canonical label.
+            // Captured pool reference is by closure; if Shutdown nulled Pool the factory
+            // returns null (EnqueueLongRunning's _disposed guard).
+            var poolForFactories = Pool;
+            Threading.DaemonWatchdog.Reset();
+            Threading.WorkerHealthMonitor.Reset();
+            void Reg(string name, Action<System.Threading.CancellationToken> body)
+            {
+                Func<string> f = () => poolForFactories?.EnqueueLongRunning(body, name);
+                Threading.DaemonWatchdog.RegisterCanonical(name, f);
+                Threading.WorkerHealthMonitor.RegisterCanonical(name, f);
+            }
+            Reg("AetherFuser", Perception != null ? new Action<System.Threading.CancellationToken>(Perception.RunLoop) : null);
+            Reg("GlobalPlanner", Planning.GlobalPlannerDaemon.RunLoop);
+            Reg("GlobalCoordinator", Coordination.GlobalCoordinatorDaemon.RunLoop);
             sw.Restart();
 
             PathingService.Init(Pool);
@@ -564,6 +912,12 @@ namespace TAC_AI.AI.Forms.Smart
             DebugTAC_AI.Log("Smart.Init[TIMING] LearningService.Init: " + sw.ElapsedMilliseconds + "ms");
 
             DebugTAC_AI.Log("Smart.Runtime: initialized with " + Pool.WorkerCount + " workers; perception worker live. [TIMING] TOTAL " + swTotal.ElapsedMilliseconds + "ms");
+
+            // P10 Item 42 (REV 7): single, grep-able "v0.2 booted" line so the spawn-test
+            // operator can confirm the build under test is the v0.2 build. All P1-P9 default-OFF
+            // gates keep this build bit-identical to v0.1 at default tunings; flip the relevant
+            // gate via console (smart.tunables.list / SmartConsoleCommands) before spawn-testing.
+            DebugTAC_AI.Log("Smart.Runtime: v0.2 boot complete — spawn-test green-light");
         }
 
         public static void Shutdown()
@@ -571,6 +925,23 @@ namespace TAC_AI.AI.Forms.Smart
             if (Pool == null) return;
 
             DebugTAC_AI.Log("Smart.Runtime: shutting down.");
+
+            // L-067: tell the watchdogs we're tearing down so they stop alerting + don't
+            // attempt respawns mid-Shutdown (which would fight CancelAllAndJoin).
+            try { Threading.WorkerHealthMonitor.BeginShutdown(); } catch { }
+            try { Coordination.TrainerBarrier.ClearAll(); } catch { }
+
+            // L-078: quit-save BEFORE CancelAllAndJoin so workers are still alive to flush.
+            // The coordinator's HasFired latch makes this idempotent against any prior
+            // SmartLifecycleShim hook firing.
+            try { Learning.QuitSaveCoordinator.Flush(Learning.QuitSaveCoordinator.DefaultDeadlineMs, "SmartRuntime.Shutdown"); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.Runtime.Shutdown: QuitSaveCoordinator threw: " + ex.Message); }
+
+            // P11 T8 Item 64: ensure any active FrameRecorder session is flushed + closed
+            // before workers cancel. The recorder holds a BinaryWriter on a file handle that
+            // must release before the process tears down to avoid truncated output.
+            try { Tests.FrameRecorder.Stop(); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.Runtime: FrameRecorder.Stop threw: " + ex.Message); }
 
             // Phase 4 (FIX-PLAN.md): INVERT the order. Previously LearningService /
             // PathingService Shutdown ran BEFORE CancelAllAndJoin — trainer workers
@@ -592,11 +963,36 @@ namespace TAC_AI.AI.Forms.Smart
             catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.Runtime: pool dispose threw: " + ex.Message); }
             Pool = null;
 
+            // P9 Item 31: emit CircuitBreaker session report (no-op when zero trips). Path
+            // mirrors the LearningService mod-dir convention so the log lands next to the
+            // SmartAI/Profiles directory tree.
+            try
+            {
+                string modDir = System.IO.Path.Combine(System.Environment.CurrentDirectory, "Mods");
+                Threading.CircuitBreakerCalibration.WriteSessionReport(modDir);
+            }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.Runtime: CB session report threw: " + ex.Message); }
+
             _teams.Clear();
             WorldEventBus.ClearAll();
             World?.Clear();
             World = null;
             Perception = null;
+
+            // P4 Items 10+11 + P6 Item 26: tear down sidecars AFTER worker quiesce (above),
+            // BEFORE BlockCatalog reset. DamageHintBuffer.Unwire unsubscribes the static
+            // delegate so the next Init's re-Wire doesn't double-subscribe.
+            DamageHintBuffer.Unwire();
+            DamageHints?.Clear();
+            DamageHints = null;
+            IntentSidecar?.Clear();
+            IntentSidecar = null;
+            Health?.Clear();
+            Health = null;
+
+            // P5 Item 23: drop the producer's per-team snapshots so the next session
+            // doesn't see stale dicts. Reset is idempotent.
+            Coordination.LineOfSightProducer.Reset();
 
             // Chassis: Reset() AFTER CancelAllAndJoin per CHASSIS-DESIGN.md threading
             // ordering. Workers are already quiesced (above); any archetype references
@@ -610,16 +1006,103 @@ namespace TAC_AI.AI.Forms.Smart
         /// Get the TeamRuntime for this team, creating (and starting its workers) if absent.
         /// Called from SmartForm.OnTechSpawn on the main thread.
         /// </summary>
+        // L-063: monotonic generation counter for fresh TeamRuntime instances.
+        private static long _teamGenerationCounter;
+
         internal static TeamRuntime GetOrCreateTeam(TeamId teamId)
         {
             if (Pool == null) return null;
-            return _teams.GetOrAdd(teamId, id => new TeamRuntime(id, Pool));
+            return _teams.GetOrAdd(teamId, id =>
+            {
+                var rt = new TeamRuntime(id, Pool);
+                rt.Generation = System.Threading.Interlocked.Increment(ref _teamGenerationCounter);
+                return rt;
+            });
         }
 
         /// <summary>Look up an existing TeamRuntime, or null if none. Used by OnTechRecycle.</summary>
         internal static TeamRuntime GetTeam(TeamId teamId)
         {
             return _teams.TryGetValue(teamId, out var team) ? team : null;
+        }
+
+        /// <summary>
+        /// L-043: atomic two-team tech migration. Used by SmartEventBridge.OnTankTeamChanged
+        /// in place of the (Deregister(old) + Update + Register(new)) sequence that left a
+        /// window where the tech existed in neither team's snapshot. Locks both teams' RW
+        /// locks in TeamId order (stable, prevents AB/BA deadlock) and runs the swap
+        /// inside the joint write lock. Returns true on success, false if either team
+        /// is missing or the new team refused the registration.
+        /// </summary>
+        internal static bool MigrateTech(TeamId oldTeamId, TeamId newTeamId, TechId techId)
+        {
+            if (oldTeamId.Equals(newTeamId)) return true;   // no-op
+            var oldTeam = GetTeam(oldTeamId);
+            var newTeam = GetOrCreateTeam(newTeamId);
+            if (oldTeam == null || newTeam == null) return false;
+
+            // Lock order: lower-valued TeamId first.
+            var first = oldTeamId.Value < newTeamId.Value ? oldTeam : newTeam;
+            var second = ReferenceEquals(first, oldTeam) ? newTeam : oldTeam;
+
+            first._techsLock.EnterWriteLock();
+            try
+            {
+                second._techsLock.EnterWriteLock();
+                try
+                {
+                    var state = oldTeam.TryGetTechState(techId);
+                    if (state == null) return false;
+                    oldTeam.DeregisterTech(techId);
+                    state.UpdateTeam(newTeamId);
+                    if (!newTeam.RegisterTech(state))
+                    {
+                        // New team refused (Draining/Disposed) — tech is unregistered on
+                        // both sides. Caller (SmartEventBridge) logs and lets the routing
+                        // reclaim path pick it up.
+                        return false;
+                    }
+                    return true;
+                }
+                finally { second._techsLock.ExitWriteLock(); }
+            }
+            finally { first._techsLock.ExitWriteLock(); }
+        }
+
+        /// <summary>
+        /// L-044: TeamReaperDaemon-only removal of a TeamRuntime. Caller MUST have already
+        /// won the Disposed transition + called Dispose(). Returns true when the team was
+        /// actually removed (false = already removed by a racing reaper).
+        /// </summary>
+        internal static bool TryRemoveTeam(TeamId teamId)
+        {
+            return _teams.TryRemove(teamId, out _);
+        }
+
+        /// <summary>
+        /// L-011: walk every TeamRuntime asking which one owns <paramref name="techId"/>.
+        /// Used by SmartForm orphan-sweep as the LAST-RESORT TeamId recovery path when
+        /// WorldModel.PerTechEntry.PriorBelief is null (the BeliefState chain populates
+        /// PriorBelief on every observation today — but if a future regression breaks
+        /// that invariant, this walk keeps cleanup correct instead of silently passing
+        /// `default(TeamId)` to Deregister and skipping per-team state cleanup).
+        /// Returns true + the team id; false leaves <paramref name="teamId"/> at default.
+        /// Caller logs `[TECH-LEAK-NO-TEAM]` when this returns false.
+        /// </summary>
+        public static bool FindTeamForTech(TechId techId, out TeamId teamId)
+        {
+            foreach (var kv in _teams)
+            {
+                var team = kv.Value;
+                if (team == null) continue;
+                if (team.TryGetTechState(techId) != null)
+                {
+                    teamId = team.TeamId;
+                    return true;
+                }
+            }
+            teamId = default(TeamId);
+            return false;
         }
 
         /// <summary>
@@ -637,13 +1120,31 @@ namespace TAC_AI.AI.Forms.Smart
         public static void Deregister(TechId techId, TeamId teamId, TankAIHelper helperOrNull, Tank tankOrNull)
         {
             GetTeam(teamId)?.DeregisterTech(techId);
-            World?.DeregisterTech(techId);
+
+            // L-055: fan-out via TechLifecycleRegistry. The registered sidecars (8 of them,
+            // wired in Init + LearningService.Init) cover Intent/DamageHints/Health/World/
+            // ObservationSequence/LeadResidual + PathingService._lastPaths +
+            // Coordinator._previousAssignments. Adding a new sidecar in the future means
+            // ONE Register call, not a PR-review-only convention.
+            TAC_AI.AI.Forms.Smart.World.TechLifecycleRegistry.ForgetAll(techId);
+
+            // SmartEventBridge stays out of the registry — it's keyed by Tank (not TechId
+            // alone) and the L-010 TechId-shadow path is here below.
             if (tankOrNull != null)
             {
                 try { Integration.SmartEventBridge.DetachPerTank(tankOrNull); }
                 catch (System.Exception ex)
                 {
-                    DebugTAC_AI.LogWarning("SmartRuntime.Deregister.DetachPerTank: " + ex.Message);
+                    DebugTAC_AI.LogWarning("SmartRuntime.Deregister.DetachPerTank(Tank): " + ex.Message);
+                }
+            }
+            else
+            {
+                // L-010: orphan path — no Tank ref available; fall back to TechId shadow map.
+                try { Integration.SmartEventBridge.DetachPerTank(techId); }
+                catch (System.Exception ex)
+                {
+                    DebugTAC_AI.LogWarning("SmartRuntime.Deregister.DetachPerTank(TechId): " + ex.Message);
                 }
             }
             if (helperOrNull != null && helperOrNull.FormState != null)
@@ -655,5 +1156,47 @@ namespace TAC_AI.AI.Forms.Smart
         /// to rebuild every active team's threat field per tick.
         /// </summary>
         internal static System.Collections.Generic.IEnumerable<TeamRuntime> EnumerateTeams() => _teams.Values;
+
+        /// <summary>
+        /// P11 T4 Item 54: look up a Smart-driven tech's VehicleModelSnapshot. Walks every
+        /// team's per-tech registry and returns the matching SmartPerTechState's
+        /// VehicleBuffer (which holds the latest snapshot via DoubleBuffer). Returns null
+        /// when the tech isn't on any Smart-driven team — caller MUST handle the null
+        /// to honor the EnemyVehicleSnapshots cost-bound contract.
+        /// </summary>
+        public static DoubleBuffer<VehicleModelSnapshot> GetSmartPerTechVehicleBuffer(TechId id)
+        {
+            foreach (var kv in _teams)
+            {
+                var team = kv.Value;
+                if (team == null) continue;
+                var state = team.TryGetTechState(id);
+                if (state != null) return state.VehicleBuffer;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// P11 T6 Item 56: per-tech Role lookup from the team's most-recent CoordinationState
+        /// (worker-side publish via DoubleBuffer; reads are lock-free). Returns true + role
+        /// when the tech is registered AND the team's Coordinator has published a role for it
+        /// at least once; returns false otherwise (caller uses a neutral default).
+        /// </summary>
+        public static bool TryGetTechRole(TechId id, out Coordination.Role role)
+        {
+            role = Coordination.Role.Holder;
+            foreach (var kv in _teams)
+            {
+                var team = kv.Value;
+                if (team == null) continue;
+                if (team.TryGetTechState(id) == null) continue;
+                var state = team.Coordinator?.StateBuffer?.Read();
+                if (state == null) return false;
+                if (state.RoleMap != null && state.RoleMap.TryGetValue(id, out role))
+                    return true;
+                return false;
+            }
+            return false;
+        }
     }
 }

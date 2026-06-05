@@ -16,6 +16,14 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
     /// </summary>
     public readonly struct ThrustEmitter
     {
+        /// <summary>
+        /// P2 Item 6: spool-up threshold for fan-jet emitters. Matches the production
+        /// gate at AIECore.cs:600 + Enemy/RCore.cs:277 (the same value SpinDatProbe uses).
+        /// Public so consumers that gate fan thrust on spool state can read the same
+        /// threshold without coupling to SpinDatProbe internals.
+        /// </summary>
+        public const float FanSpinThreshold = 10f;
+
         public readonly EmitterKind Kind;
         public readonly Vector3 LocalAxis;     // unit vector, block-local frame, positive push direction
         public readonly Vector3 LocalMount;    // block-local offset from block origin

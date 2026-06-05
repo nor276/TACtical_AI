@@ -17,6 +17,14 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
     /// </summary>
     public static class ChassisFixtureGate
     {
+        /// <summary>
+        /// P10 (REV 7): when true, a fixture failure (geometry mismatch or unexpected
+        /// frame-equivalence delta) throws instead of logging file-only. Default false
+        /// preserves v0.1 observational-only behavior; SmartTestSuite flips this true
+        /// for the test-suite invocation so failures surface to the test runner.
+        /// </summary>
+        public static bool AssertOnFailure = false;
+
         private static int _hasRun;     // 0 = pending, 1 = done
 
         /// <summary>
@@ -77,8 +85,17 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
             // AND has a matching BoosterJet/FanJet child whose stored LocalAxis matches.
             Vector3? direct = TryReadProductionDirect(tank, pose.TypeKey, target.Kind);
 
+            // P11 T1 Item 48: compute the frame-equivalence delta + fail condition.
+            // Step-3.5 invariant: composed and direct should match within 1e-4 — beyond that,
+            // the chassis pose math has drifted vs the production InverseTransformDirection
+            // path and downstream consumers (ThrustField aggregation, MPC rollout) will see
+            // mis-oriented thrust vectors.
+            const float FixtureToleranceMeters = 1e-4f;
+            float dist = direct.HasValue ? Vector3.Distance(composed, direct.Value) : 0f;
+            bool failed = direct.HasValue && dist > FixtureToleranceMeters;
+
             DebugTAC_AI.LogWarnFileOnly("[CHASSIS-FIXTURE]:hardgate",
-                "ChassisFixtureGate fired on tech '" + (tank.name ?? "<null>")
+                (failed ? "[FIXTURE-FAIL] " : "") + "ChassisFixtureGate fired on tech '" + (tank.name ?? "<null>")
                 + "' typeKey=" + pose.TypeKey
                 + " emitterKind=" + target.Kind
                 + " specMass=" + archetype.SpecMass.ToString("F2")
@@ -89,9 +106,21 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
                   + (direct.HasValue ? FormatVec(direct.Value) : "<unable-to-locate-live-child>")
                 + (direct.HasValue
                     ? ("\n  Vector3.Distance(composed, direct) = "
-                       + Vector3.Distance(composed, direct.Value).ToString("F6")
-                       + " (expected < 1e-4 per Step 3.5 invariant)")
+                       + dist.ToString("F6")
+                       + " (expected < " + FixtureToleranceMeters.ToString("F0e-04") + " per Step 3.5 invariant)")
                     : "\n  (frame-equivalence skipped -- live child not located on this tech instance)"));
+
+            // P11 T1 Item 48: the AssertOnFailure flag's consumer. When the fixture fails
+            // (geometry mismatch > tolerance) AND the flag is true, throw so the failure
+            // surfaces to the test runner. Default-off keeps v0.1 observational behavior.
+            if (failed && AssertOnFailure)
+            {
+                throw new System.InvalidOperationException(
+                    "ChassisFixtureGate frame-equivalence FAILED on tech '" + (tank.name ?? "<null>")
+                    + "' typeKey=" + pose.TypeKey + " delta=" + dist.ToString("F6")
+                    + " (tolerance " + FixtureToleranceMeters.ToString("F0e-04") + "). "
+                    + "AssertOnFailure=true — pose-math drift vs production frame.");
+            }
         }
 
         private static Vector3? TryReadProductionDirect(Tank tank, int typeKey, EmitterKind kind)
@@ -138,6 +167,12 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
         {
             return "(" + q.x.ToString("F4") + ", " + q.y.ToString("F4") + ", "
                  + q.z.ToString("F4") + ", " + q.w.ToString("F4") + ")";
+        }
+
+        /// <summary>P11 T1: re-arm so the next geometry-sensitive tech retriggers the gate.</summary>
+        internal static void Reset()
+        {
+            Interlocked.Exchange(ref _hasRun, 0);
         }
     }
 }

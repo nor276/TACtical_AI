@@ -21,6 +21,15 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             public ModelId Id;
             public byte ArchitectureVersion;
             public float[] Weights;
+            /// <summary>
+            /// L-079: TLV body — preserved unknown tags from disk so re-emit on next Save
+            /// keeps fields we don't yet understand. Tag 0x0001 = Weights (canonical view);
+            /// any other tag id stays in this list verbatim. Empty for v≤2 files.
+            /// Use <see cref="System.Collections.Generic.KeyValuePair{TKey,TValue}"/> rather
+            /// than ValueTuple because .NET 4.6.1 BCL lacks System.ValueTuple.
+            /// </summary>
+            public System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<ushort, byte[]>> UnknownTags
+                = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<ushort, byte[]>>();
         }
     }
 
@@ -35,7 +44,13 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     /// </summary>
     public static class ProfilePersistence
     {
-        public const uint CurrentSchemaVersion = 1;
+        // P8 Item 19 (REV 7): bumped 1 → 2 marking GRU BPTT unfreeze. Parameter array
+        // layout unchanged across the bump; M0002_BpttUnfreeze is a no-op forward migration.
+        // L-079: schema 3 = TLV per-section body. Tag 0x0001 = weights (canonical view
+        // surviving consumers); future tags can be appended without invalidating old files.
+        // Load is schema-conditional (flat for v<3, TLV for v>=3); Save always emits v3.
+        public const uint CurrentSchemaVersion = 3;
+        public const ushort TagId_Weights = 0x0001;
         public static readonly byte[] Magic = { (byte)'S', (byte)'M', (byte)'R', (byte)'T' };
 
         /// <summary>Serialize the four model snapshots into the profile binary at <paramref name="filePath"/>.</summary>
@@ -44,19 +59,38 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             EnsureDirectory(filePath);
             string tmp = filePath + ".tmp";
             string previous = filePath + ".previous";
+            string penultimate = filePath + ".penultimate";
 
-            // §6.1 step 1: if the prior file exists, snapshot it.
+            // L-015: rotate two-deep backup ring BEFORE the new save.
+            //   .previous → .penultimate  (delete old penultimate first to free the slot)
+            //   current   → .previous
+            //   new save  → .tmp → File.Replace into current
+            // If any rotation step fails, log + continue: a fresh save is more valuable than
+            // perfect backup chain. Recover via primary on next load; on primary corruption
+            // the fallback chain in Load still tries .previous and .penultimate independently.
+            try
+            {
+                if (File.Exists(previous))
+                {
+                    if (File.Exists(penultimate)) File.Delete(penultimate);
+                    File.Move(previous, penultimate);   // promote previous → penultimate
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarning("Smart.Learning.Save: previous→penultimate rotation failed: " + ex.Message);
+            }
             try
             {
                 if (File.Exists(filePath))
                 {
                     if (File.Exists(previous)) File.Delete(previous);
-                    File.Copy(filePath, previous);
+                    File.Copy(filePath, previous);   // snapshot current → previous
                 }
             }
             catch (Exception ex)
             {
-                DebugTAC_AI.LogWarning("Smart.Learning.Save: snapshot-before-write failed: " + ex.Message);
+                DebugTAC_AI.LogWarning("Smart.Learning.Save: current→previous snapshot failed: " + ex.Message);
                 // Don't abort the save — better to have a fresh save than nothing.
             }
 
@@ -76,9 +110,22 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                     bw.Write((byte)m.Id);
                     bw.Write(m.ArchitectureVersion);
                     bw.Write((uint)m.ParameterCount);
-                    int bytes = m.ParameterCount * 4;
-                    bw.Write((uint)bytes);
-                    // Write floats little-endian (BinaryWriter is LE on .NET, fine on Windows targets).
+                    // L-079: schema 3 TLV body. tag_count[2] then per-tag (tag_id[2], byte_length[4], payload).
+                    // Tag 0x0001 = weights. UnknownTags from a prior Load (forward-compat
+                    // payload from a newer schema) are re-emitted verbatim so a save-from-old
+                    // doesn't strip fields a future client knew about. Save() takes
+                    // ILearnedModel[] so we have no Section reference here for UnknownTags —
+                    // re-emit only the weights tag for the live-model path. The
+                    // UnknownTag preservation path activates only on Load→ApplyProfile
+                    // re-Save flows that pass through a LoadedProfile.Section (LearningService
+                    // currently rebuilds via per-model LoadParameters so UnknownTags drop on
+                    // intentional save-after-load — documented limitation; future Wave can
+                    // route Save through LoadedProfile to preserve them across roundtrips).
+                    int weightBytes = m.ParameterCount * 4;
+                    ushort tagCount = 1;
+                    bw.Write(tagCount);
+                    bw.Write(TagId_Weights);
+                    bw.Write((uint)weightBytes);
                     for (int j = 0; j < weights.Length; j++) bw.Write(weights[j]);
                 }
                 bw.Flush();
@@ -132,22 +179,41 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         /// </summary>
         public static LoadedProfile Load(string filePath, byte[] baselineBytes)
         {
-            // Try primary.
-            if (TryLoad(filePath, out var p, out var failure)) { p.FromBaseline = false; return p; }
+            // L-015: four-tier fallback chain. Each corrupt tier is preserved as
+            // <path>.corrupt-<unixMs> so an operator can inspect what went wrong without
+            // losing the bytes. `[PROFILE-LOAD-FAIL] tier=<name>` is emitted by LearningService
+            // (which has the playerId context) only when we fell through past the primary;
+            // cold-start (everything missing) uses `[PROFILE-COLD-START]` instead.
+            //
+            // Tiers: primary → .previous → .penultimate → embedded baseline → null.
+            LastLoadTier = LoadTier.None;
+            if (TryLoad(filePath, out var p, out var failure)) { p.FromBaseline = false; LastLoadTier = LoadTier.Primary; return p; }
             if (failure != null) PreserveCorrupt(filePath, failure);
 
-            // Try .previous.
             string prev = filePath + ".previous";
-            if (TryLoad(prev, out var pp, out _)) { pp.FromBaseline = false; return pp; }
+            if (TryLoad(prev, out var pp, out var prevFailure)) { pp.FromBaseline = false; LastLoadTier = LoadTier.Previous; return pp; }
+            if (prevFailure != null) PreserveCorrupt(prev, prevFailure);
 
-            // Try embedded baseline.
+            string pen = filePath + ".penultimate";
+            if (TryLoad(pen, out var ppp, out var penFailure)) { ppp.FromBaseline = false; LastLoadTier = LoadTier.Penultimate; return ppp; }
+            if (penFailure != null) PreserveCorrupt(pen, penFailure);
+
             if (baselineBytes != null && baselineBytes.Length > 0)
             {
-                if (TryLoadFromBytes(baselineBytes, out var pb, out _)) { pb.FromBaseline = true; return pb; }
+                if (TryLoadFromBytes(baselineBytes, out var pb, out _)) { pb.FromBaseline = true; LastLoadTier = LoadTier.Baseline; return pb; }
             }
 
             return null;
         }
+
+        /// <summary>
+        /// L-015: which tier the last <see cref="Load"/> call resolved at. Read by
+        /// LearningService immediately after Load to decide whether to emit
+        /// `[PROFILE-LOAD-FAIL] tier=N` vs `[PROFILE-COLD-START]`. Reset to None at the
+        /// start of every Load call.
+        /// </summary>
+        public enum LoadTier { None, Primary, Previous, Penultimate, Baseline }
+        public static LoadTier LastLoadTier { get; private set; } = LoadTier.None;
 
         private static bool TryLoad(string filePath, out LoadedProfile profile, out string failureCategory)
         {
@@ -202,17 +268,51 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                         byte idByte = br.ReadByte();
                         byte archVer = br.ReadByte();
                         uint paramCount = br.ReadUInt32();
-                        uint paramBytes = br.ReadUInt32();
-                        if (paramBytes != paramCount * 4) { failureCategory = "section-size-mismatch"; return false; }
-
-                        var weights = new float[paramCount];
-                        for (uint j = 0; j < paramCount; j++) weights[j] = br.ReadSingle();
-                        p.Sections[i] = new LoadedProfile.Section
+                        // L-079: schema-conditional body. v<3 uses flat float[] payload;
+                        // v>=3 uses TLV (tag_count[2] then per-tag tag_id[2] byte_length[4] payload).
+                        // Existing size-assertion only applies to the flat-float branch.
+                        var section = new LoadedProfile.Section
                         {
                             Id = (ModelId)idByte,
                             ArchitectureVersion = archVer,
-                            Weights = weights,
                         };
+                        if (p.SchemaVersion < 3)
+                        {
+                            uint paramBytes = br.ReadUInt32();
+                            if (paramBytes != paramCount * 4) { failureCategory = "section-size-mismatch"; return false; }
+                            var weights = new float[paramCount];
+                            for (uint j = 0; j < paramCount; j++) weights[j] = br.ReadSingle();
+                            section.Weights = weights;
+                        }
+                        else
+                        {
+                            ushort tagCount = br.ReadUInt16();
+                            for (int t = 0; t < tagCount; t++)
+                            {
+                                ushort tagId = br.ReadUInt16();
+                                uint bodyLen = br.ReadUInt32();
+                                if (tagId == TagId_Weights)
+                                {
+                                    if (bodyLen != paramCount * 4) { failureCategory = "tlv-weights-size-mismatch"; return false; }
+                                    var weights = new float[paramCount];
+                                    for (uint j = 0; j < paramCount; j++) weights[j] = br.ReadSingle();
+                                    section.Weights = weights;
+                                }
+                                else
+                                {
+                                    // Unknown tag — preserve verbatim so Save re-emits it.
+                                    var payload = br.ReadBytes((int)bodyLen);
+                                    section.UnknownTags.Add(
+                                        new System.Collections.Generic.KeyValuePair<ushort, byte[]>(tagId, payload));
+                                }
+                            }
+                            if (section.Weights == null)
+                            {
+                                // TLV file without a weights tag — refuse rather than load zeros.
+                                failureCategory = "tlv-missing-weights"; return false;
+                            }
+                        }
+                        p.Sections[i] = section;
                     }
 
                     if (p.SchemaVersion < CurrentSchemaVersion)
@@ -294,23 +394,96 @@ namespace TAC_AI.AI.Forms.Smart.Learning
 
     /// <summary>
     /// Per LEARNING-CONTRACT §8 + DOCTRINE §2.8 forward-only schema migrations.
-    /// v0.1.0 ships schema 1 only; the runner exists for future revisions.
+    ///
+    /// L-014: the v0.2 switch-statement is gone. Migrations self-register via
+    /// `[SmartMigration(fromVersion: N)]` on a static class exposing `public static void
+    /// Up(LoadedProfile)`. The registry's static ctor walks the executing assembly,
+    /// asserts coverage of `[0, MaxSchemaVersion)` without gaps, and dispatches by
+    /// FromVersion. A missing migration is a `TypeInitializationException` at first
+    /// MigrationRunner.RunForward — schema bumps cannot ship with version holes.
     /// </summary>
     public static class MigrationRunner
     {
+        // L-014: highest FromVersion any migration claims (= max(FromVersion) + 1 = current
+        // CurrentSchemaVersion floor). Computed in static ctor; profile saves write
+        // `profile.SchemaVersion = MaxSchemaVersion` after RunForward returns successfully.
+        public static uint MaxSchemaVersion { get; private set; }
+
+        // Indexed by FromVersion → migration delegate (Up).
+        private static readonly System.Collections.Generic.Dictionary<uint, Action<LoadedProfile>> _byFromVersion
+            = new System.Collections.Generic.Dictionary<uint, Action<LoadedProfile>>();
+
+        // Throw on first use if registry init failed — preserves the stop-the-world
+        // behaviour the original switch had on a missing case.
+        private static readonly Exception _initError;
+
+        static MigrationRunner()
+        {
+            try
+            {
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                uint maxFrom = 0;
+                bool anyMigration = false;
+                foreach (var type in asm.GetTypes())
+                {
+                    var attr = (Migrations.SmartMigrationAttribute)System.Attribute.GetCustomAttribute(
+                        type, typeof(Migrations.SmartMigrationAttribute));
+                    if (attr == null) continue;
+                    anyMigration = true;
+                    var up = type.GetMethod("Up",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                        null, new[] { typeof(LoadedProfile) }, null);
+                    if (up == null)
+                    {
+                        throw new InvalidOperationException(
+                            "Smart.Learning: [SmartMigration] type '" + type.FullName +
+                            "' missing required `public static void Up(LoadedProfile)` method.");
+                    }
+                    if (_byFromVersion.ContainsKey(attr.FromVersion))
+                    {
+                        throw new InvalidOperationException(
+                            "Smart.Learning: duplicate [SmartMigration(fromVersion=" + attr.FromVersion
+                            + ")] — '" + type.FullName + "' collides with prior registration.");
+                    }
+                    var del = (Action<LoadedProfile>)System.Delegate.CreateDelegate(
+                        typeof(Action<LoadedProfile>), up);
+                    _byFromVersion[attr.FromVersion] = del;
+                    if (attr.FromVersion + 1 > maxFrom) maxFrom = attr.FromVersion + 1;
+                }
+                if (!anyMigration)
+                {
+                    throw new InvalidOperationException(
+                        "Smart.Learning: no [SmartMigration] types found in assembly. Schema floor undefined.");
+                }
+                // Coverage assertion: every from-version in [0, maxFrom) must be registered.
+                for (uint v = 0; v < maxFrom; v++)
+                {
+                    if (!_byFromVersion.ContainsKey(v))
+                    {
+                        throw new InvalidOperationException(
+                            "Smart.Learning: schema-migration ladder has a hole at v" + v + " → v" + (v + 1)
+                            + ". Add a [SmartMigration(fromVersion=" + v + ")] type.");
+                    }
+                }
+                MaxSchemaVersion = maxFrom;
+            }
+            catch (Exception ex)
+            {
+                _initError = ex;
+            }
+        }
+
         public static void RunForward(LoadedProfile profile, uint targetVersion)
         {
-            // No migrations exist at v0.1.0. When schema 2 lands, a switch by FromVersion
-            // dispatches to a per-step transform. Forward-only — no down paths.
+            if (_initError != null) throw _initError;
             for (uint v = profile.SchemaVersion; v < targetVersion; v++)
             {
-                switch (v)
+                if (!_byFromVersion.TryGetValue(v, out var up))
                 {
-                    // case 1: Migrations.M0002_AddXxx.Up(profile); break;
-                    default:
-                        throw new InvalidOperationException(
-                            "Smart.Learning: no forward migration registered for schema version " + v + " → " + (v + 1));
+                    throw new InvalidOperationException(
+                        "Smart.Learning: no forward migration registered for schema version " + v + " → " + (v + 1));
                 }
+                up(profile);
             }
             profile.SchemaVersion = targetVersion;
         }

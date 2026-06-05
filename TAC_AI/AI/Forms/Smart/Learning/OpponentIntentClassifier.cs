@@ -41,7 +41,10 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         public const float DefaultLearningRate = 0.0003f; // smaller per LEARNING §11
 
         public ModelId Id => ModelId.Intent;
-        public byte ArchitectureVersion => 1;
+        // P8 Item 19 (REV 7): bumped 1 → 2 marking GRU BPTT enabled. Informational only —
+        // flat parameter layout unchanged (same offsets, same total size). M0002_BpttUnfreeze
+        // is a no-op forward migration.
+        public byte ArchitectureVersion => 2;
         public int ParameterCount => _params.Length;
 
         // Parameter layout (single flat array):
@@ -51,6 +54,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private readonly AdamState _adam;
         private readonly DoubleBuffer<float[]> _publishedParams;
         private readonly BoundedQueue<IntentEvent> _events;
+        // L-013: per-model save mutex; TrainerWorker locks around TrainOneMinibatch.
+        private readonly object _saveMutex = new object();
+        public object SaveMutex => _saveMutex;
 
         // Offsets — three gates of (W: H*F, U: H*H, b: H).
         private readonly int _wrOff, _urOff, _brOff;
@@ -162,13 +168,25 @@ namespace TAC_AI.AI.Forms.Smart.Learning
 
         public TrainStepResult TrainOneMinibatch()
         {
+            // P8 Item 19 (REV 7): branches on LearningTuning.UseFullBPTT. Default true
+            // ships the full BPTT path; flipping false reverts to the v0.1 dense-head-only
+            // training (CircuitBreaker one-flip revert if the BPTT trainer NaN-trips).
+            if (LearningTuning.UseFullBPTT)
+                return TrainOneMinibatch_FullBptt();
+            return TrainOneMinibatch_DenseOnly();
+        }
+
+        /// <summary>
+        /// v0.1 training path: GRU gate parameters are frozen; only W_o + b_o update via
+        /// the dense-head gradient. Preserved for one-flip revert from BPTT-mode NaN trips.
+        /// </summary>
+        private TrainStepResult TrainOneMinibatch_DenseOnly()
+        {
             var batch = new IntentEvent[MinibatchSize];
             int n = 0;
             while (n < MinibatchSize && _events.TryDequeue(out var ev)) batch[n++] = ev;
             if (n == 0) return TrainStepResult.Empty;
 
-            // Compute per-event final hidden state (forward pass on training params), then
-            // dense-head gradient. GRU parameters are frozen at v0.1.0; only W_o, b_o update.
             var grad = new float[_totalParams];
             float lossBefore = 0f;
             for (int i = 0; i < n; i++)
@@ -187,6 +205,95 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             {
                 var probs = Evaluate(batch[i].Sequence);
                 lossAfter += MlpUtil.CrossEntropy(probs, batch[i].Label);
+            }
+            lossAfter /= n;
+            return new TrainStepResult(lossBefore, lossAfter, n);
+        }
+
+        /// <summary>
+        /// P8 Item 19: full BPTT path. Per-event:
+        ///   1. GruBackprop.Forward populates per-timestep cache.
+        ///   2. Dense head forward + softmax + cross-entropy compute dLogit + W_o/b_o grad.
+        ///   3. dL/dh_T = W_o^T @ dLogit (propagates dense-head gradient back into hidden state).
+        ///   4. GruBackprop.Backward folds dL/dh_T back through all 9 GRU gate slots.
+        /// </summary>
+        private TrainStepResult TrainOneMinibatch_FullBptt()
+        {
+            var batch = new IntentEvent[MinibatchSize];
+            int n = 0;
+            while (n < MinibatchSize && _events.TryDequeue(out var ev)) batch[n++] = ev;
+            if (n == 0) return TrainStepResult.Empty;
+
+            var grad = new float[_totalParams];
+            float lossBefore = 0f;
+
+            // Cache + scratch buffers — reused across the minibatch (allocation-free per event).
+            var cache = GruBackprop.AllocateCache(SeqLen, Hidden);
+            var offsets = new GruBackprop.GateOffsets
+            {
+                Wr = _wrOff, Ur = _urOff, Br = _brOff,
+                Wz = _wzOff, Uz = _uzOff, Bz = _bzOff,
+                Wh = _whOff, Uh = _uhOff, Bh = _bhOff,
+            };
+            var logits = new float[OutDim];
+            var probs = new float[OutDim];
+            var dLogit = new float[OutDim];
+            var dLdhT = new float[Hidden];
+
+            for (int e = 0; e < n; e++)
+            {
+                var ev = batch[e];
+                // Guard malformed labels (matches DenseHeadStep guard at line 205).
+                if ((uint)ev.Label >= (uint)OutDim) continue;
+
+                // 1. Forward through the GRU; cache holds per-timestep gates + hidden.
+                GruBackprop.Forward(_params, ev.Sequence, SeqLen, FeatureDim, Hidden, offsets, cache);
+                var hT = cache[SeqLen - 1].H;
+
+                // 2. Dense head forward.
+                MlpUtil.MatMulAdd(_params, _woOff, _params, _boOff, hT, logits, Hidden, OutDim);
+                for (int o = 0; o < OutDim; o++) probs[o] = logits[o];
+                MlpUtil.Softmax(probs, OutDim);
+
+                lossBefore += MlpUtil.CrossEntropy(probs, ev.Label);
+
+                // dL/dlogit = probs - one_hot(label).
+                for (int o = 0; o < OutDim; o++) dLogit[o] = probs[o] - (o == ev.Label ? 1f : 0f);
+
+                // Dense-head gradients: dW_o[o,i] = dLogit[o] * h_T[i]; db_o = dLogit.
+                for (int o = 0; o < OutDim; o++)
+                {
+                    int row = _woOff + o * Hidden;
+                    grad[_boOff + o] += dLogit[o];
+                    for (int i = 0; i < Hidden; i++) grad[row + i] += dLogit[o] * hT[i];
+                }
+
+                // 3. dL/dh_T = W_o^T @ dLogit (propagate dense-head gradient back to hidden).
+                for (int i = 0; i < Hidden; i++)
+                {
+                    float s = 0f;
+                    for (int o = 0; o < OutDim; o++) s += _params[_woOff + o * Hidden + i] * dLogit[o];
+                    dLdhT[i] = s;
+                }
+
+                // 4. Backward through the GRU; accumulates W_r/U_r/b_r/W_z/U_z/b_z/W_h/U_h/b_h.
+                GruBackprop.Backward(_params, ev.Sequence, SeqLen, FeatureDim, Hidden,
+                    offsets, cache, dLdhT, grad);
+            }
+
+            float invN = 1f / n;
+            for (int i = 0; i < _totalParams; i++) grad[i] *= invN;
+            lossBefore /= n;
+
+            _adam.Step(_params, grad);
+            _publishedParams.Write(Clone(_params));
+
+            float lossAfter = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                if ((uint)batch[i].Label >= (uint)OutDim) continue;
+                var afterProbs = Evaluate(batch[i].Sequence);
+                lossAfter += MlpUtil.CrossEntropy(afterProbs, batch[i].Label);
             }
             lossAfter /= n;
             return new TrainStepResult(lossBefore, lossAfter, n);
@@ -227,11 +334,45 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             return MlpUtil.CrossEntropy(probs, ev.Label);
         }
 
+        /// <summary>L-013: see ThreatAssessmentModel.FlushPendingForPersist.</summary>
+        public int FlushPendingForPersist()
+        {
+            lock (_saveMutex)
+            {
+                var result = TrainOneMinibatch();
+                return result.BatchSize;
+            }
+        }
+
         public void StoreParameters(float[] dest) => Array.Copy(_params, dest, _params.Length);
         public void LoadParameters(float[] src)
         {
             if (src == null || src.Length != _params.Length) throw new ArgumentException("IntentClassifier: parameter length mismatch.");
             Array.Copy(src, _params, _params.Length);
+            _publishedParams.Write(Clone(_params));
+        }
+
+        /// <summary>
+        /// P11 T3 Item 53: real reset — Glorot for the 4 W matrices (3 gate-input W's + W_o
+        /// dense head), orthogonal for the 3 U matrices (hidden-hidden recurrent weights —
+        /// critical for BPTT stability now that ArchitectureVersion=2 unfreezes them),
+        /// zero-fill the 4 bias vectors, reset Adam moments.
+        /// </summary>
+        public void Reset(int seed)
+        {
+            MlpUtil.ResetSeed(seed ^ (int)Id);
+            MlpUtil.GlorotInit(_params, _wrOff, FeatureDim, Hidden);
+            MlpUtil.OrthogonalInit(_params, _urOff, Hidden);
+            MlpUtil.ZeroFill(_params, _brOff, Hidden);
+            MlpUtil.GlorotInit(_params, _wzOff, FeatureDim, Hidden);
+            MlpUtil.OrthogonalInit(_params, _uzOff, Hidden);
+            MlpUtil.ZeroFill(_params, _bzOff, Hidden);
+            MlpUtil.GlorotInit(_params, _whOff, FeatureDim, Hidden);
+            MlpUtil.OrthogonalInit(_params, _uhOff, Hidden);
+            MlpUtil.ZeroFill(_params, _bhOff, Hidden);
+            MlpUtil.GlorotInit(_params, _woOff, Hidden, OutDim);
+            MlpUtil.ZeroFill(_params, _boOff, OutDim);
+            _adam.Reset();
             _publishedParams.Write(Clone(_params));
         }
 

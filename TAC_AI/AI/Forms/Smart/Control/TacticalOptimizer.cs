@@ -118,11 +118,105 @@ namespace TAC_AI.AI.Forms.Smart.Control
             // friendlies as often as it picks enemies and the optimizer chases the wrong tech.
             float uEngagement = EngagementUtility(candidate, vehicle, beliefs, ownBelief.Team);
             float uFeasibility = KinematicFeasibility(candidate, ownBelief, vehicle);
-            float uArmorFacing = 0f;        // TODO v0.2: read ArmorMap.QueryWeakFace
-            float uCover = 0f;              // TODO v0.2: activates when PATHING.TerrainMap lands
-            float uTeamRole = 0f;           // TODO v0.2: activates when COORDINATION lands
+
+            // P11 T6 Item 56 (post-decompile, no v0.3 defer): three utility terms previously
+            // hard-coded to 0f with stale "TODO v0.2: activates when X lands" comments. X (the
+            // dependent subsystems) all landed in v0.2 — this commit wires the consumers.
+            float uArmorFacing = ArmorFacingUtility(candidate, ownBelief, vehicle, beliefs);
+            float uCover = CoverUtility(candidate, ownBelief, beliefs);
+            float uTeamRole = TeamRoleUtility(ownBelief, candidate);
 
             return uEngagement + uFeasibility + uArmorFacing + uCover + uTeamRole;
+        }
+
+        // ---- P11 T6 Item 56 utility-term implementations ----
+
+        /// <summary>
+        /// Penalize candidates that expose OUR weak face toward the nearest hostile. Reads
+        /// own ArmorMap.QueryWeakFace per VEHICLE-CONTRACT §6.4. Positive when our strong
+        /// face is toward the threat, negative otherwise. Weight 0.2 — secondary to engagement.
+        /// </summary>
+        private static float ArmorFacingUtility(Vector3 candidate, BeliefState ownBelief,
+            VehicleModelSnapshot vehicle, BeliefSnapshot beliefs)
+        {
+            if (vehicle.Armor == null || beliefs == null || beliefs.ByTech.Count == 0) return 0f;
+            // Find the nearest hostile to the candidate position.
+            BeliefState nearest = null;
+            float bestDistSq = float.MaxValue;
+            foreach (var pair in beliefs.ByTech)
+            {
+                if (pair.Value.Team.Equals(ownBelief.Team)) continue;
+                float distSq = (pair.Value.PositionMean - candidate).sqrMagnitude;
+                if (distSq < bestDistSq) { bestDistSq = distSq; nearest = pair.Value; }
+            }
+            if (nearest == null) return 0f;
+
+            // Attack direction in own tech-local frame. We approximate "local" via the heading
+            // vector — own.HeadingMean rotates world→local around Y for ground vehicles. This
+            // is the same XZ approximation the rest of the optimizer uses.
+            Vector3 attackWorld = nearest.PositionMean - candidate;
+            if (attackWorld.sqrMagnitude < 1e-4f) return 0f;
+            attackWorld.y = 0f;
+            attackWorld.Normalize();
+            float cosH = Mathf.Cos(-ownBelief.HeadingMean);
+            float sinH = Mathf.Sin(-ownBelief.HeadingMean);
+            Vector3 attackLocal = new Vector3(
+                attackWorld.x * cosH - attackWorld.z * sinH,
+                0f,
+                attackWorld.x * sinH + attackWorld.z * cosH);
+
+            var weak = vehicle.Armor.QueryWeakFace(attackLocal);
+            // QueryWeakFace returns the face being attacked. Lower TotalHP = weaker = worse
+            // for us. Normalize against a baseline 1000 HP face to get [-0.2, +0.2] range.
+            const float BaselineHpPerFace = 1000f;
+            const float Weight = 0.2f;
+            float facingScore = (weak.TotalHP - BaselineHpPerFace) / BaselineHpPerFace;
+            return Mathf.Clamp(facingScore, -1f, 1f) * Weight;
+        }
+
+        /// <summary>
+        /// Reward candidates with terrain occlusion to the nearest hostile. Uses Physics.Linecast
+        /// against the default raycast layer mask — same approach the engine takes for
+        /// line-of-fire checks. Weight 0.15. Cost: one raycast per candidate × StepsPerTick × 4
+        /// gradient samples = ~40 raycasts per tactical-optimizer tick, well within budget.
+        /// </summary>
+        private static float CoverUtility(Vector3 candidate, BeliefState ownBelief, BeliefSnapshot beliefs)
+        {
+            if (beliefs == null || beliefs.ByTech.Count == 0) return 0f;
+            BeliefState nearest = null;
+            float bestDistSq = float.MaxValue;
+            foreach (var pair in beliefs.ByTech)
+            {
+                if (pair.Value.Team.Equals(ownBelief.Team)) continue;
+                float distSq = (pair.Value.PositionMean - candidate).sqrMagnitude;
+                if (distSq < bestDistSq) { bestDistSq = distSq; nearest = pair.Value; }
+            }
+            if (nearest == null) return 0f;
+            // Linecast from candidate (slightly elevated to clear ground-plane jitter) to
+            // the hostile's position. If anything blocks, candidate has cover → +0.15.
+            const float Weight = 0.15f;
+            Vector3 from = candidate + Vector3.up * 1.5f;
+            Vector3 to = nearest.PositionMean + Vector3.up * 1.5f;
+            return Physics.Linecast(from, to) ? Weight : 0f;
+        }
+
+        /// <summary>
+        /// Bias the optimizer's preferred position by the tech's currently-assigned coordination
+        /// role. Reads via <c>SmartRuntime.TryGetTechRole</c> which snapshots the team's
+        /// most-recent CoordinationState. Returns 0 when no role has been published yet
+        /// (first frame after spawn, Coordinator daemon hasn't ticked).
+        /// </summary>
+        private static float TeamRoleUtility(BeliefState ownBelief, Vector3 candidate)
+        {
+            if (!SmartRuntime.TryGetTechRole(ownBelief.Id, out var role)) return 0f;
+            switch (role)
+            {
+                case Coordination.Role.Scout:     return  0.10f;  // reward forward exploration
+                case Coordination.Role.Flanker:   return  0.05f;
+                case Coordination.Role.Support:   return -0.05f;  // bias toward holding station
+                case Coordination.Role.Retreater: return -0.10f;
+                default:                          return  0f;
+            }
         }
 
         private float EngagementUtility(Vector3 candidate, VehicleModelSnapshot vehicle, BeliefSnapshot beliefs, TAC_AI.AI.Forms.Smart.World.TeamId ownTeam)

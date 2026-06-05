@@ -54,6 +54,12 @@ namespace TAC_AI.AI.Forms.Smart
             // Start Smart's process-wide globals: worker pool + world model.
             // Per ARCHITECTURE §3.2: host-authority means workers may run regardless of
             // host/client state, but per-tick paths gate substantive work on host==true.
+            // L-007: SmartLifecycleShim MUST install BEFORE SmartRuntime.Init so
+            // OnApplicationPause hits a live runtime. Install is idempotent on SetActive
+            // re-entry (form-swap → DeInitGlobal → InitGlobal); the DontDestroyOnLoad
+            // GameObject is re-found by name and reused.
+            try { SmartLifecycleShim.Install(); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.InitGlobal: SmartLifecycleShim.Install failed: " + ex.Message); }
             SmartRuntime.Init();
             // Phase 3.3 (FIX-PLAN.md): wire the engine-side observable surface into
             // Smart's WorldEventBus.
@@ -72,6 +78,12 @@ namespace TAC_AI.AI.Forms.Smart
             // not already present.
             try { Training.SmartTrainingDriver.GetOrCreate(); }
             catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.InitGlobal: SmartTrainingDriver init failed: " + ex.Message); }
+            // P10 Item 36 (REV 7): install the F8 live-tweaker panel alongside the dev
+            // driver. Same idempotent shape — adds a DontDestroyOnLoad MonoBehaviour that
+            // owns its IMGUI window. SmartConsoleCommands registers automatically via
+            // [DevCommand] attribute scan (no Install needed for those).
+            try { Tooling.LiveTweakerPanel.Install(); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.InitGlobal: LiveTweakerPanel install failed: " + ex.Message); }
 #endif
         }
 
@@ -82,6 +94,11 @@ namespace TAC_AI.AI.Forms.Smart
             KickStart.SaveSink -= OnEngineSave;
             KickStart.LoadSink -= OnEngineLoad;
             Integration.SmartEventBridge.Uninstall();
+#if SMART_DEV
+            // P10 Item 36 (REV 7): mirror the InitGlobal install. Uninstall is idempotent.
+            try { Tooling.LiveTweakerPanel.Uninstall(); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.DeInitGlobal: LiveTweakerPanel uninstall failed: " + ex.Message); }
+#endif
 
             // Phase 4 (FIX-PLAN.md) — AUDIT-R2 §2.R2.E: SHELL-API-GUIDE §6.3 NORMATIVE
             // requires DeInitGlobal to clear FormState on every live TankAIHelper whose
@@ -109,6 +126,10 @@ namespace TAC_AI.AI.Forms.Smart
             }
 
             SmartRuntime.Shutdown();
+            // L-007: SmartLifecycleShim Uninstall AFTER Shutdown so any pause that fires
+            // mid-Uninstall is benign (Shutdown already nulled Pool / cancelled workers).
+            try { SmartLifecycleShim.Uninstall(); }
+            catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.DeInitGlobal: SmartLifecycleShim.Uninstall failed: " + ex.Message); }
         }
 
         /// <summary>
@@ -122,7 +143,15 @@ namespace TAC_AI.AI.Forms.Smart
             {
                 World.WorldEventBus.Publish(new World.WorldSaving());
                 if (LearningService.IsRunning)
+                {
+                    // L-032: uniform tag so the manual-save path is greppable distinct from
+                    // L-060 [PROFILE-AUTOSAVE] and L-078 [PROFILE-QUIT-SAVE].
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
                     LearningService.SaveProfile(LearningService.CurrentPlayerId);
+                    DebugTAC_AI.LogWarnFileOnly("profile-manual-save",
+                        "[PROFILE-MANUAL-SAVE] player=" + LearningService.CurrentPlayerId
+                        + " elapsed=" + sw.ElapsedMilliseconds + "ms");
+                }
             }
             else
             {
@@ -157,24 +186,24 @@ namespace TAC_AI.AI.Forms.Smart
 
         public void OnTechSpawn(TankAIHelper helper)
         {
-            // [TEMP DIAGNOSTIC] Distinguish "Smart was active but bailed" from "Smart wasn't
-            // even called for this spawn." If this line is missing for a new tech, the active
-            // form wasn't Smart at DelayedSubscribe time. If it logs "BAIL: ..." then we know
-            // Smart got called but couldn't run.
-            string tankName = helper?.tank != null ? helper.tank.name : "<null-tank>";
-            if (helper == null || helper.tank == null)
-            {
-                DebugTAC_AI.Log("Smart.OnTechSpawn[ENTRY] '" + tankName + "' BAIL: null helper or tank.");
-                return;
-            }
+            // L-082: the prior [TEMP DIAGNOSTIC] block is subsumed by the unified
+            // [TECH-ROUTE] log emitted from AIFormRegistry.RouteTech (L-027). Per-form
+            // BAIL distinctions are now visible via Routing.Reason on the helper +
+            // LiveRoutings overlay (L-053). The runtime-down case below becomes a funnel
+            // fallback (Reason=SmartRuntimeNotRunning) rather than a silent log line.
+            if (helper == null || helper.tank == null) return;
             if (!SmartRuntime.IsRunning)
             {
-                DebugTAC_AI.Log("Smart.OnTechSpawn[ENTRY] '" + tankName + "' BAIL: SmartRuntime.IsRunning=false (Pool="
-                    + (SmartRuntime.Pool != null ? "ok" : "null") + ", World="
-                    + (SmartRuntime.World != null ? "ok" : "null") + ").");
+                // Stamp the reason on the helper so the orphan catcher (L-081) sees this
+                // tech is intentionally unrouted (not a dropped Invoke).
+                helper.Routing = new TAC_AI.AI.Forms.RoutingDecision
+                {
+                    FormId = null,
+                    TimestampMs = System.Environment.TickCount,
+                    Reason = "SmartRuntimeNotRunning",
+                };
                 return;
             }
-            DebugTAC_AI.Log("Smart.OnTechSpawn[ENTRY] '" + tankName + "' proceeding.");
 
             // RunMovementBridge in TankAIHelper gates per-frame ControlFrame on
             // RunState == AIRunState.Advanced. The default is Advanced, but other forms
@@ -234,7 +263,24 @@ namespace TAC_AI.AI.Forms.Smart
 
             // Join the team's coordination registry — TeamRuntime's planner + coordinator
             // workers see this tech on their next tick.
-            teamRuntime?.RegisterTech(state);
+            // L-019: TeamRuntime.RegisterTech now returns bool; refuse on Draining/Disposed
+            // teams (team-changed during this spawn cycle, or team reaped under us). On
+            // refusal we drop FormState + DetachPerTank so the half-initialised state
+            // doesn't leak — the engine's Modified form will pick up the next frame's
+            // routing reclaim (TR-4 / L-051).
+            bool registered = teamRuntime != null && teamRuntime.RegisterTech(state);
+            if (!registered)
+            {
+                DebugTAC_AI.LogWarnFileOnly("smart-onspawn-team-refused-" + state.TechId.Value,
+                    "Smart.OnTechSpawn: team refused RegisterTech (team="
+                    + teamId.Value + " state="
+                    + (teamRuntime != null ? teamRuntime.State.ToString() : "<null-runtime>")
+                    + ") — aborting spawn");
+                helper.FormState = null;
+                try { Integration.SmartEventBridge.DetachPerTank(helper.tank); }
+                catch { /* tank may already be partially recycled */ }
+                return;
+            }
             if (doTime) { DebugTAC_AI.Log("Smart.OnTechSpawn[TIMING #" + spawnIdx + "] teamRuntime.RegisterTech: " + sw.ElapsedMilliseconds + "ms"); sw.Restart(); }
 
             // Smart's MPC owns avoidance via its threat-field cost term + friendly-fire
@@ -289,17 +335,39 @@ namespace TAC_AI.AI.Forms.Smart
                 currentTick: World.MonoClock.Now());
             if (doTime) { DebugTAC_AI.Log("Smart.OnTechSpawn[TIMING #" + spawnIdx + "] World.RegisterTech: " + sw.ElapsedMilliseconds + "ms"); sw.Restart(); }
 
-            // Identity Phase 1: classify and stamp. The classifier is a Generic-returning stub
-            // at v0.1 (Phases 2-5 layer concrete rules in). Runs AFTER World.RegisterTech so any
-            // identity that wants to read beliefs has the BeliefState registered. Exception-
-            // isolated - a misbehaving classifier MUST NOT prevent the spawn from completing.
+            // Identity: classify and stamp. P11 Item 67 (doc honesty pass): the classifier
+            // is no longer a Generic-returning stub — as of P6 it routes through 8 rules
+            // (Base / Gatherer / AircraftSupport / AircraftHunter / Sniper / RepairSupport /
+            // Patrol / Hunter / Generic) per SmartIdentityClassifier.cs. Runs AFTER
+            // World.RegisterTech so any identity that wants to read beliefs has the
+            // BeliefState registered. Exception-isolated — a misbehaving classifier MUST NOT
+            // prevent the spawn from completing.
             try
             {
-                var stamp = Identity.SmartIdentityClassifier.Classify(helper, state.VehicleBuffer.Read(), helper.tank.Team);
+                var vehicleSnap = state.VehicleBuffer.Read();
+                var stamp = Identity.SmartIdentityClassifier.Classify(helper, vehicleSnap, helper.tank.Team);
                 var src = Identity.SmartIdentityRegistry.For(stamp.Identity);
                 state.StampIdentity(stamp, src);
                 DebugTAC_AI.Log("Smart.Identity: '" + (helper.tank != null ? helper.tank.name : "<null>")
                     + "' = " + stamp.Identity + (stamp.FromAuthored ? " (authored)" : " (composition)"));
+
+                // P11 T1 Item 47: Identity parity gate. Re-classify with all SmartIdentityTuning
+                // flags forced false to get the v0.1 baseline, then emit the (v0.1, v0.2) pair
+                // to the gate. The gate is a no-op when the two identities match (most techs);
+                // only flag-flip reroutes log. Per-tech dedup, so this only fires once per tech.
+                // Only run the second classify when AT LEAST ONE flag is on — when all flags are
+                // off, v0.1 == v0.2 trivially and we can skip the recompute entirely.
+                if (Identity.SmartIdentityTuning.EnableRepairSupport
+                    || Identity.SmartIdentityTuning.EnablePatrol
+                    || Identity.SmartIdentityTuning.UseHarvesterModulesForGatherer)
+                {
+                    var v01Stamp = Identity.SmartIdentityClassifier.ClassifyWithFlags(
+                        helper, vehicleSnap, helper.tank.Team,
+                        enableRepairSupport: false, enablePatrol: false, useHarvesterModulesForGatherer: false);
+                    Identity.IdentityClassifierParityGate.TryEmitOnce(
+                        state.TechId.Value, v01Stamp.Identity, stamp.Identity,
+                        helper.tank != null ? helper.tank.name : null);
+                }
             }
             catch (System.Exception ex)
             {
@@ -347,10 +415,59 @@ namespace TAC_AI.AI.Forms.Smart
         {
             // Phase 5 (FIX-PLAN.md): track host authority for the worker host-gate.
             SmartRuntime.IsHost = host;
+            // L-057: notify HostAuthorityCoordinator AFTER the SmartRuntime.IsHost write so
+            // its edge-detect sees the new value on this same tick. Publishes HostChanged
+            // via WorldEventBus when the debounced transition completes.
+            Coordination.HostAuthorityCoordinator.Notify();
+            // L-072: WorkerHealthMonitor tick (debounced internally to 1s) — surfaces
+            // [SMART-WORKERS-DEAD] when canonical daemons go missing + auto-respawns.
+            Threading.WorkerHealthMonitor.Tick();
+            // L-049: DaemonWatchdog scan (debounced internally to 1s) — checks the 9-name
+            // canonical roster + respawns missing daemons.
+            Threading.DaemonWatchdog.ScanAndRespawn();
+            // L-081: RoutingCompletenessCatcher tick (debounced internally to 5s) — finds
+            // helpers with FormId=null + age >= 1s and self-heals via funnel.
+            Tests.RoutingCompletenessCatcher.MainThreadTick();
             // Phase 3.2 (FIX-PLAN.md): drain any worker-published events queued for
             // main-thread dispatch. The drain is per-tick and bounded; runs even when
             // FormState is missing so non-Smart techs still flush Smart's marshal queue.
             WorldEventBus.DrainMainThreadQueue();
+
+            // P5 Item 23: LOS producer tick. Default OFF (no-op); when Enabled, computes
+            // round-robin per-team LOS via Physics.Raycast and publishes per-team snapshot
+            // that TeamRuntime.BuildTeamSnapshot (worker side) reads via SnapshotForTeam.
+            // Has its own internal interval guard (TickIntervalMs=150ms); safe to call
+            // every Operations frame.
+            Coordination.LineOfSightProducer.MainThreadTick();
+
+            // P10 Item 41 (REV 7): periodic VEHICLE-PARITY regression sweep. Default OFF
+            // (no-op); when Tests.VehicleParityCatcher.Enabled is flipped to true (e.g.
+            // during a spawn-test campaign), walks every loaded tech at 30s cadence and
+            // gives newly-spawned techs a parity verdict. Per-gate dedup means previously
+            // checked techs cost nothing.
+            Tests.VehicleParityCatcher.MainThreadTick();
+
+            // P11 T2 Items 50 + 52: LearningService periodic tick. Internal interval guards
+            // run the observation-buffer drain at 1 Hz and the [OUTCOMES] log line at 1/60 Hz.
+            // ownAnchorWorld = local player's current tech position when available; lets the
+            // heuristic intent labeler compute closing-rate-based Aggressing / Retreating
+            // labels. Falls back to Vector3.zero (labeler then skips those two classes).
+            try
+            {
+                UnityEngine.Vector3 ownAnchor = UnityEngine.Vector3.zero;
+                var net = ManNetwork.inst;
+                if (net != null && net.MyPlayer != null && net.MyPlayer.CurTech != null
+                    && net.MyPlayer.CurTech.tech != null)
+                {
+                    ownAnchor = net.MyPlayer.CurTech.tech.boundsCentreWorldNoCheck;
+                }
+                LearningService.PeriodicTick(ownAnchor);
+            }
+            catch (System.Exception ex)
+            {
+                DebugTAC_AI.LogWarnFileOnly("learning-tick-err",
+                    "LearningService.PeriodicTick threw " + ex.GetType().Name + ": " + ex.Message);
+            }
 
             // World-observation sweep. Operations is called once per Smart-driven tech per
             // physics frame, so with N Smart techs this method runs N times/frame. The sweep
@@ -444,33 +561,75 @@ namespace TAC_AI.AI.Forms.Smart
             {
                 DebugTAC_AI.LogWarning("Smart.ControlFrame[" + state.TechId + "]: " + ex.Message);
             }
+
+            // P11 T8 Item 64: ControlFrame-output recorder. No-op when FrameRecorder.Enabled
+            // is false (default). When recording, snapshot the published ControlProfile (the
+            // exact values the controller just wrote into TankControl) per tech per frame.
+            // Hooked here AFTER OnControlFrame so the recording reflects what the actuators
+            // actually saw — not intermediate publishes from the MPC worker.
+            try
+            {
+                if (Tests.FrameRecorder.Enabled)
+                {
+                    var profile = state.Controller.ControlProfileBuffer.Read();
+                    var step = profile.Steps != null && profile.Steps.Count > 0
+                        ? profile.Steps[0]
+                        : Control.ControlVector.Zero;
+                    Tests.FrameRecorder.RecordControlFrame(
+                        state.TechId.Value,
+                        World.MonoClock.Now(),
+                        throttle: step.Throttle,
+                        steer: step.Steer,
+                        brake: step.Brake,
+                        fireAny: profile.FireAny,
+                        aimPointWorld: profile.AimPointWorld,
+                        aimRadius: profile.AimRadiusWorld);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarnFileOnly("frame-recorder-hook",
+                    "Smart.ControlFrame[" + state.TechId + "] FrameRecorder hook: " + ex.Message);
+            }
         }
 
         // -------- v2 isolation seams --------
 
         public void OnWorldReset()
         {
-            // Phase 3.5 (FIX-PLAN.md): SHELL-API §2.6 + WORLD §7 + PATHING §3.x mandate
-            // clearing per-mission state so a second mission in the same process does
-            // not see polluted beliefs/threat/path/terrain. Workers (Pool, Perception,
-            // Pathing rebuild loops, Planner/Coordinator per-team) STAY ALIVE — only
-            // per-mission caches are cleared.
+            // L-069: collapsed to publish WorldResetting → ResetAll → publish WorldResetCompleted.
+            // Every reset hook (WorldModel.Clear, PathingService caches, backpressure state,
+            // TerrainMap, IWorldResettable consumers) registered with WorldResetRegistry at
+            // Init. Grep `[WORLD-RESET]` returns ≥7 lines per cycle: 1 starting + per-hook
+            // + 1 completed/partial.
             if (!SmartRuntime.IsRunning) return;
-            try
-            {
-                // World: clear per-tech beliefs + fused snapshot. PerceptionWorker
-                // continues running and will repopulate as techs spawn in the new world.
-                SmartRuntime.World?.Clear();
+            long tickMono = World.MonoClock.Now();
+            try { World.WorldEventBus.Publish(new World.WorldResetting(tickMono)); }
+            catch (System.Exception ex) { DebugTAC_AI.LogWarning("Smart.OnWorldReset.Publish(Resetting): " + ex.Message); }
 
-                // Pathing: drop the terrain map snapshot and per-team threat-field
-                // caches; the rebuild loops repopulate them in the new world.
-                if (PathingService.IsRunning)
-                    PathingService.OnWorldReset();
-            }
-            catch (System.Exception ex)
-            {
-                DebugTAC_AI.LogWarning("Smart.OnWorldReset: " + ex.Message);
-            }
+            // Also register the legacy World + Pathing resets as inline lambdas so the
+            // unified registry walk is the single ResetAll call. (These two were not
+            // registered as IWorldResettable in Wave 1; doing so here would be a static
+            // re-Init concern. Use a one-time gate.)
+            EnsureLegacyResetsRegistered();
+
+            int ok = Pathing.WorldResetRegistry.ResetAll();
+            int total = Pathing.WorldResetRegistry.Count;
+
+            try { World.WorldEventBus.Publish(new World.WorldResetCompleted(World.MonoClock.Now(), ok, total)); }
+            catch (System.Exception ex) { DebugTAC_AI.LogWarning("Smart.OnWorldReset.Publish(Completed): " + ex.Message); }
+        }
+
+        // L-069: one-time registration of legacy reset paths into WorldResetRegistry so
+        // OnWorldReset can collapse to a single ResetAll call.
+        private static int _legacyResetsRegistered;
+        private static void EnsureLegacyResetsRegistered()
+        {
+            if (System.Threading.Interlocked.Exchange(ref _legacyResetsRegistered, 1) == 1) return;
+            Pathing.WorldResetRegistry.RegisterLambda("WorldModel.Clear",
+                () => SmartRuntime.World?.Clear());
+            Pathing.WorldResetRegistry.RegisterLambda("PathingService.OnWorldReset",
+                () => { if (PathingService.IsRunning) PathingService.OnWorldReset(); });
         }
 
         public void DrawPathingDebugGUI()
@@ -483,12 +642,29 @@ namespace TAC_AI.AI.Forms.Smart
             if (!SmartRuntime.IsRunning) return;
             const int W = 280;
             int y = 142;
-            UnityEngine.GUI.Box(new UnityEngine.Rect(4, 138, W, 110), UnityEngine.GUIContent.none);
+            UnityEngine.GUI.Box(new UnityEngine.Rect(4, 138, W, 182), UnityEngine.GUIContent.none);  // L-038/L-065/L-073: +backpressure +lifetime +workers
             UnityEngine.GUI.Label(new UnityEngine.Rect(10, y, W - 12, 18),
                 "Smart: pool=" + (SmartRuntime.Pool != null ? SmartRuntime.Pool.WorkerCount : 0)
                 + " workers, world="
                 + (SmartRuntime.World != null ? "active" : "null"));
             y += 18;
+            // L-073: live/expected workers line. Counts live registry entries; reads
+            // expected from WorkerHealthMonitor (canonical count = 7 daemons typically).
+            // Color-codes red when degraded; second line lists missing names truncated to box width.
+            try
+            {
+                int liveCount = Threading.WorkerLifecycleRegistry.SnapshotLive().Count;
+                int expected = Threading.WorkerHealthMonitor.ExpectedCount;
+                bool degraded = expected > 0 && liveCount < expected;
+                var prior = UnityEngine.GUI.contentColor;
+                UnityEngine.GUI.contentColor = degraded ? UnityEngine.Color.red : new UnityEngine.Color(0.6f, 1f, 0.6f);
+                UnityEngine.GUI.Label(new UnityEngine.Rect(10, y, W - 12, 18),
+                    "Workers: " + liveCount + "/" + (expected > 0 ? expected.ToString() : "?")
+                    + (degraded ? " DEGRADED" : " alive"));
+                UnityEngine.GUI.contentColor = prior;
+                y += 18;
+            }
+            catch (System.Exception) { /* defensive — never block GUI */ }
             int teamCount = 0;
             int techCount = 0;
             foreach (var t in SmartRuntime.EnumerateTeams())
@@ -499,12 +675,33 @@ namespace TAC_AI.AI.Forms.Smart
             UnityEngine.GUI.Label(new UnityEngine.Rect(10, y, W - 12, 18),
                 "Teams: " + teamCount + "   Smart-driven techs: " + techCount);
             y += 18;
+            // L-065: TeamReaperDaemon lifetime counters — created/evicted help operator
+            // verify "are old teams being reaped or accumulating forever?" without grep.
+            UnityEngine.GUI.Label(new UnityEngine.Rect(10, y, W - 12, 18),
+                "  Lifetime: created=" + Coordination.TeamReaperDaemon.TeamsCreatedObserved
+                + "  evicted=" + Coordination.TeamReaperDaemon.TeamsEvictedTotal);
+            y += 18;
             if (PathingService.IsRunning)
             {
                 UnityEngine.GUI.Label(new UnityEngine.Rect(10, y, W - 12, 18),
                     "Pathing: running   terrain=" +
                     (PathingService.CurrentTerrain != null ? "alive" : "null"));
                 y += 18;
+                // L-038: backpressure block. Surfaces shed-state + queue + dropped/expired
+                // + p50/p99 so the operator can see backpressure trend before shed activates.
+                var bp = PathingService.Backpressure;
+                if (bp != null)
+                {
+                    UnityEngine.GUI.Label(new UnityEngine.Rect(10, y, W - 12, 18),
+                        "  Queue: " + bp.QueueDepth + "/" + bp.QueueCapacity
+                        + (bp.ShedActive ? "  SHED:ON" : "  SHED:off")
+                        + "  Drop=" + bp.DroppedTotal + " Exp=" + bp.ExpiredTotal);
+                    y += 18;
+                    UnityEngine.GUI.Label(new UnityEngine.Rect(10, y, W - 12, 18),
+                        "  Latency: p50=" + bp.SolveLatencyMsP50.ToString("0.0")
+                        + "ms p99=" + bp.SolveLatencyMsP99.ToString("0.0") + "ms");
+                    y += 18;
+                }
             }
             if (LearningService.IsRunning)
             {
@@ -644,6 +841,24 @@ namespace TAC_AI.AI.Forms.Smart
                         : UnityEngine.Vector3.forward;
                     World.Observer.Submit(
                         SmartRuntime.World.Intake, techId, pos, vel, fwd, World.MonoClock.Now());
+
+                    // P6 Item 26: tank-wide HP via block-survival ratio. Pattern matches
+                    // TankAIHelper.cs:3267's production multi-block fallback:
+                    // (1 - blockC/maxBlockCount)*100 -> HpFraction = blockC/maxBlockCount.
+                    // HealthSidecar tracks per-tech max internally (ratchets upward on growth).
+                    if (tank.blockman != null)
+                    {
+                        int bc = tank.blockman.blockCount;
+                        if (bc > 0) SmartRuntime.Health?.Record(techId, bc);
+                    }
+
+                    // P7 Item 18: trigger residual-recorder observation match. Per-tank
+                    // call is cheap (ConcurrentDictionary TryGet fast-path when no pending
+                    // fire-commit exists for this target). Same 33ms cadence as Observer.Submit.
+                    var recorder = World.MonoClock.Now() == 0L ? null
+                        : Learning.LeadResidualRecorder.Instance;
+                    if (recorder != null)
+                        recorder.OnObservation(techId, pos, World.MonoClock.Now());
                 }
 
                 // Orphan sweep. Techs purged by the engine (PurgeHost, fall-out-of-world,
@@ -666,8 +881,29 @@ namespace TAC_AI.AI.Forms.Smart
                     // Aether/T3: single unified cleanup fan-out (see SmartRuntime.Deregister).
                     // Engine purged the GameObject so helper/tank are unsafe; pass nulls.
                     World.TeamId teamId = default(World.TeamId);
+                    bool teamResolved = false;
                     if (perTechCopy.TryGetValue(orphanId, out var entry) && entry.PriorBelief != null)
+                    {
                         teamId = entry.PriorBelief.Team;
+                        teamResolved = true;
+                    }
+                    // L-011: last-resort TeamId recovery — PriorBelief invariantly non-null
+                    // today but a future regression would silently pass default(TeamId) to
+                    // Deregister and miss per-team state cleanup. Walk teams as fallback.
+                    if (!teamResolved)
+                    {
+                        if (SmartRuntime.FindTeamForTech(orphanId, out var foundTeam))
+                        {
+                            teamId = foundTeam;
+                            teamResolved = true;
+                        }
+                        else
+                        {
+                            DebugTAC_AI.LogWarnFileOnly("tech-leak-no-team-" + orphanId.Value,
+                                "[TECH-LEAK-NO-TEAM] orphanId=" + orphanId.Value
+                                + " — PriorBelief null AND no TeamRuntime owns it; per-team cleanup skipped");
+                        }
+                    }
                     SmartRuntime.Deregister(orphanId, teamId, null, null);
                 }
             }

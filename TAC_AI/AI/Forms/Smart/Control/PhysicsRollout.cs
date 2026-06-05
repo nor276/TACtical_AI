@@ -134,12 +134,32 @@ namespace TAC_AI.AI.Forms.Smart.Control
                 if (float.IsNaN(newHeading) || float.IsInfinity(newHeading)) newHeading = 0f;
                 else newHeading = Mathf.Repeat(newHeading + Mathf.PI, 2f * Mathf.PI) - Mathf.PI;
 
-                // Vehicle-class specialization: airplane gets a simplified lift term.
+                // P11 T6 Item 58: replace the v0.1 hand-wave (speedAlongFwd * 0.1f * dt) with
+                // a basic wing-area dynamic-pressure model. Lift = ρ * 0.5 * v² * area * Cl,
+                // capped at 2× gravity*mass so degenerate "infinite speed" candidates can't
+                // produce runaway lift that breaks the trajectory optimizer. The cross-section
+                // is approximated from the mass's principal extents — wider tech, more lift.
                 if (vehicle.Mobility.VerticalAuthority > 0.5f)
                 {
                     float speedAlongFwd = Vector3.Dot(newVel, fwd);
                     if (speedAlongFwd > 1.0f)
-                        newVel.y += speedAlongFwd * 0.1f * dt; // crude lift placeholder; TODO v0.2 proper aero model.
+                    {
+                        const float airDensity = 1.225f;   // kg/m³ at sea level
+                        const float liftCoefficient = 0.6f; // provisional; tunable in a future pass
+                        const float gravity = 9.81f;
+                        float mass = Mathf.Max(vehicle.Mass.TotalMass, 1f);
+                        // Cross-section proxy: TerraTech blocks are ~1 m³ × 0.5 kg each on
+                        // average, so a tech's wing-area planform scales roughly as the
+                        // square root of mass. 0.5 √mass m² is a reasonable midpoint between
+                        // a 5-block planar wing (2 m²) and a 200-block heavy lifter (~7 m²).
+                        // Clamped to a 4 m² floor so tiny aircraft still get a baseline lift.
+                        float area = Mathf.Max(0.5f * Mathf.Sqrt(mass), 4f);
+                        float dynamicPressure = 0.5f * airDensity * speedAlongFwd * speedAlongFwd;
+                        float lift = dynamicPressure * area * liftCoefficient;
+                        float liftCap = 2f * mass * gravity;
+                        if (lift > liftCap) lift = liftCap;
+                        newVel.y += (lift / mass) * dt;
+                    }
                 }
 
                 traj[k + 1] = new RolloutState(newPos, newVel, newHeading, newAngVel);

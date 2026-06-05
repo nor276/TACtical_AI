@@ -21,6 +21,13 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
         public int N => ControlPoints.Count;
         public int SegmentCount => Mathf.Max(1, N - 3);
 
+        /// <summary>
+        /// L-042: monotonic timestamp (MonoClock.Now) when the optimizer published this
+        /// trajectory. PathingService.GetLastPathFresh uses (Now - SolvedAtMono) to drop
+        /// stale cached paths. 0 = never solved (default ctor / test fixture).
+        /// </summary>
+        public long SolvedAtMono { get; set; }
+
         // Backing array; same reference as ControlPoints. Allows optimizer to mutate in place.
         internal readonly Vector3[] _backing;
 
@@ -29,6 +36,7 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             _backing = controlPoints ?? throw new ArgumentNullException(nameof(controlPoints));
             ControlPoints = controlPoints;
             Duration = Mathf.Max(0.01f, duration);
+            SolvedAtMono = 0L;   // optimizer overwrites at publish
         }
 
         public Vector3 Position(float t)

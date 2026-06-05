@@ -16,6 +16,11 @@ namespace TAC_AI.AI.Forms.Smart.Planning
         public static float WSpeed = 0.5f;
         public static float WCoverage = 1.0f;
         public static float WLearned = 0.0f;
+        // P5 Item 24 (REV 4): perimeter-coverage weight. Default-zero preserves v0.1
+        // Evaluate output byte-identically (term contributes 0). Flip to ~1.0f to reward
+        // plans whose friendlies are radially dispersed around the team centroid
+        // (defensive perimeter geometry). CMA-ES tunable.
+        public static float WPerimeterCoverage = 0.0f;
 
         public static float Evaluate(StrategicState state)
         {
@@ -25,6 +30,7 @@ namespace TAC_AI.AI.Forms.Smart.Planning
               + WThreat * (-ThreatExposure(state))
               + WSpeed * RelativeSpeedAdvantage(state)
               + WCoverage * WeaponCoverage(state)
+              + WPerimeterCoverage * PerimeterCoverage(state)
               + WLearned * LearnedValue(state);
         }
 
@@ -119,6 +125,37 @@ namespace TAC_AI.AI.Forms.Smart.Planning
                 if (anyCover) coveredHostile++;
             }
             return (float)coveredHostile / s.Hostile.Count;
+        }
+
+        /// <summary>
+        /// P5 Item 24 (REV 4): reward plans that maintain friendly-tech radial coverage
+        /// around the team centroid. Standard circular-statistics mean-resultant-length:
+        /// project each friendly's angular position around the centroid (XZ plane), sum
+        /// the unit vectors, divide by N — R≈1 means clustered (poor coverage),
+        /// R≈0 means perfectly dispersed (full perimeter). Returned value is 1 - R,
+        /// so higher is better.
+        ///
+        /// Defaults to gain WPerimeterCoverage = 0f → contributes 0 to Evaluate → v0.1
+        /// scoring preserved bit-identically. CMA-ES or in-game tunable can flip the
+        /// weight to reward defensive-perimeter plans.
+        /// </summary>
+        public static float PerimeterCoverage(StrategicState s)
+        {
+            if (s.Friendly.Count < 2) return 0f;
+            Vector3 centroid = Vector3.zero;
+            for (int i = 0; i < s.Friendly.Count; i++)
+                centroid += s.Friendly[i].PositionMean;
+            centroid /= s.Friendly.Count;
+            float sumCos = 0f, sumSin = 0f;
+            for (int i = 0; i < s.Friendly.Count; i++)
+            {
+                Vector3 d = s.Friendly[i].PositionMean - centroid;
+                float ang = Mathf.Atan2(d.z, d.x);
+                sumCos += Mathf.Cos(ang);
+                sumSin += Mathf.Sin(ang);
+            }
+            float R = Mathf.Sqrt(sumCos * sumCos + sumSin * sumSin) / s.Friendly.Count;
+            return 1f - R;
         }
 
         /// <summary>Learned value contribution. v0.1.0: zero until Learning ships an ActionValueEstimator.</summary>

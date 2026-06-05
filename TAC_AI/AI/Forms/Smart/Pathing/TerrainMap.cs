@@ -95,6 +95,16 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
         public Vector2 Origin => _origin;
         public float CellSize => _cellSize;
 
+        /// <summary>
+        /// L-035: true until the first refresh tick has run. Consumers (threat-field
+        /// rebuild, path solve) use this to discard cached derivatives held over from a
+        /// prior world's terrain — the new TerrainMap is geometrically valid but its cell
+        /// heights are zeros until the first MainThreadTick samples them.
+        /// </summary>
+        public bool IsFreshlyAllocated => System.Threading.Volatile.Read(ref _freshlyAllocated) == 1;
+        private int _freshlyAllocated = 1;
+        internal void MarkRefreshed() => System.Threading.Volatile.Write(ref _freshlyAllocated, 0);
+
         public TerrainMap()
             : this(new Vector2(-DefaultWidth * DefaultCellSize * 0.5f, -DefaultHeight * DefaultCellSize * 0.5f),
                    DefaultCellSize, DefaultWidth, DefaultHeight) { }
@@ -178,6 +188,7 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
                     _refreshCellIndex = 0;
                     _refreshInProgress = false;
                     _lastRefreshEnvMs = Environment.TickCount;
+                    MarkRefreshed();   // L-035: first complete refresh clears the freshly-allocated flag
                 }
             }
             catch (Exception ex)

@@ -18,14 +18,20 @@ namespace TAC_AI.AI.Forms.Smart.Vehicle
         public readonly Vector3 LocalPosition;
         public readonly Quaternion LocalRotation;
         public readonly float CurrentMass;
-        // NO HpFraction in v0.1 -- ArmorMap HP migration deferred to v0.2 (no SpecHP either).
+        // P3 Item 5: per-instance HP fraction in [0, 1]. Defaults to 1.0 (healthy) when
+        // the ctor isn't passed a value; ChassisCapture populates via ArmorHpProbe when
+        // ArmorMapPolicy.UseRealSpecHP is true. Consumed by ArmorMap.Compute (catalog
+        // overload) — pose.HpFraction * archetype.SpecHP per voxel.
+        public readonly float HpFraction;
 
-        public BlockInstancePose(int typeKey, Vector3 localPosition, Quaternion localRotation, float currentMass)
+        public BlockInstancePose(int typeKey, Vector3 localPosition, Quaternion localRotation,
+                                 float currentMass, float hpFraction = 1f)
         {
             TypeKey = typeKey;
             LocalPosition = localPosition;
             LocalRotation = localRotation;
             CurrentMass = currentMass;
+            HpFraction = hpFraction;
         }
     }
 }
