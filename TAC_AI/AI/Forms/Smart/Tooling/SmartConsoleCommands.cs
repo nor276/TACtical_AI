@@ -303,5 +303,36 @@ namespace TAC_AI.AI.Forms.Smart.Tooling
             sb.Append("pool replaced: ").Append(replaced);
             return new CommandReturn { success = true, message = sb.ToString() };
         }
+
+        /// <summary>
+        /// smart.training.toggle — flip the training-mode filter on/off. Resets counters.
+        /// </summary>
+        [DevCommand(Name = KickStart.ModCommandID + ".smart.training.toggle", Access = Access.Cheat, Users = User.Host)]
+        public static CommandReturn TrainingToggle()
+        {
+            TrainingModeFilter.Enabled = !TrainingModeFilter.Enabled;
+            TrainingModeFilter.ResetCounters();
+            // Mirror the in-game tunable so the menu + F8 panel reflect the new state.
+            try { TunableRegistry.SetBool("training.enabled", TrainingModeFilter.Enabled); }
+            catch { /* registry may not have the key yet on early-init flip — fine, bind() syncs next */ }
+            return new CommandReturn { success = true, message = "Training mode: " + (TrainingModeFilter.Enabled ? "ENABLED" : "off") };
+        }
+
+        /// <summary>
+        /// smart.training.status — show whether training-mode filter is on + reject stats.
+        /// </summary>
+        [DevCommand(Name = KickStart.ModCommandID + ".smart.training.status", Access = Access.Cheat, Users = User.Host)]
+        public static CommandReturn TrainingStatus()
+        {
+            var sb = new System.Text.StringBuilder(256);
+            sb.Append("Training mode: ").Append(TrainingModeFilter.Enabled ? "ENABLED" : "off");
+            sb.Append("\nKeywords: ");
+            foreach (var k in TrainingModeFilter.Keywords) sb.Append(k).Append(' ');
+            sb.Append("\nCandidates evaluated: ").Append(TrainingModeFilter.CandidatesEvaluated);
+            sb.Append("\nCandidates rejected: ").Append(TrainingModeFilter.CandidatesRejected);
+            sb.Append("\nRe-rolls exhausted: ").Append(TrainingModeFilter.RerollsExhausted);
+            sb.Append("\n(toggle via in-game tunable 'training.enabled' or F8 panel)");
+            return new CommandReturn { success = true, message = sb.ToString() };
+        }
     }
 }

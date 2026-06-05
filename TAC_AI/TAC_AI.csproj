@@ -444,6 +444,7 @@
     <Compile Include="AI\Tunables\Catalog\RangeTimingTunables.cs" />
     <Compile Include="AI\Tunables\Catalog\MovementFlightTunables.cs" />
     <Compile Include="AI\Tunables\Catalog\SmartParityTunables.cs" />
+    <Compile Include="AI\Tunables\Catalog\TrainingModeTunables.cs" />
     <Compile Include="AI\Engine\IAIContext.cs" />
     <Compile Include="AI\Engine\AIContext.cs" />
     <Compile Include="AI\Engine\AIModuleBootstrap.cs" />
@@ -550,6 +551,7 @@
     <Compile Include="AI\Forms\Smart\Tooling\LiveTweakerPanel.cs" />
     <Compile Include="AI\Forms\Smart\Tooling\PresetIO.cs" />
     <Compile Include="AI\Forms\Smart\Tooling\SmartConsoleCommands.cs" />
+    <Compile Include="AI\Forms\Smart\Tooling\TrainingModeFilter.cs" />
     <Compile Include="AI\Forms\Smart\Tooling\SnapshotManager.cs" />
     <Compile Include="AI\Forms\Smart\Tooling\TunableMenuBridge.cs" />
     <Compile Include="AI\Forms\Smart\Training\EvolutionarySearch.cs" />

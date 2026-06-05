@@ -27,6 +27,7 @@ namespace TAC_AI.AI.Engine
             MovementFlightTunables.Register();
             AetherTunables.Register();   // P4 Item 15 — Aether D2 smoothing + UseCoastAwareLead
             SmartParityTunables.Register(); // P11 T9 Item 65 — armormap./weaponspec./los./smart./chassis. lanes
+            TrainingModeTunables.Register(); // training-mode tech-spawn filter (default OFF; in-game toggle)
 
             // 2) discover behavior modules by being in the assembly with the right attribute/namespace.
             AIModuleLoader.ScanAndRegister();
