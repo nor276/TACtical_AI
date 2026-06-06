@@ -491,6 +491,7 @@
     <Compile Include="AI\Forms\Smart\Identity\SmartIdentityTuning.cs" />
     <Compile Include="AI\Forms\Smart\Identity\SniperGoalSource.cs" />
     <Compile Include="AI\Forms\Smart\Integration\SmartEventBridge.cs" />
+    <Compile Include="AI\Forms\Smart\Integration\VisibleNullRigidbodyGuard.cs" />
     <Compile Include="AI\Forms\Smart\Learning\ActionValueEstimator.cs" />
     <Compile Include="AI\Forms\Smart\Learning\GruBackprop.cs" />
     <Compile Include="AI\Forms\Smart\Learning\IdentityOutcomeConsumer.cs" />

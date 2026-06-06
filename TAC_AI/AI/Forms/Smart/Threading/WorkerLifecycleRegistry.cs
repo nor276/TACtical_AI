@@ -127,21 +127,25 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                     }
                 }
 
-                // Phase 2: join each worker with a proportional share of the total timeout.
-                var perWorkerMs = timeout.TotalMilliseconds / snapshot.Length;
-                var perWorkerTimeout = perWorkerMs > 1.0
-                    ? TimeSpan.FromMilliseconds(perWorkerMs)
-                    : TimeSpan.FromMilliseconds(1);
+                // Phase 2: join each worker with the REMAINING budget rather than an
+                // even per-worker slice. The prior even-divide pattern allocated 2s/N
+                // (~64ms each for 31 workers) regardless of how fast individual workers
+                // exited — slow daemons mid-tick missed their tiny window and got
+                // log-stragglered. With a shared deadline, fast quitters preserve budget
+                // for slow ones; total wall-clock is still bounded by `timeout`.
+                int deadlineMs = unchecked(Environment.TickCount + (int)timeout.TotalMilliseconds);
 
                 foreach (var w in snapshot)
                 {
+                    int remainingMs = unchecked(deadlineMs - Environment.TickCount);
+                    if (remainingMs <= 0) remainingMs = 1;   // last-ditch poll, don't pass 0 (= block forever)
                     try
                     {
-                        if (!w.Thread.Join(perWorkerTimeout))
+                        if (!w.Thread.Join(remainingMs))
                         {
                             DebugTAC_AI.LogError(
                                 "Smart.Threading: worker '" + w.Name +
-                                "' did not exit within its share of the DeInitGlobal timeout.");
+                                "' did not exit within the DeInitGlobal timeout (remaining=" + remainingMs + "ms).");
                         }
                     }
                     catch (Exception ex)

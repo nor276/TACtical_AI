@@ -88,7 +88,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             // weights retained). A deserializer regression that would corrupt the player's
             // disk image now produces no save instead of silent corruption.
             bool selfTestPassed = true;
-            try { ProfileSelfTest.Run(modDirectory); }
+            try { ProfileSelfTest.Run(modDirectory, new ILearnedModel[] { Intent, ActionValue, Residual, Threat }); }
             catch (Exception ex)
             {
                 selfTestPassed = false;
