@@ -2,6 +2,9 @@ using System;
 using System.IO;
 using System.Threading;
 using UnityEngine;
+using TAC_AI.AI.Forms.Smart.Identity;
+using TAC_AI.AI.Forms.Smart.Learning.Features;
+using TAC_AI.AI.Forms.Smart.Pathing;
 using TAC_AI.AI.Forms.Smart.Threading;
 using TAC_AI.AI.Forms.Smart.World;
 
@@ -20,13 +23,12 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     /// (player join/leave events) is not yet verified. When verified, the per-player
     /// cache + Harmony patches per §7.2 plug in here.
     ///
-    /// v0.1.0 event-handler completeness: the threat model's <see cref="World.DamageObserved"/>
-    /// path produces real training events end-to-end. Intent / ActionValue / Residual
-    /// handlers subscribe but emit only when the per-tech state plumbing they depend on
-    /// (target observation sequence buffers, plan-transition events, weapon-fire outcome
-    /// tracking) is wired — TODO v0.2 — they otherwise sit dormant. This still satisfies
-    /// step 1.10's verification gate via the threat pipeline; the others go live with
-    /// the corresponding subsystem integrations.
+    /// Event-handler completeness: the threat model's <see cref="World.DamageObserved"/>
+    /// path produces real training events end-to-end. ActionValue events are produced
+    /// at the ContinuousController decision boundary (§7.2 + R2-06 — one-tick deferred
+    /// (s, a, r, s') tuples enqueued into <c>ActionValueEstimator.EventQueue</c> after
+    /// goal arbitration). Intent / Residual producers are wired through the observation-
+    /// sequence buffer and LeadResidualRecorder respectively.
     /// </summary>
     public static class LearningService
     {
@@ -520,11 +522,13 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         // ---- Event handlers ----
 
         /// <summary>
-        /// DamageObserved → ThreatAssessment training event. The damage observation gives
-        /// us a noisy single-sample threat estimate for the attacker. v0.1.0 fills the
-        /// 25-element feature vector with zeros except the few we know from the damage
-        /// payload (placeholder normalization). When VehicleModelSnapshot for the attacker
-        /// is plumbed, the feature vector gets real values.
+        /// DamageObserved → ThreatAssessment training event. Builds the 48-slot
+        /// ThreatEvent features per FEATURE-EXPANSION-PLAN §3.5 (ThreatSlots constants
+        /// in StrategicStateVector.cs) and enqueues for the Threat trainer. Runs on
+        /// the main thread (SmartEventBridge.OnTankDamage dispatches WorldEventBus
+        /// inline), so per-tech SelfStateProbe snapshots are fresh and the F-32
+        /// opaque-attacker pattern is observed for non-Smart-team attackers (composition
+        /// + weapon + energy + cargo zeroed when no probe exists).
         /// </summary>
         private static void OnDamageObserved(DamageObserved evt)
         {
@@ -541,156 +545,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                         "[TRAINER-DROPPED-NONHOST] LearningService.OnDamageObserved dropping events while !AcceptingTrainingEvents");
                     return;
                 }
-                var features = new float[ThreatAssessmentModel.FeatureDim];
 
-                // P7 (REV 7): real feature population from belief state.
-                // Slot layout (v0.2):
-                //   [0] damage magnitude normalized
-                //   [1] HasAttacker flag (0/1)
-                //   [2] attacker velocity magnitude (if known)
-                //   [3] distance victim<-attacker (if both beliefs available)
-                //   [4] attacker Sight enum cast to float (0=Lost..2=Fresh) (if known)
-                //   [5] victim velocity magnitude (if known)
-                //   [6] elapsed seconds since attacker last observed (if known)
-                //   [7..n] reserved for v0.3 VehicleModelSnapshot plumbing.
-                features[0] = UnityEngine.Mathf.Clamp01(evt.Damage.Damage / 100f);
-                features[1] = evt.Damage.HasAttacker ? 1f : 0f;
-
-                BeliefState victimBelief = null;
-                BeliefState attackerBelief = null;
-                try
-                {
-                    var world = SmartRuntime.World;
-                    if (world != null)
-                    {
-                        var vbuf = world.GetPerTechBuffer(evt.Id);
-                        if (vbuf != null) victimBelief = vbuf.Read();
-                        if (evt.Damage.HasAttacker)
-                        {
-                            var abuf = world.GetPerTechBuffer(evt.Damage.AttackerIfKnown);
-                            if (abuf != null) attackerBelief = abuf.Read();
-                        }
-                    }
-                }
-                catch { /* leave belief refs null - features stay 0 in those slots */ }
-
-                if (attackerBelief != null)
-                {
-                    features[2] = attackerBelief.VelocityMean.magnitude;
-                    features[4] = (float)(int)attackerBelief.Sight;
-                    long now = MonoClock.Now();
-                    features[6] = MonoClock.Seconds(attackerBelief.LastObservedTickMono, now);
-                }
-                if (victimBelief != null)
-                {
-                    features[5] = victimBelief.VelocityMean.magnitude;
-                    if (attackerBelief != null)
-                    {
-                        features[3] = (attackerBelief.PositionMean - victimBelief.PositionMean).magnitude;
-                    }
-                }
-
-                // P11 T4 Item 54: populate slots 7-22 from already-wired v0.2 sources.
-                // Plan-verified per Agent 4 sweep + decompile. Slots 23-24 (victim chassis
-                // mass + weapon count) require victim's own VehicleModelSnapshot which only
-                // exists for Smart-driven teams via TeamRuntime.GetTechRuntime → VehicleBuffer.
-                // Filled when available; left zero with explicit comment when victim isn't Smart.
-                long nowMono = MonoClock.Now();
-                if (victimBelief != null)
-                {
-                    features[7]  = victimBelief.AgeSeconds;
-                    features[8]  = victimBelief.UncertaintyMeters;
-                    features[10] = (float)(int)victimBelief.Sight;
-                    features[11] = victimBelief.SpeedAtObserve;
-                    features[13] = victimBelief.MaxAccelerationEstimate;
-                    Vector3 vForward = victimBelief.ForwardXZ;
-
-                    if (attackerBelief != null)
-                    {
-                        features[9]  = attackerBelief.UncertaintyMeters;
-                        features[12] = attackerBelief.SpeedAtObserve;
-                        features[14] = attackerBelief.MaxAccelerationEstimate;
-
-                        // Slot 15: closing rate (relative velocity projected onto victim→attacker LOS).
-                        Vector3 los = attackerBelief.PositionMean - victimBelief.PositionMean;
-                        float losLen = los.magnitude;
-                        if (losLen > 1e-3f)
-                        {
-                            Vector3 losDir = los / losLen;
-                            Vector3 relVel = attackerBelief.VelocityMean - victimBelief.VelocityMean;
-                            features[15] = Vector3.Dot(relVel, losDir);
-
-                            // Slot 16: bearing victim→attacker vs victim Forward (rear-shot indicator).
-                            if (vForward.sqrMagnitude > 1e-6f)
-                            {
-                                features[16] = Vector3.Dot(losDir, vForward);
-                            }
-                            // Slot 17: attacker heading vs LOS (rear-attack vs face-attack).
-                            Vector3 aForward = attackerBelief.ForwardXZ;
-                            if (aForward.sqrMagnitude > 1e-6f)
-                            {
-                                features[17] = Vector3.Dot(aForward, -losDir);   // 1.0 = attacker facing victim
-                            }
-                        }
-
-                        // Slot 18: same-team flag (1 when attacker and victim share team).
-                        features[18] = (attackerBelief.Team.Value == victimBelief.Team.Value) ? 1f : 0f;
-                    }
-                }
-
-                // Slot 19: victim HpFraction from HealthSidecar (1.0 if not yet populated).
-                if (SmartRuntime.Health != null)
-                {
-                    features[19] = SmartRuntime.Health.Get(evt.Id);
-                }
-                else
-                {
-                    features[19] = 1f;
-                }
-
-                // Slots 20-22: recent-damage context from DamageHintBuffer (count, sum, distinct attackers).
-                if (SmartRuntime.DamageHints != null)
-                {
-                    var hintBuf = new DamageHint[16];
-                    int hintCount = SmartRuntime.DamageHints.TryGetRecent(evt.Id, hintBuf);
-                    features[20] = hintCount;
-                    float dmgSum = 0f;
-                    var attackerSet = new System.Collections.Generic.HashSet<int>();
-                    for (int i = 0; i < hintCount; i++)
-                    {
-                        dmgSum += hintBuf[i].Magnitude;
-                        if (hintBuf[i].HasAttacker)
-                            attackerSet.Add(hintBuf[i].AttackerIfKnown.Value);
-                    }
-                    features[21] = dmgSum;
-                    features[22] = attackerSet.Count;
-                }
-
-                // Slots 23-24: victim's own chassis mass + weapon count, ONLY when victim is
-                // on a Smart-driven team (we own its VehicleModelSnapshot). Looked up via the
-                // team-runtime registry; left zero with a documented blocker for enemy victims
-                // (TeamRuntime.EnemyVehicleSnapshots() => null is a stated v0.2 cost-bound,
-                // NOT a v0.3 deferment).
-                try
-                {
-                    if (victimBelief != null)
-                    {
-                        var ownTeam = SmartRuntime.GetTeam(victimBelief.Team);
-                        if (ownTeam != null)
-                        {
-                            var vbuf2 = SmartRuntime.GetSmartPerTechVehicleBuffer(evt.Id);
-                            if (vbuf2 != null)
-                            {
-                                var vsnap = vbuf2.Read();
-                                features[23] = vsnap.Mass.TotalMass;
-                                features[24] = vsnap.Weapons != null ? vsnap.Weapons.Count : 0;
-                            }
-                        }
-                    }
-                }
-                catch { /* victim not on Smart team — features 23-24 stay zero. */ }
-
-                float observedThreat = UnityEngine.Mathf.Clamp01(evt.Damage.Damage / 100f);
+                float[] features = BuildThreatEventFeatures(evt);
+                float observedThreat = Mathf.Clamp01(evt.Damage.Damage / 100f);
                 Threat.EventQueue.Enqueue(new ThreatEvent(evt.Id, features, observedThreat));
                 Interlocked.Exchange(ref _modifiedSinceLoad, 1);
             }
@@ -698,6 +555,237 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             {
                 DebugTAC_AI.LogWarning("Smart.Learning.OnDamage: " + ex.Message);
             }
+        }
+
+        // Local AnchorState code (mirrors StrategicStateExtractor.AnchorCode private
+        // helper). 0 floating, 0.5 anchored, 1 sky-anchored. byte source on the probe.
+        private static float AnchorCodeFromProbe(byte anchorState)
+        {
+            if (anchorState == (byte)AnchorStateCode.SkyAnchored) return 1f;
+            if (anchorState == (byte)AnchorStateCode.Anchored)    return 0.5f;
+            return 0f;
+        }
+
+        /// <summary>
+        /// Builds the 48-slot ThreatEvent feature vector per FEATURE-EXPANSION-PLAN
+        /// §3.5 / ThreatSlots. Mirrors the StrategicStateExtractor.FillThreatSlots
+        /// discipline: every Smart-team-only field reads from the per-tech
+        /// SelfStateProbe snapshot via SmartRuntime.LookupSelfStateProbe; kinematic +
+        /// engagement-geometry fields read from the BeliefSnapshot. Opaque-attacker
+        /// (non-Smart-team) composition/weapon/energy/cargo slots stay zero per F-32.
+        /// </summary>
+        private static float[] BuildThreatEventFeatures(DamageObserved evt)
+        {
+            var features = new float[ThreatAssessmentModel.FeatureDim];
+            long nowMono = MonoClock.Now();
+            long from1s = nowMono - (long)(1.0 / MonoClock.TickFreq);
+            long from5s = nowMono - (long)(5.0 / MonoClock.TickFreq);
+
+            // Beliefs. World may be null very early in lifecycle — leave zeros.
+            BeliefState victimBelief = null;
+            BeliefState attackerBelief = null;
+            try
+            {
+                var world = SmartRuntime.World;
+                if (world != null)
+                {
+                    var vbuf = world.GetPerTechBuffer(evt.Id);
+                    if (vbuf != null) victimBelief = vbuf.Read();
+                    if (evt.Damage.HasAttacker)
+                    {
+                        var abuf = world.GetPerTechBuffer(evt.Damage.AttackerIfKnown);
+                        if (abuf != null) attackerBelief = abuf.Read();
+                    }
+                }
+            }
+            catch { /* belief refs stay null - dependent slots stay 0 */ }
+
+            // Probes. F-32 opaque-attacker: probe is null when attacker isn't on a
+            // Smart-driven team → leave composition / weapon-aggregate / energy / cargo
+            // slots zero. Victim probe likewise gated.
+            SelfProbeSnapshot attackerProbe = null;
+            SelfProbeSnapshot victimProbe = null;
+            try
+            {
+                if (evt.Damage.HasAttacker)
+                {
+                    var ap = SmartRuntime.LookupSelfStateProbe(evt.Damage.AttackerIfKnown);
+                    if (ap != null) attackerProbe = ap.TryRead();
+                }
+                var vp = SmartRuntime.LookupSelfStateProbe(evt.Id);
+                if (vp != null) victimProbe = vp.TryRead();
+            }
+            catch { /* probes stay null - dependent slots stay 0 */ }
+
+            // [0..7] Attacker composition. Smart-team probe only; opaque → zero.
+            if (attackerProbe != null)
+            {
+                features[ThreatSlots.AttackerBlockCount]    = attackerProbe.BlockCount;
+                features[ThreatSlots.AttackerMass]          = attackerProbe.Mass / 1000f;
+                features[ThreatSlots.AttackerWeaponCount]   = attackerProbe.WeaponAggregate.WeaponCount;
+                int aw = attackerProbe.WeaponAggregate.WeaponCount;
+                features[ThreatSlots.AttackerMeleeFraction] = aw > 0
+                    ? (float)attackerProbe.WeaponAggregate.MeleeWeaponCount / aw : 0f;
+                features[ThreatSlots.AttackerHpFraction]    = attackerProbe.HpFraction;
+                features[ThreatSlots.AttackerAnchorState]   = AnchorCodeFromProbe(attackerProbe.AnchorState);
+                features[ThreatSlots.AttackerRoleHintCode]  = (int)attackerProbe.SmartIdentity / 8f;
+                features[ThreatSlots.AttackerProvokedFlag]  = attackerProbe.ProvokedCountdown > 0 ? 1f : 0f;
+            }
+            // HpFraction fallback from HealthSidecar when attacker is opaque but the
+            // sidecar still tracks its HP (engine TankDamage path mirrors hp irrespective
+            // of Smart-team registration). Keeps slot 4 useful even when probe is absent.
+            else if (evt.Damage.HasAttacker && SmartRuntime.Health != null)
+            {
+                features[ThreatSlots.AttackerHpFraction] = SmartRuntime.Health.Get(evt.Damage.AttackerIfKnown);
+            }
+
+            // [8..15] Attacker weapon aggregate. Probe-only; opaque → zero.
+            if (attackerProbe != null)
+            {
+                var agg = attackerProbe.WeaponAggregate;
+                features[ThreatSlots.AttackerWeaponRangeMax]          = agg.RangeMax;
+                features[ThreatSlots.AttackerWeaponRangeMean]         = agg.RangeMean;
+                features[ThreatSlots.AttackerWeaponFireRateMean]      = agg.FireRateMean;
+                features[ThreatSlots.AttackerWeaponDamagePerShotMean] = agg.DamagePerShotMean;
+                features[ThreatSlots.AttackerWeaponMuzzleVelMean]     = agg.MuzzleVelMean;
+                features[ThreatSlots.AttackerEnergyWeaponFraction]    = agg.EnergyWeaponFraction;
+                features[ThreatSlots.AttackerWeaponKindMixGun]        = agg.KindMixGun;
+                features[ThreatSlots.AttackerWeaponKindMixBeamMelee]  = agg.KindMixBeamMelee;
+            }
+
+            // [16..23] Attacker kinematic. Speed + accel come from belief (available
+            // for any observed tech); slope/height query terrain at attacker.xz;
+            // waterlogged + cargo + ready-fire + energy are probe-only.
+            if (attackerBelief != null)
+            {
+                features[ThreatSlots.AttackerSpeed]            = attackerBelief.VelocityMean.magnitude;
+                features[ThreatSlots.AttackerMaxAccelEstimate] = attackerBelief.MaxAccelerationEstimate / 20f;
+
+                // Terrain reads — gated on a terrain map past the FreshlyAllocated race.
+                // Daemon does the same gate.
+                TerrainMap terrain = PathingService.CurrentTerrain;
+                if (terrain != null && !terrain.IsFreshlyAllocated)
+                {
+                    Vector2 axz = new Vector2(attackerBelief.PositionMean.x, attackerBelief.PositionMean.z);
+                    features[ThreatSlots.AttackerSlopeUnder]         = terrain.SlopeAt(axz);
+                    features[ThreatSlots.AttackerHeightAboveTerrain] = attackerBelief.PositionMean.y - terrain.HeightAt(axz);
+                }
+            }
+            if (attackerProbe != null)
+            {
+                // Waterlogged: clamp((WaterHeight - y)/5, 0, 1). -9001 = no WaterMod.
+                features[ThreatSlots.AttackerWaterloggedFrac] =
+                    attackerProbe.WaterHeight > -9000f
+                    ? Mathf.Clamp01((attackerProbe.WaterHeight - attackerProbe.PositionWorld.y) / 5f) : 0f;
+                int cap = attackerProbe.CargoCapacity;
+                features[ThreatSlots.AttackerCargoFill] = cap > 0
+                    ? (float)attackerProbe.CargoNumContents / cap : 0f;
+                int aw2 = attackerProbe.WeaponAggregate.WeaponCount;
+                features[ThreatSlots.AttackerReadyFireFraction] = aw2 > 0
+                    ? (float)attackerProbe.WeaponAggregate.ReadyToFireCount / aw2 : 0f;
+                features[ThreatSlots.AttackerEnergyStored] = attackerProbe.Electric.CurrentAmount / 10000f;
+            }
+
+            // [24..31] Engagement geometry. Needs both beliefs; LOS direction is
+            // attacker→victim per §3.5 ("DistanceToVictim", "HeadingTowardVictimDot").
+            if (attackerBelief != null && victimBelief != null)
+            {
+                Vector3 toVictim = victimBelief.PositionMean - attackerBelief.PositionMean;
+                float dist = toVictim.magnitude;
+                features[ThreatSlots.DistanceToVictim] = dist;
+
+                if (dist > 1e-3f)
+                {
+                    Vector3 losDir = toVictim / dist;
+                    Vector3 aForward = attackerBelief.ForwardXZ;
+                    if (aForward.sqrMagnitude > 1e-6f)
+                    {
+                        features[ThreatSlots.AttackerHeadingTowardVictimDot] = Vector3.Dot(aForward, losDir);
+                    }
+                    // VictimWeakFaceTowardAttackerDot: rotated face normal vs -los.
+                    // Victim probe carries the world-frame weak-face normal.
+                    if (victimProbe != null)
+                    {
+                        features[ThreatSlots.VictimWeakFaceTowardAttackerDot] =
+                            Vector3.Dot(victimProbe.WeakFaceNormalWorld, -losDir);
+                    }
+                }
+
+                // LOS-blocked between attacker and victim. Same terrain-fresh gate.
+                TerrainMap terrain = PathingService.CurrentTerrain;
+                if (terrain != null && !terrain.IsFreshlyAllocated)
+                {
+                    features[ThreatSlots.LosBlockedToVictim] =
+                        terrain.RaycastSegment(attackerBelief.PositionMean, victimBelief.PositionMean) ? 1f : 0f;
+                }
+
+                // WeaponInRange / AimableFlag — need attacker weapon range from probe.
+                // Opaque attacker → both stay 0 (we don't know its range).
+                if (attackerProbe != null)
+                {
+                    float rmax = attackerProbe.WeaponAggregate.RangeMax;
+                    bool inRange = rmax > 0f && dist <= rmax;
+                    features[ThreatSlots.AttackerWeaponInRange] = inRange ? 1f : 0f;
+                    // Aimable proxy: in range AND LOS clear AND face-in-arc (using
+                    // attacker forward dot as a coarse arc proxy — mirrors the extractor).
+                    bool losClear = features[ThreatSlots.LosBlockedToVictim] < 0.5f;
+                    bool facing = features[ThreatSlots.AttackerHeadingTowardVictimDot] > 0.5f;
+                    features[ThreatSlots.AttackerAimableFlag] = (inRange && losClear && facing) ? 1f : 0f;
+                }
+            }
+
+            // VictimWeakFaceHp + VictimHpFraction. Smart-team victim → probe; opaque
+            // victim falls back to HealthSidecar for HpFraction. WeakFaceHp is probe-
+            // armor-only (can't query a chassis without ArmorMap).
+            if (victimProbe != null && victimProbe.Armor != null && victimProbe.Armor != Vehicle.ArmorMap.Empty)
+            {
+                features[ThreatSlots.VictimWeakFaceHp] = victimProbe.Armor.QueryWeakFace(Vector3.forward).TotalHP;
+            }
+            if (victimProbe != null)
+            {
+                features[ThreatSlots.VictimHpFraction] = victimProbe.HpFraction;
+            }
+            else if (SmartRuntime.Health != null)
+            {
+                features[ThreatSlots.VictimHpFraction] = SmartRuntime.Health.Get(evt.Id);
+            }
+            else
+            {
+                features[ThreatSlots.VictimHpFraction] = 1f;
+            }
+
+            // [32..37] Recent-damage windows.
+            // Attacker-side dealt (slot 32/33 = magnitude, 35 = dominant type) from
+            // RecentDamageDealtAccumulator. Sidecar tracks ALL attackers (opaque too),
+            // so these are usable irrespective of Smart-team membership.
+            if (evt.Damage.HasAttacker && SmartRuntime.DealtAccumulator != null)
+            {
+                var dealt1 = SmartRuntime.DealtAccumulator.SumWithin(evt.Damage.AttackerIfKnown, from1s, nowMono);
+                var dealt5 = SmartRuntime.DealtAccumulator.SumWithin(evt.Damage.AttackerIfKnown, from5s, nowMono);
+                features[ThreatSlots.RecentDamageDealt1s]       = dealt1.TotalMagnitude;
+                features[ThreatSlots.RecentDamageDealt5s]       = dealt5.TotalMagnitude;
+                features[ThreatSlots.RecentDamageDealtTypeCode] = dealt1.DominantTypeCode / 8f;
+            }
+            // Slot 34 — RecentShotsFired1s. WeaponFireBuffer keyed by attacker.
+            if (evt.Damage.HasAttacker && SmartRuntime.WeaponFires != null)
+            {
+                features[ThreatSlots.RecentShotsFired1s] =
+                    SmartRuntime.WeaponFires.CountWithin(evt.Damage.AttackerIfKnown, from1s, nowMono);
+            }
+            // Victim-side taken (slot 36/37) from DamageHintBuffer. Sidecar tracks ALL
+            // victims; usable irrespective of Smart-team membership.
+            if (SmartRuntime.DamageHints != null)
+            {
+                var taken1 = SmartRuntime.DamageHints.SumWithin(evt.Id, from1s, nowMono);
+                var taken5 = SmartRuntime.DamageHints.SumWithin(evt.Id, from5s, nowMono);
+                features[ThreatSlots.RecentDamageTakenByVictim1s] = taken1.TotalMagnitude;
+                features[ThreatSlots.RecentDamageTakenByVictim5s] = taken5.TotalMagnitude;
+            }
+
+            // [38..47] Reserved — mission-state / team-context / shield-charge.
+            // Per §3.6 reserved-slot ownership: no source identified yet, slots stay 0.
+
+            return features;
         }
     }
 }

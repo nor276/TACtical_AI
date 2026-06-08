@@ -190,6 +190,21 @@ namespace TAC_AI.AI.Forms.Smart.Integration
                 _damageHandlers.Remove(tank);
                 _damageHandlersByTechId.TryRemove(TechId.FromTank(tank), out _);
             }
+
+            // FEATURE-EXPANSION-PLAN Phase-4: wire the per-tank cargo + weapon-fire
+            // subscriptions alongside damage. CargoStatePublisher hooks ItemPickup/Release
+            // events on Tank.Holders; WeaponFireBuffer subscribes to TechWeapon.WeaponsFiredEvent.
+            try
+            {
+                var techId = TechId.FromTank(tank);
+                SmartRuntime.CargoState?.AttachPerTank(tank);
+                if (SmartRuntime.WeaponFires != null && tank.Weapons != null)
+                    SmartRuntime.WeaponFires.Wire(techId, tank.Weapons);
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarning("SmartEventBridge.AttachPerTank: cargo/fire wire: " + ex.Message);
+            }
         }
 
         /// <summary>Detach a per-tank damage subscription. Called from <c>SmartForm.OnTechRecycle</c>.</summary>
@@ -201,6 +216,17 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             _damageHandlersByTechId.TryRemove(TechId.FromTank(tank), out _);
             try { tank.DamageEvent.Unsubscribe(handler); }
             catch { /* swallow; tank may be partially recycled */ }
+
+            // FEATURE-EXPANSION-PLAN Phase-4: matching tear-down for cargo + weapon-fire
+            // subscriptions. Exception-isolated per cargo's null-tolerance contract.
+            try
+            {
+                var techId = TechId.FromTank(tank);
+                SmartRuntime.CargoState?.DetachPerTank(tank);
+                if (SmartRuntime.WeaponFires != null && tank.Weapons != null)
+                    SmartRuntime.WeaponFires.Unwire(techId, tank.Weapons);
+            }
+            catch { /* tank partially recycled — drop quietly */ }
         }
 
         /// <summary>
@@ -213,10 +239,24 @@ namespace TAC_AI.AI.Forms.Smart.Integration
         {
             if (!_damageHandlersByTechId.TryRemove(id, out var tank)) return;
             if (tank == null) return;
-            if (!_damageHandlers.TryGetValue(tank, out var handler)) return;
-            _damageHandlers.Remove(tank);
-            try { tank.DamageEvent.Unsubscribe(handler); }
-            catch { /* tank may have been purged by the engine */ }
+            if (_damageHandlers.TryGetValue(tank, out var handler))
+            {
+                _damageHandlers.Remove(tank);
+                try { tank.DamageEvent.Unsubscribe(handler); }
+                catch { /* tank may have been purged by the engine */ }
+            }
+
+            // FEATURE-EXPANSION-PLAN Phase-4: cargo + weapon-fire detach for the orphan
+            // path. CargoStatePublisher exposes a TechId overload that walks its own shadow
+            // map; WeaponFireBuffer takes (TechId, TechWeapon) so we only call it if the
+            // tank ref is still alive enough to dereference Weapons.
+            try
+            {
+                SmartRuntime.CargoState?.DetachPerTank(id);
+                if (SmartRuntime.WeaponFires != null && tank.Weapons != null)
+                    SmartRuntime.WeaponFires.Unwire(id, tank.Weapons);
+            }
+            catch { /* engine-purged ref — best-effort */ }
         }
 
         // ------------------ Event handlers ------------------
@@ -340,12 +380,18 @@ namespace TAC_AI.AI.Forms.Smart.Integration
                 // SanitizedDamageInfo unblocks the facing-threat orbit refinement that was
                 // mistakenly deferred to "v0.3" — RepairSupportGoalSource now reads the
                 // averaged attacker bearing from DamageHintBuffer.TryGetRecent.
+                // FEATURE-EXPANSION-PLAN §8.5 R2-01: forward the engine's
+                // ManDamage.DamageInfo.DamageType byte (ManDamage.cs:58 — the tech-wide
+                // enum, NOT per-block Damageable.DamageableType). Feeds DamageHintBuffer's
+                // DominantTypeCode aggregation and Threat[35] / Intent[20].
+                byte damageTypeCode = (byte)info.DamageType;
                 var sanitized = new SanitizedDamageInfo(
                     info.Damage,
                     info.HitPosition,
                     info.DamageDirection,
                     attackerId,
-                    hasAttacker);
+                    hasAttacker,
+                    damageTypeCode);
                 WorldEventBus.Publish(new DamageObserved(victimId, sanitized));
             }
             catch (Exception ex)

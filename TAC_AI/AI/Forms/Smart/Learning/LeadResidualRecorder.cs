@@ -37,6 +37,12 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             internal Vector3 OwnPos;
             internal float ProjTimeSec;
             internal long FireTickMono;
+            // FEATURE-EXPANSION-PLAN §3.4 R2-04: fire-time feature slice (Residual block,
+            // 48 floats). Captured at fire instant — NOT at arrival. The model treats
+            // [32..34] (LinearExtrapXYZ) as input and the post-arrival observed residual
+            // as the training label, NEVER mixed into the features. Null when the
+            // ContinuousController didn't have a StrategicStateVector slice handy.
+            internal float[] FireTimeFeatures;
         }
 
         private readonly ConcurrentDictionary<TechId, Pending> _pending =
@@ -47,6 +53,13 @@ namespace TAC_AI.AI.Forms.Smart.Learning
 
         public void OnFireCommit(TechId target, Vector3 predictedPos, Vector3 ownPos,
                                  float projTimeSec, long fireTickMono)
+            => OnFireCommit(target, predictedPos, ownPos, projTimeSec, fireTickMono, fireTimeFeatures: null);
+
+        // FEATURE-EXPANSION-PLAN §3.4 R2-04: widened overload that takes the
+        // ContinuousController's fire-time slice of the StrategicStateVector Residual
+        // block. Caller passes a length-48 float[] (or null when not yet wired).
+        public void OnFireCommit(TechId target, Vector3 predictedPos, Vector3 ownPos,
+                                 float projTimeSec, long fireTickMono, float[] fireTimeFeatures)
         {
             if (projTimeSec <= 0f) return;
             _pending[target] = new Pending
@@ -55,6 +68,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 OwnPos = ownPos,
                 ProjTimeSec = projTimeSec,
                 FireTickMono = fireTickMono,
+                FireTimeFeatures = fireTimeFeatures,
             };
         }
 
@@ -72,27 +86,35 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 return;
             }
             Vector3 residual = actualPos - p.PredictedPos;
-            // Build feature vector matching TrajectoryResidualModel.FeatureDim (15). v0.2
-            // placeholder: features are the lead-relevant kinematic state (own→target
-            // bearing + distance + projected time). Real feature wiring at v0.3 when the
-            // VehicleModelSnapshot for the target is plumbed.
-            var features = new float[TrajectoryResidualModel.FeatureDim];
-            Vector3 toTarget = p.PredictedPos - p.OwnPos;
-            float distance = toTarget.magnitude;
-            features[0] = distance;
-            features[1] = p.ProjTimeSec;
-            features[2] = elapsedSec;
-            if (distance > 1e-3f)
+            // FEATURE-EXPANSION-PLAN §3.4 / R2-04: when the ContinuousController passed a
+            // 48-float fire-time slice, use it verbatim. Otherwise fall back to the v0.2
+            // skeleton (still 48-wide post-Phase-3) populating projection-geometry slots
+            // [0..7] only. The ObservedResidual XYZ stays the LABEL — never written into
+            // the feature vector (R2 F-09 anti-leakage; ResidualEvent.ObservedResidual is
+            // the canonical label channel).
+            float[] features;
+            if (p.FireTimeFeatures != null && p.FireTimeFeatures.Length == TrajectoryResidualModel.FeatureDim)
             {
-                Vector3 dir = toTarget / distance;
-                features[3] = dir.x;
-                features[4] = dir.y;
-                features[5] = dir.z;
+                features = p.FireTimeFeatures;
             }
-            features[6] = residual.x;
-            features[7] = residual.y;
-            features[8] = residual.z;
-            // features[9..14] reserved for v0.3 VehicleModelSnapshot features.
+            else
+            {
+                features = new float[TrajectoryResidualModel.FeatureDim];
+                Vector3 toTarget = p.PredictedPos - p.OwnPos;
+                float distance = toTarget.magnitude;
+                features[0] = distance;
+                features[1] = p.ProjTimeSec;
+                features[2] = elapsedSec;
+                if (distance > 1e-3f)
+                {
+                    Vector3 dir = toTarget / distance;
+                    features[3] = dir.x;
+                    features[4] = dir.y;
+                    features[5] = dir.z;
+                }
+                // [6..47] left zero — extractor-wired Residual slice is the path to
+                // a fully-populated input vector.
+            }
 
             var residualModel = LearningService.Residual;
             if (residualModel != null)

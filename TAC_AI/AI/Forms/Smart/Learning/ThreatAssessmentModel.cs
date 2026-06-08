@@ -21,20 +21,24 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     }
 
     /// <summary>
-    /// Threat assessment model: MLP 2×32 → scalar in roughly [0,1]. Per LEARNING-CONTRACT §3.4.
+    /// Threat assessment model: MLP 2×64 → scalar in roughly [0,1]. Per FEATURE-EXPANSION-PLAN §7.4 + §3.5.
+    /// FeatureDim 25→48 (36 attacker/victim + 12 reserved per §3.5 slot layout); hidden 32→64;
+    /// ArchitectureVersion 1→3 (rev2 was an unshipped sketch, rev3 is the §7.4 sizing).
+    /// Slot map lives in StrategicStateVector.ThreatSlots — the LearningService ThreatEvent
+    /// builder (LearningService.cs:544-694) must populate features per that constant block.
     /// Replaces the heuristic threat_rating in VehicleModel once trained.
     /// </summary>
     public sealed class ThreatAssessmentModel : ILearnedModel
     {
-        public const int FeatureDim = 25;
-        public const int H1 = 32;
-        public const int H2 = 32;
+        public const int FeatureDim = 48;
+        public const int H1 = 64;
+        public const int H2 = 64;
         public const int MinibatchSize = 32;
         public const int EventQueueCapacity = 1024;
         public const float DefaultLearningRate = 0.001f;
 
         public ModelId Id => ModelId.ThreatAssessment;
-        public byte ArchitectureVersion => 1;
+        public byte ArchitectureVersion => 3;
         public int ParameterCount => _params.Length;
 
         private readonly float[] _params;

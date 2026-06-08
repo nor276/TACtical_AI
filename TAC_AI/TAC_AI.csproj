@@ -504,7 +504,12 @@
     <Compile Include="AI\Forms\Smart\Learning\Migrations\0001_initial_schema.cs" />
     <Compile Include="AI\Forms\Smart\Learning\Migrations\0002_BpttUnfreeze.cs" />
     <Compile Include="AI\Forms\Smart\Learning\Migrations\0003_TlvSectionBody.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\Migrations\0004_StrategicStateExpansion.cs" />
     <Compile Include="AI\Forms\Smart\Learning\Migrations\SmartMigrationAttribute.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\Features\StrategicStateVector.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\Features\SelfStateProbe.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\Features\StrategicStateBuffer.cs" />
+    <Compile Include="AI\Forms\Smart\Learning\Features\StrategicStateExtractor.cs" />
     <Compile Include="AI\Forms\Smart\Learning\OnlineTrainer.cs" />
     <Compile Include="AI\Forms\Smart\Learning\OpponentIntentClassifier.cs" />
     <Compile Include="AI\Forms\Smart\Learning\PlanTransitionPublisher.cs" />
@@ -589,6 +594,7 @@
     <Compile Include="AI\Forms\Smart\Vehicle\TypedBlockCatalog.cs" />
     <Compile Include="AI\Forms\Smart\Vehicle\VehicleModel.cs" />
     <Compile Include="AI\Forms\Smart\Vehicle\WeaponProfile.cs" />
+    <Compile Include="AI\Forms\Smart\Vehicle\WeaponReadinessHelper.cs" />
     <Compile Include="AI\Forms\Smart\Vehicle\WeaponReflectionCache.cs" />
     <Compile Include="AI\Forms\Smart\Vehicle\WeaponSpec.cs" />
     <Compile Include="AI\Forms\Smart\Vehicle\WeaponSpecParityGate.cs" />
@@ -597,12 +603,16 @@
     <Compile Include="AI\Forms\Smart\World\AetherFuserSpikeProfiler.cs" />
     <Compile Include="AI\Forms\Smart\World\AetherTuning.cs" />
     <Compile Include="AI\Forms\Smart\World\BeliefState.cs" />
+    <Compile Include="AI\Forms\Smart\World\CargoStatePublisher.cs" />
     <Compile Include="AI\Forms\Smart\World\DamageHintBuffer.cs" />
     <Compile Include="AI\Forms\Smart\World\DeadReckon.cs" />
     <Compile Include="AI\Forms\Smart\World\EventBus.cs" />
     <Compile Include="AI\Forms\Smart\World\HealthSidecar.cs" />
     <Compile Include="AI\Forms\Smart\World\IntentRegistry.cs" />
+    <Compile Include="AI\Forms\Smart\World\NearestTechCache.cs" />
+    <Compile Include="AI\Forms\Smart\World\RecentDamageDealtAccumulator.cs" />
     <Compile Include="AI\Forms\Smart\World\SidecarAdapters.cs" />
+    <Compile Include="AI\Forms\Smart\World\WeaponFireBuffer.cs" />
     <Compile Include="AI\Forms\Smart\World\TechLeakWatchdog.cs" />
     <Compile Include="AI\Forms\Smart\World\TechLifecycleRegistry.cs" />
     <Compile Include="AI\Forms\Smart\World\MonoClock.cs" />

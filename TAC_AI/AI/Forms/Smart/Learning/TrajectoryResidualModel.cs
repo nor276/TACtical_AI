@@ -23,22 +23,37 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     }
 
     /// <summary>
-    /// Trajectory residual model: MLP 2×32 → 3D output. Per LEARNING-CONTRACT §3.3.
+    /// Trajectory residual model: MLP 2×64 -> 3D output. Per LEARNING-CONTRACT §3.3 / plan §7.3.
     /// Predicts the position correction beyond linear extrapolation for weapon-lead use.
     /// Inference fills <see cref="CONTROL-CONTRACT.md §10.3"/>'s LearnedResidual slot.
+    ///
+    /// FeatureDim = 48 matches StrategicStateVector.ResidualDim (plan §3.4). Input layout:
+    ///   [0..7]   projection geometry
+    ///   [8..15]  shooter kinematics
+    ///   [16..23] target kinematics
+    ///   [24..31] weapon spec
+    ///   [32..34] LinearExtrapXYZ -- the engine's linear-extrapolation prediction at fire
+    ///            time, fed as INPUT. NOT ObservedResidualXYZ; that is the training LABEL
+    ///            (Vector3 ResidualEvent.ObservedResidual) and must never appear in the
+    ///            feature vector (round-1 F-09 anti-leakage).
+    ///   [35..47] reserved bases (zero-filled by the extractor today).
+    ///
+    /// Round-2 R2-04: features are stamped at fire time, not query time. Wiring widens
+    /// LeadResidualRecorder.Pending with float[] FireTimeFeatures and OnFireCommit takes
+    /// a float[] arg so the captured fire-instant features feed ResidualEvent verbatim.
     /// </summary>
     public sealed class TrajectoryResidualModel : ILearnedModel
     {
-        public const int FeatureDim = 15;
-        public const int H1 = 32;
-        public const int H2 = 32;
+        public const int FeatureDim = 48;
+        public const int H1 = 64;
+        public const int H2 = 64;
         public const int OutDim = 3;
         public const int MinibatchSize = 32;
         public const int EventQueueCapacity = 1024;
         public const float DefaultLearningRate = 0.001f;
 
         public ModelId Id => ModelId.TrajectoryResidual;
-        public byte ArchitectureVersion => 1;
+        public byte ArchitectureVersion => 3;
         public int ParameterCount => _params.Length;
 
         private readonly float[] _params;

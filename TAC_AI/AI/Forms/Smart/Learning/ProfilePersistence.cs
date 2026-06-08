@@ -48,8 +48,11 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         // layout unchanged across the bump; M0002_BpttUnfreeze is a no-op forward migration.
         // L-079: schema 3 = TLV per-section body. Tag 0x0001 = weights (canonical view
         // surviving consumers); future tags can be appended without invalidating old files.
-        // Load is schema-conditional (flat for v<3, TLV for v>=3); Save always emits v3.
-        public const uint CurrentSchemaVersion = 3;
+        // Load is schema-conditional (flat for v<3, TLV for v>=3); Save always emits v4.
+        // FEATURE-EXPANSION-PLAN §7.5: schema 4 marks coordinated ArchitectureVersion=3
+        // bump across all four learned models. TLV body layout unchanged; arch mismatch
+        // dispatches to ApplyProfile's per-model LoadParameters catch (Glorot re-init).
+        public const uint CurrentSchemaVersion = 4;
         public const ushort TagId_Weights = 0x0001;
         public static readonly byte[] Magic = { (byte)'S', (byte)'M', (byte)'R', (byte)'T' };
 

@@ -1,23 +1,24 @@
 using System;
 using System.Collections.Concurrent;
 using UnityEngine;
+using TAC_AI.AI.Forms.Smart.Learning.Features;
 using TAC_AI.AI.Forms.Smart.World;
 
 namespace TAC_AI.AI.Forms.Smart.Learning
 {
     /// <summary>
-    /// P7 Item 16: per-target observation-sequence buffer feeding the intent classifier.
+    /// P7 Item 16: per-self-tech observation-sequence buffer feeding the intent classifier.
     ///
     /// Maintains a per-TechId ring of <see cref="SeqLen"/> rows × <see cref="FeatureDim"/>
-    /// floats. When a target's ring is full and a label can be derived,
-    /// <see cref="TryBuildEvent"/> produces an <see cref="IntentEvent"/> for the classifier's
-    /// training queue.
+    /// floats. Each row is the self-tech's StrategicStateVector IntentSlots view (40 floats
+    /// describing self's relationship to its current K-nearest hostile per FEATURE-EXPANSION-PLAN
+    /// §3.2). When the ring is full and a label can be derived, <see cref="TryBuildEvent"/>
+    /// produces an <see cref="IntentEvent"/> for the classifier's training queue.
     ///
-    /// v0.2 label source: deferred — label inference (mapping recent feature trajectory →
-    /// IntentCategory) is its own research task. <see cref="TryBuildEvent"/> currently
-    /// returns false unconditionally so no training events fire from this path; the sequence
-    /// data IS captured per-tick so a future label-inference pass can drain it. Recorded
-    /// here as a v0.2 plan gap (see Implementation Gaps Log in V0.2-PLAN-REV7).
+    /// FeatureDim widened 12 → 40 (Phase-3 §7.1) so rows match
+    /// <see cref="OpponentIntentClassifier.FeatureDim"/>. The 40 slots are filled by the
+    /// caller (SmartPerTechState.TickMainThread) reading from
+    /// <see cref="StrategicStateBuffer.TryRead"/> + slicing the IntentBase view.
     ///
     /// Lifecycle: owned by <see cref="LearningService"/>; <see cref="Deregister"/> hooked
     /// from <c>SmartRuntime.Deregister</c> + <c>WorldModel.DeregisterTech</c> so dead
@@ -32,7 +33,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         public void Forget(TechId id) => Deregister(id);
 
         public const int SeqLen = OpponentIntentClassifier.SeqLen;          // 30
-        public const int FeatureDim = OpponentIntentClassifier.FeatureDim;  // 12
+        public const int FeatureDim = OpponentIntentClassifier.FeatureDim;  // 40 post-Phase-3
 
         private sealed class Ring
         {
@@ -67,29 +68,35 @@ namespace TAC_AI.AI.Forms.Smart.Learning
 
         /// <summary>
         /// P11 T2 Item 50 (RESHAPED — was the v0.3-deferred stub): attempt to build an
-        /// <see cref="IntentEvent"/> for <paramref name="target"/> using the heuristic
+        /// <see cref="IntentEvent"/> for <paramref name="selfTech"/> using the heuristic
         /// labeler below. Returns false when the ring isn't full OR when the heuristic
         /// can't assign a label confidently.
         ///
-        /// The heuristic looks at the buffered sequence's kinematic statistics:
-        /// speed mean, closing rate vs <paramref name="ownAnchorWorld"/>, and angular
-        /// velocity magnitude. Heuristic labels:
-        ///   speed mean &lt; <see cref="IdleSpeedThreshold"/> → Idle
-        ///   speed mean &lt; <see cref="HoldingSpeedThreshold"/> → Holding
-        ///   closing rate &gt; <see cref="AggressingClosingThreshold"/> → Aggressing
-        ///   closing rate &lt; -<see cref="AggressingClosingThreshold"/> → Retreating
-        ///   |angular velocity| max &gt; <see cref="FlankingAngVelThreshold"/> → Flanking
+        /// Phase-3 §7.1 widening: rows are now 40-slot IntentSlots views (self's relationship
+        /// to its K-nearest hostile). The labeler indexes via <c>IntentSlots.*</c> names —
+        /// never via literal offsets — so a future slot reshuffle stays one-edit.
+        ///
+        /// Heuristic labels:
+        ///   target speed mean &lt; IdleSpeedThreshold → Idle
+        ///   target speed mean &lt; HoldingSpeedThreshold → Holding
+        ///   distance shrink across seq &gt; +AggressingClosingThreshold → Aggressing
+        ///   distance shrink &lt; -AggressingClosingThreshold → Retreating
+        ///   max heading-change rate across seq &gt; FlankingHeadingRateThreshold → Flanking
         ///   else → Repositioning
+        ///
+        /// <paramref name="ownAnchorWorld"/> is retained on the signature for back-compat
+        /// but unused — the new Distance slot (IntentSlots.Distance) is the canonical
+        /// self↔target distance signal.
         ///
         /// Bootstrap supervision: the labels ARE coarse — a real classifier replaces this
         /// in v0.3+. The point is to feed the BPTT path real (sequence, label) tuples so
         /// the GRU+Dense head can learn the broad-stroke separation.
         /// </summary>
-        public bool TryBuildEvent(TechId target, Vector3 ownAnchorWorld, out IntentEvent ev)
+        public bool TryBuildEvent(TechId selfTech, Vector3 ownAnchorWorld, out IntentEvent ev)
         {
             ev = default(IntentEvent);
             Ring r;
-            if (!_byTech.TryGetValue(target, out r)) return false;
+            if (!_byTech.TryGetValue(selfTech, out r)) return false;
 
             // Snapshot the ring under lock so the labeler reads consistent data
             // without holding the lock while we compute statistics.
@@ -108,60 +115,77 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 }
             }
 
-            int label = ClassifyHeuristic(snap, ownAnchorWorld);
+            int label = ClassifyHeuristic(snap);
             if (label < 0) return false;
 
-            ev = new IntentEvent(target, snap, label);
+            ev = new IntentEvent(selfTech, snap, label);
             return true;
         }
 
-        /// <summary>Legacy single-arg overload retained for back-compat — always returns false.</summary>
-        public bool TryBuildEvent(TechId target, out IntentEvent ev)
-            => TryBuildEvent(target, Vector3.zero, out ev);   // ownAnchor=0 → no closing rate; labeler skips
+        /// <summary>Legacy single-arg overload — labeler ignores the anchor under the
+        /// Phase-3 layout (Distance slot supplies closing rate directly).</summary>
+        public bool TryBuildEvent(TechId selfTech, out IntentEvent ev)
+            => TryBuildEvent(selfTech, Vector3.zero, out ev);
 
         // P11 T2 Item 50 heuristic thresholds. Provisional — tune during spawn-test.
         private const float IdleSpeedThreshold = 0.3f;       // m/s
         private const float HoldingSpeedThreshold = 1.0f;
         private const float AggressingClosingThreshold = 5.0f; // m closure across the seq window
-        private const float FlankingAngVelThreshold = 1.0f;    // rad/s peak angular velocity
+        // Max per-row heading change (rad) — proxy for "yaw rate" when a real ang-vel
+        // slot isn't present in IntentSlots. atan2(sin,cos) deltas are bounded in [-π,π];
+        // a ~1.0 rad/row jump across 30 rows reads as a clear flanking arc.
+        private const float FlankingHeadingRateThreshold = 1.0f;
 
-        private static int ClassifyHeuristic(float[] snap, Vector3 ownAnchorWorld)
+        private static int ClassifyHeuristic(float[] snap)
         {
-            float meanSpeed = 0f;
-            float maxAng = 0f;
+            // Mean target speed across the seq window — IntentSlots.TargetSpeed is the
+            // absolute speed of the K-nearest hostile (m/s), pre-baked by the daemon.
+            float meanTargetSpeed = 0f;
+            float prevHeadingSin = snap[IntentSlots.RelHeadingSin];
+            float prevHeadingCos = snap[IntentSlots.RelHeadingCos];
+            float maxHeadingRate = 0f;
             for (int row = 0; row < SeqLen; row++)
             {
                 int o = row * FeatureDim;
-                // Row layout per SmartPerTechState.TickMainThread:
-                // [0..2] PositionWorld xyz, [3..5] VelocityWorld xyz, [6..7] HeadingWorld xz,
-                // [8..10] AngularVelocityWorld xyz, [11] LastObservationTick.
-                float vx = snap[o + 3], vy = snap[o + 4], vz = snap[o + 5];
-                meanSpeed += Mathf.Sqrt(vx * vx + vy * vy + vz * vz);
-                float ax = snap[o + 8], ay = snap[o + 9], az = snap[o + 10];
-                float am = Mathf.Sqrt(ax * ax + ay * ay + az * az);
-                if (am > maxAng) maxAng = am;
-            }
-            meanSpeed /= SeqLen;
+                meanTargetSpeed += snap[o + IntentSlots.TargetSpeed];
 
-            // Closing rate: distance shrink from first row to last row. Only meaningful when
-            // ownAnchorWorld is non-zero (caller supplied a real anchor).
-            float closingRate = 0f;
-            bool haveAnchor = ownAnchorWorld.sqrMagnitude > 1e-6f;
-            if (haveAnchor)
-            {
-                Vector3 firstPos = new Vector3(snap[0], snap[1], snap[2]);
-                int lastOff = (SeqLen - 1) * FeatureDim;
-                Vector3 lastPos = new Vector3(snap[lastOff + 0], snap[lastOff + 1], snap[lastOff + 2]);
-                float distFirst = (firstPos - ownAnchorWorld).magnitude;
-                float distLast = (lastPos - ownAnchorWorld).magnitude;
-                closingRate = distFirst - distLast;   // positive → closing on us
+                // Heading-change-rate proxy for "angular velocity" — wrap delta into
+                // [-π,π] via atan2 of the rotation difference. Skip row 0.
+                if (row > 0)
+                {
+                    float s = snap[o + IntentSlots.RelHeadingSin];
+                    float c = snap[o + IntentSlots.RelHeadingCos];
+                    // delta = current - previous; sin/cos pair encodes a unit vector;
+                    // dot/cross of the two pairs gives the signed angle between them.
+                    float dotH = c * prevHeadingCos + s * prevHeadingSin;
+                    float crossH = s * prevHeadingCos - c * prevHeadingSin;
+                    float dAng = Mathf.Abs(Mathf.Atan2(crossH, dotH));
+                    if (dAng > maxHeadingRate) maxHeadingRate = dAng;
+                    prevHeadingSin = s;
+                    prevHeadingCos = c;
+                }
             }
+            meanTargetSpeed /= SeqLen;
 
-            if (meanSpeed < IdleSpeedThreshold) return IntentCategories.Idle;
-            if (meanSpeed < HoldingSpeedThreshold) return IntentCategories.Holding;
-            if (haveAnchor && closingRate > AggressingClosingThreshold) return IntentCategories.Aggressing;
-            if (haveAnchor && closingRate < -AggressingClosingThreshold) return IntentCategories.Retreating;
-            if (maxAng > FlankingAngVelThreshold) return IntentCategories.Flanking;
+            // Closing rate: pre-baked Distance slot read at row 0 vs row SeqLen-1.
+            // Positive = distance shrank → target is closing on self → Aggressing.
+            int lastOff = (SeqLen - 1) * FeatureDim;
+            float distFirst = snap[0 + IntentSlots.Distance];
+            float distLast = snap[lastOff + IntentSlots.Distance];
+            float closingRate = distFirst - distLast;
+
+            // Sight gating: if the target was Lost for the whole window, the distance
+            // signal is junk (extractor zeroes out kinematic slots when no hostile).
+            // TargetSightCode is 1=Fresh, 0.5=Coasting, 0.25=Stale, 0=Lost; require
+            // at least the newest sample to be non-Lost.
+            float lastSight = snap[lastOff + IntentSlots.TargetSightCode];
+            if (lastSight <= 0f) return IntentCategories.Idle;
+
+            if (meanTargetSpeed < IdleSpeedThreshold) return IntentCategories.Idle;
+            if (meanTargetSpeed < HoldingSpeedThreshold) return IntentCategories.Holding;
+            if (closingRate > AggressingClosingThreshold) return IntentCategories.Aggressing;
+            if (closingRate < -AggressingClosingThreshold) return IntentCategories.Retreating;
+            if (maxHeadingRate > FlankingHeadingRateThreshold) return IntentCategories.Flanking;
             return IntentCategories.Repositioning;
         }
 

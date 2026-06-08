@@ -2,19 +2,40 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using TAC_AI.AI.Forms.Smart.Threading;
+using TAC_AI.AI.Forms.Smart.World;
 
 namespace TAC_AI.AI.Forms.Smart.Learning
 {
+    // 10-class goal label for Q-learning action 'a'. Per FEATURE-EXPANSION-PLAN §7.2 + R2-06:
+    // ContinuousController arbitrates over TacticalGoal via 3-tier precedence (external /
+    // identity / tactical) — NOT PlanLibrary.PlanType (which lives in team Coordination).
+    // The class is the cross-product of precedence-source × goal-kind, collapsed to ten
+    // discrete buckets matching AV[80..89] one-hot. ContinuousController.cs owns the
+    // selection-time mapping table; this enum is the wire-format the producer encodes.
+    public enum ActionGoalClass : byte
+    {
+        External_AtCurrent  = 0,
+        External_Move       = 1,
+        External_Attack     = 2,
+        Identity_Generic    = 3,
+        Identity_Hunter     = 4,
+        Identity_Base       = 5,
+        Identity_Gatherer   = 6,
+        Identity_Air        = 7,
+        Identity_Support    = 8,
+        Tactical_Fallback   = 9,
+    }
+
     /// <summary>
     /// Training event for Q-learning. Captures (state s, action a, reward r, next-state s').
-    /// Submitted by LearningService on the main thread from plan-transition observations.
-    /// Per LEARNING-CONTRACT §3.2 + §4.1.
+    /// Submitted by ContinuousController at the decision boundary; one-tick deferred enqueue
+    /// once s' is known. Per FEATURE-EXPANSION-PLAN §7.2 + LEARNING-CONTRACT §3.2 + §4.1.
     /// </summary>
     public readonly struct ActionValueEvent
     {
-        public readonly float[] State;       // length StateDim
-        public readonly int Action;          // plan index [0, 10)
-        public readonly float Reward;        // immediate reward
+        public readonly float[] State;       // length StateDim = 128 (AV slice of StrategicStateVector)
+        public readonly int Action;          // ActionGoalClass cast — [0, 10)
+        public readonly float Reward;        // (selfHpDelta − targetHpDelta) / elapsedSec
         public readonly float[] NextState;   // length StateDim
         public readonly float Gamma;         // discount factor (caller supplies)
 
@@ -25,25 +46,28 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     }
 
     /// <summary>
-    /// Q-value estimator: MLP 2×64. Per LEARNING-CONTRACT §3.2.
-    /// Input is the flattened strategic state + candidate-action features (size
-    /// <see cref="StateDim"/> = 50).
+    /// Q-value estimator: MLP 2×128. Per FEATURE-EXPANSION-PLAN §7.2 + LEARNING-CONTRACT §3.2.
+    /// Input is the 128-dim ActionValue slice of StrategicStateVector (40 self + 40 target +
+    /// 10 action one-hot + 38 reserved).
     ///
     /// Architecture:
-    ///   input(50) → Dense(50→64) → ReLU → Dense(64→64) → ReLU → Dense(64→1) → Q
+    ///   input(128) -> Dense(128->128) -> ReLU -> Dense(128->128) -> ReLU -> Dense(128->1) -> Q
     /// Forward + backward + Adam fully implemented. TD-error training.
     /// </summary>
     public sealed class ActionValueEstimator : ILearnedModel
     {
-        public const int StateDim = 50;
-        public const int H1 = 64;
-        public const int H2 = 64;
+        public const int StateDim = 128;
+        public const int H1 = 128;
+        public const int H2 = 128;
         public const int MinibatchSize = 32;
         public const int EventQueueCapacity = 1024;
         public const float DefaultLearningRate = 0.001f;
 
+        // Reward window — §7.2 says 0.5s lookback against HealthSidecar.GetAt.
+        public const double RewardLookbackSeconds = 0.5;
+
         public ModelId Id => ModelId.ActionValue;
-        public byte ArchitectureVersion => 1;
+        public byte ArchitectureVersion => 3;
         public int ParameterCount => _params.Length;
 
         // Parameter layout (single flat array for serialization):
@@ -224,6 +248,47 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 gradAccum[_b1Offset + o] += d;
                 for (int i = 0; i < StateDim; i++) gradAccum[row + i] += d * x[i];
             }
+        }
+
+        // ---- Reward helper (§7.2) ----
+        // r = (self.HpFractionDelta - target.HpFractionDelta) / elapsedSec
+        // Lookback = 0.5s via HealthSidecar.GetAt(id, now - 0.5s-in-mono-ticks). The
+        // producer (Wiring phase, ContinuousController) calls this at the decision
+        // boundary; missing samples (tech just spawned, target absent) collapse to the
+        // current frame so the formula degrades to zero-delta / safe-finite rather than
+        // throwing or returning NaN. elapsedSec floors at a small epsilon to avoid divide-
+        // by-zero on the first sample.
+        public static float ComputeReward(
+            HealthSidecar health,
+            TechId self,
+            TechId target,
+            bool hasTarget,
+            long nowMono)
+        {
+            if (health == null) return 0f;
+            long lookbackTicks = (long)(RewardLookbackSeconds / MonoClock.TickFreq);
+            long cutoff = nowMono - lookbackTicks;
+
+            float selfNow = health.Get(self);
+            float selfThen;
+            if (!health.GetAt(self, cutoff, out selfThen)) selfThen = selfNow;
+            float selfDelta = selfNow - selfThen;
+
+            float targetDelta = 0f;
+            if (hasTarget)
+            {
+                float tgtNow = health.Get(target);
+                float tgtThen;
+                if (!health.GetAt(target, cutoff, out tgtThen)) tgtThen = tgtNow;
+                targetDelta = tgtNow - tgtThen;
+            }
+
+            float elapsedSec = MonoClock.Seconds(cutoff, nowMono);
+            if (elapsedSec < 1e-3f) elapsedSec = 1e-3f;
+
+            float r = (selfDelta - targetDelta) / elapsedSec;
+            if (float.IsNaN(r) || float.IsInfinity(r)) return 0f;
+            return r;
         }
 
         // ---- Serialization ----

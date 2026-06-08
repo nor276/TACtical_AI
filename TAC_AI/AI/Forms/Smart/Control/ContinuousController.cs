@@ -134,6 +134,20 @@ namespace TAC_AI.AI.Forms.Smart.Control
 
         private long _tickCounter;
 
+        // ActionValue producer state — FEATURE-EXPANSION-PLAN §7.2 + R2-06. Q-learning
+        // wants (s, a, r, s'); we can't enqueue until s' is known, so the producer caches
+        // the prior tick's (state, action, reward) and emits on the NEXT tick once the
+        // current state has been published by the StrategicStateExtractor. _pendingActionValid
+        // = false on first tick + after any frame where StrategicVectors.TryRead returned null
+        // (early ticks before the extractor publishes).
+        private bool _pendingActionValid;
+        private float[] _pendingActionState;       // s — copy of AV slice at decision time
+        private int _pendingActionIndex;           // a — ActionGoalClass index
+        private float _pendingActionReward;        // r — computed against 0.5s lookback
+        // Q-learning discount factor. Plan §7.2 doesn't pin a value; 0.95 matches the
+        // short-horizon receding-decision cadence (Operations ~30 Hz, ~0.5s reward window).
+        private const float ActionValueGamma = 0.95f;
+
         // [TEMP DIAGNOSTIC] Per-controller cap so we see the first few goal-dispatch outcomes
         // without spamming the log. Sized to cover ~1s of Operations ticks (30Hz).
         private int _goalDispatchLogCount;
@@ -208,6 +222,10 @@ namespace TAC_AI.AI.Forms.Smart.Control
             var external = _readExternalGoal?.Invoke();
             bool usedExternal = false, usedIdentity = false, usedTactical = false;
             SmartIdentity dispatchIdentity = SmartIdentity.Generic;
+            // Lifted out of the identity branch — the AV producer at the end of this
+            // method needs SelfTechId on every tick to slice StrategicVectors. baseCtx
+            // is also reused as the identity-source ctx when src != null.
+            var baseCtx = _readIdentityCtx != null ? _readIdentityCtx() : default(IdentityContext);
             if (external.HasValue)
             {
                 goal = external.Value;
@@ -228,7 +246,6 @@ namespace TAC_AI.AI.Forms.Smart.Control
                     // we no longer special-case Identity == Generic here. The wrap with
                     // _tacticalHandle is what lets GenericGoalSource invoke _tactical.Step
                     // (per-instance Adam state preserved) via the symmetric registry path.
-                    var baseCtx = _readIdentityCtx != null ? _readIdentityCtx() : default(IdentityContext);
                     var ctx = baseCtx.WithTacticalGoalHandle(_tacticalHandle);
                     goal = src.Produce(ownBelief, vehicle, beliefs, ctx);
                     usedIdentity = true;
@@ -277,6 +294,21 @@ namespace TAC_AI.AI.Forms.Smart.Control
                     + " goalPos=" + goal.Position.ToString("F1")
                     + " delta=" + deltaPos.ToString("F1") + "m");
             }
+
+            // ===== ActionValue producer (FEATURE-EXPANSION-PLAN §7.2 + R2-06) =====
+            // Q-learning needs (s, a, r, s'). s and a are determined here at the decision
+            // boundary; s' is only known on the NEXT tick (after MPC+actuators have closed
+            // the loop and the StrategicStateExtractor has republished). Pattern: cache
+            // (prevState, prevAction, prevReward), and on the next tick we have s' so we
+            // emit (prevState, prevAction, prevReward, sNext) at the same tick we capture
+            // a fresh (state, action, reward) into the pending slot.
+            //
+            // Skipped when:
+            //   - L-059 pause-safe gate: !SmartRuntime.AcceptingTrainingEvents
+            //   - early-spawn race: SelfTechId default or StrategicVectors slot empty
+            //   - learning subsystem not yet alive
+            PublishActionValueEvent(baseCtx.SelfTechId, goal, ownBelief, kinematic, usedExternal,
+                usedIdentity, dispatchIdentity, _readCoordinationTarget != null ? _readCoordinationTarget() : (TechId?)null);
 
             // Initial RolloutState matches current kinematic.
             float heading = Mathf.Atan2(kinematic.HeadingWorld.x, kinematic.HeadingWorld.z);
@@ -366,15 +398,184 @@ namespace TAC_AI.AI.Forms.Smart.Control
                     float projTime = bestMuzzle > 0f ? dist / bestMuzzle : 0f;
                     if (projTime > 0f)
                     {
+                        // FEATURE-EXPANSION-PLAN §3.4 R2-04: slice the Residual block out
+                        // of the published StrategicStateVector for this tech so the
+                        // model trains against the fire-time feature shape, not the
+                        // arrival-time one. SmartRuntime.StrategicVectors and the slot
+                        // base offsets/dim are public.
+                        float[] fireFeatures = ExtractResidualSlice(decision.AimTargetId);
                         recorder.OnFireCommit(
                             decision.AimTargetId,
                             decision.AimPointWorld,
                             kinematic.PositionWorld,
                             projTime,
-                            fireNowMono);
+                            fireNowMono,
+                            fireFeatures);
                     }
                 }
             }
+        }
+
+        // FEATURE-EXPANSION-PLAN §3.4 R2-04: slice the Residual block out of the
+        // StrategicStateVector published for the AimTarget. Returns a float[] of length
+        // TrajectoryResidualModel.FeatureDim — null when the buffer hasn't been ctored
+        // (early Init race) or the target has no published vector yet. The slice copies
+        // out so the recorder's pending slot doesn't alias a freshly-republished vector.
+        private static float[] ExtractResidualSlice(TechId aimTargetId)
+        {
+            var buffer = SmartRuntime.StrategicVectors;
+            if (buffer == null) return null;
+            var vec = buffer.TryRead(aimTargetId);
+            if (vec == null || vec.Raw == null) return null;
+            int dim = Learning.Features.StrategicStateVector.ResidualDim;
+            int b = Learning.Features.StrategicStateVector.ResidualBase;
+            if (vec.Raw.Length < b + dim) return null;
+            var slice = new float[dim];
+            Array.Copy(vec.Raw, b, slice, 0, dim);
+            return slice;
+        }
+
+        // ===== ActionValue producer helpers (§7.2 + R2-06) =====
+        // Decision-boundary publisher: snapshots the AV state slice, encodes the action
+        // one-hot index, computes the reward against the 0.5s HealthSidecar lookback, and
+        // emits the deferred (s, a, r, s') tuple to the trainer queue. One-tick deferred:
+        // the s' that completes the prior tick's tuple is THIS tick's state snapshot, so
+        // we enqueue the previous pending tuple and seed the next one in the same call.
+        private void PublishActionValueEvent(
+            TechId selfTechId,
+            TacticalGoal goal,
+            BeliefState ownBelief,
+            KinematicState kinematic,
+            bool usedExternal,
+            bool usedIdentity,
+            SmartIdentity dispatchIdentity,
+            TechId? coordinationTarget)
+        {
+            // L-059 producer gate — drop while trainer drain is in progress.
+            if (!SmartRuntime.AcceptingTrainingEvents) return;
+
+            var learning = Learning.LearningService.ActionValue;
+            if (learning == null) return;   // subsystem not running
+
+            var buffer = SmartRuntime.StrategicVectors;
+            if (buffer == null) return;
+
+            // selfTechId default (Value == 0) indicates _readIdentityCtx returned default —
+            // SmartPerTechState hasn't wired the ctx delegate yet (early spawn race).
+            if (selfTechId.Value == 0) return;
+
+            var vec = buffer.TryRead(selfTechId);
+            if (vec == null || vec.Raw == null) return;
+
+            // Slice the 128-dim AV state from Raw[40..167]. Copies out so the trainer's
+            // event doesn't alias a freshly-republished vector — extractor mutates Raw
+            // elements in place under its DoubleBuffer write.
+            int dim = Learning.Features.StrategicStateVector.ActionValueDim;
+            int b   = Learning.Features.StrategicStateVector.ActionValueBase;
+            if (vec.Raw.Length < b + dim) return;
+            var currentState = new float[dim];
+            System.Array.Copy(vec.Raw, b, currentState, 0, dim);
+
+            // Encode the just-selected action one-hot. We do NOT touch the published
+            // vector — the extractor owns the action slot. Write into our local slice
+            // so the trainer sees the action embedded in s and s' consistently.
+            int actionIdx = (int)MapGoalToActionClass(usedExternal, usedIdentity, dispatchIdentity,
+                goal, ownBelief, kinematic, coordinationTarget);
+            int oneHotBase = Learning.Features.ActionValueSlots.ActionOneHotBase;
+            // Defensive clear of the 10-slot one-hot window in the local copy then set
+            // the single active bit — the extractor's value, if any, is action-irrelevant
+            // for training (it's a producer-private field).
+            int oneHotCount = Learning.Features.ActionValueSlots.ActionOneHotCount;
+            for (int i = 0; i < oneHotCount; i++) currentState[oneHotBase + i] = 0f;
+            if (actionIdx >= 0 && actionIdx < oneHotCount)
+                currentState[oneHotBase + actionIdx] = 1f;
+
+            // Reward — §7.2 formula. ComputeReward swallows null health / missing target
+            // and returns finite zero on degenerate cases; safe to call unconditionally.
+            long nowMono = World.MonoClock.Now();
+            bool hasTarget = coordinationTarget.HasValue && coordinationTarget.Value.Value != 0;
+            TechId targetForReward = hasTarget ? coordinationTarget.Value : default(TechId);
+            float reward = Learning.ActionValueEstimator.ComputeReward(
+                SmartRuntime.Health, selfTechId, targetForReward, hasTarget, nowMono);
+
+            // Emit the prior pending tuple now that s' (= currentState) is known. The
+            // event copies are aliased to currentState as s'; the prior tuple's state
+            // is its own array — no aliasing across events.
+            if (_pendingActionValid && _pendingActionState != null)
+            {
+                learning.EventQueue.Enqueue(new Learning.ActionValueEvent(
+                    _pendingActionState, _pendingActionIndex, _pendingActionReward,
+                    currentState, ActionValueGamma));
+            }
+
+            // Seed the next pending tuple. currentState is now BOTH s' of the just-
+            // enqueued event AND s of the next event; that's fine because the trainer
+            // only reads (no mutation) and we replace the pending-state ref on the
+            // next call before reaching back into this slot.
+            _pendingActionState = currentState;
+            _pendingActionIndex = actionIdx;
+            _pendingActionReward = reward;
+            _pendingActionValid = true;
+        }
+
+        // Goal-class mapping table (§7.2 final paragraph). Mapping lives here next to
+        // the producer for review. External branches inspect the goal shape (AtCurrent
+        // = zero-velocity goal pinned at/near self; Attack = a coordination target was
+        // supplied alongside; Move = anywhere else). Identity branches collapse the
+        // per-identity goal kind to the bucket it most naturally falls into; Sniper
+        // shares Hunter's seek-kill character, Patrol shares Generic's wander/react.
+        private static Learning.ActionGoalClass MapGoalToActionClass(
+            bool usedExternal,
+            bool usedIdentity,
+            SmartIdentity dispatchIdentity,
+            TacticalGoal goal,
+            BeliefState ownBelief,
+            KinematicState kinematic,
+            TechId? coordinationTarget)
+        {
+            if (usedExternal)
+            {
+                bool hasTarget = coordinationTarget.HasValue && coordinationTarget.Value.Value != 0;
+                if (hasTarget) return Learning.ActionGoalClass.External_Attack;
+                // AtCurrent = zero-velocity goal whose position is within a small radius
+                // of own kinematic position. The Coordinator publishes TacticalGoal
+                // .AtCurrent for hold-position; magnitude check tolerates Kalman jitter.
+                Vector3 here = kinematic.PositionWorld;
+                float dx = goal.Position.x - here.x;
+                float dz = goal.Position.z - here.z;
+                float distSq = dx * dx + dz * dz;
+                bool atCurrent = goal.Velocity.sqrMagnitude < 0.01f && distSq < 4f * 4f;
+                return atCurrent
+                    ? Learning.ActionGoalClass.External_AtCurrent
+                    : Learning.ActionGoalClass.External_Move;
+            }
+
+            if (usedIdentity)
+            {
+                switch (dispatchIdentity)
+                {
+                    case SmartIdentity.Hunter:
+                    case SmartIdentity.Sniper:
+                        return Learning.ActionGoalClass.Identity_Hunter;
+                    case SmartIdentity.Base:
+                        return Learning.ActionGoalClass.Identity_Base;
+                    case SmartIdentity.Gatherer:
+                        return Learning.ActionGoalClass.Identity_Gatherer;
+                    case SmartIdentity.AircraftHunter:
+                    case SmartIdentity.AircraftSupport:
+                        return Learning.ActionGoalClass.Identity_Air;
+                    case SmartIdentity.RepairSupport:
+                        return Learning.ActionGoalClass.Identity_Support;
+                    case SmartIdentity.Patrol:
+                    case SmartIdentity.Generic:
+                    default:
+                        return Learning.ActionGoalClass.Identity_Generic;
+                }
+            }
+
+            // Pure TacticalOptimizer.Step fallback (no registered identity source, no
+            // external goal) — bucketed as the dedicated tactical-fallback class.
+            return Learning.ActionGoalClass.Tactical_Fallback;
         }
 
         private void OverlayFireDecisionOntoProfile(WeaponFireDecision decision)

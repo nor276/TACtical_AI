@@ -5,8 +5,9 @@ using TAC_AI.AI.Forms.Smart.World;
 namespace TAC_AI.AI.Forms.Smart.Learning
 {
     /// <summary>
-    /// Training event for the intent classifier. Holds a 30-tick × 12-feature observation
+    /// Training event for the intent classifier. Holds a 30-tick × 40-feature observation
     /// sequence and the retrospectively-derived intent label. Per LEARNING-CONTRACT §3.1.
+    /// FeatureDim widened 12 → 40 to match Strategic IntentSlots view (§3.2).
     /// </summary>
     public readonly struct IntentEvent
     {
@@ -33,7 +34,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     public sealed class OpponentIntentClassifier : ILearnedModel
     {
         public const int SeqLen = 30;
-        public const int FeatureDim = 12;
+        public const int FeatureDim = 40;
         public const int Hidden = 64;
         public const int OutDim = 6; // IntentCategories.Count
         public const int MinibatchSize = 32;
@@ -44,7 +45,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         // P8 Item 19 (REV 7): bumped 1 → 2 marking GRU BPTT enabled. Informational only —
         // flat parameter layout unchanged (same offsets, same total size). M0002_BpttUnfreeze
         // is a no-op forward migration.
-        public byte ArchitectureVersion => 2;
+        // Phase 3 §7.1: 2 → 3 — FeatureDim 12 → 40 widens W_r/W_z/W_h from [64×12] to
+        // [64×40]. Param count 15174 → 20550. Coordinated bump with the other 3 models.
+        public byte ArchitectureVersion => 3;
         public int ParameterCount => _params.Length;
 
         // Parameter layout (single flat array):
@@ -355,7 +358,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         /// <summary>
         /// P11 T3 Item 53: real reset — Glorot for the 4 W matrices (3 gate-input W's + W_o
         /// dense head), orthogonal for the 3 U matrices (hidden-hidden recurrent weights —
-        /// critical for BPTT stability now that ArchitectureVersion=2 unfreezes them),
+        /// critical for BPTT stability now that the gates are unfrozen),
         /// zero-fill the 4 bias vectors, reset Adam moments.
         /// </summary>
         public void Reset(int seed)

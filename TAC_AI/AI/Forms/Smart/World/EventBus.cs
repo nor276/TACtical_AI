@@ -38,14 +38,26 @@ namespace TAC_AI.AI.Forms.Smart.World
         public readonly Vector3 ImpactDirectionWorld;
         public readonly TechId AttackerIfKnown;
         public readonly bool HasAttacker;
+        // FEATURE-EXPANSION-PLAN §8.5 R2-01: engine ManDamage.DamageInfo.DamageType byte
+        // (ManDamage.cs:58 — NOT the per-block Damageable.DamageableType). Sourced at
+        // SmartEventBridge.OnTankDamage; consumed by DamageHintBuffer.Push + the §3.5
+        // Threat-vector dominant-type slot.
+        public readonly byte DamageType;
 
+        // Legacy 5-arg ctor preserved for backward compatibility with anywhere that
+        // didn't have a DamageType byte handy (zero defaults to ManDamage.DamageType=0,
+        // which the engine's enum treats as "Standard / generic").
         public SanitizedDamageInfo(float damage, Vector3 pos, Vector3 dir, TechId attackerIfKnown, bool hasAttacker)
+            : this(damage, pos, dir, attackerIfKnown, hasAttacker, damageType: 0) { }
+
+        public SanitizedDamageInfo(float damage, Vector3 pos, Vector3 dir, TechId attackerIfKnown, bool hasAttacker, byte damageType)
         {
             Damage = damage;
             ImpactPositionWorld = pos;
             ImpactDirectionWorld = dir;
             AttackerIfKnown = attackerIfKnown;
             HasAttacker = hasAttacker;
+            DamageType = damageType;
         }
     }
 

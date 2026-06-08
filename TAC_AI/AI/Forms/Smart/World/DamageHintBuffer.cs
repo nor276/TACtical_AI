@@ -23,9 +23,15 @@ namespace TAC_AI.AI.Forms.Smart.World
         // bearing" math without needing a v0.3 surface.
         public readonly UnityEngine.Vector3 ImpactPositionWorld;
         public readonly UnityEngine.Vector3 ImpactDirectionWorld;
+        // Smart §8.5: tech-wide DamageType enum cast to byte. Source is
+        // ManDamage.DamageInfo.DamageType (ManDamage.cs:58) — NOT per-block
+        // Damageable.DamageableType. Plumbed at SmartEventBridge's SanitizedDamageInfo
+        // producer; SumWithin consumers vote dominantType over the visible window.
+        public readonly byte DamageType;
 
         public DamageHint(float magnitude, long tickMono, TechId attackerIfKnown, bool hasAttacker,
-            UnityEngine.Vector3 impactPositionWorld, UnityEngine.Vector3 impactDirectionWorld)
+            UnityEngine.Vector3 impactPositionWorld, UnityEngine.Vector3 impactDirectionWorld,
+            byte damageType)
         {
             Magnitude = magnitude;
             TickMono = tickMono;
@@ -33,7 +39,31 @@ namespace TAC_AI.AI.Forms.Smart.World
             HasAttacker = hasAttacker;
             ImpactPositionWorld = impactPositionWorld;
             ImpactDirectionWorld = impactDirectionWorld;
+            DamageType = damageType;
         }
+    }
+
+    /// <summary>
+    /// Smart §8.5 / F-05: small immutable summary returned by
+    /// <see cref="DamageHintBuffer.SumWithin(TechId,long,long)"/>. Fields:
+    ///   <c>TotalMagnitude</c> — sum of <c>DamageHint.Magnitude</c> in window
+    ///   <c>DominantTypeCode</c> — mode over <c>DamageHint.DamageType</c> in window (0 when empty)
+    ///   <c>AttackerCount</c> — distinct <c>AttackerIfKnown</c> values in window (HasAttacker only)
+    /// </summary>
+    public readonly struct DamageSummary
+    {
+        public readonly float TotalMagnitude;
+        public readonly byte DominantTypeCode;
+        public readonly int AttackerCount;
+
+        public DamageSummary(float totalMagnitude, byte dominantTypeCode, int attackerCount)
+        {
+            TotalMagnitude = totalMagnitude;
+            DominantTypeCode = dominantTypeCode;
+            AttackerCount = attackerCount;
+        }
+
+        public static readonly DamageSummary Empty = new DamageSummary(0f, 0, 0);
     }
 
     /// <summary>
@@ -127,13 +157,17 @@ namespace TAC_AI.AI.Forms.Smart.World
         {
             var inst = _wiredInstance;
             if (inst == null) return;
+            // Smart §8.5: damageType byte sourced from SanitizedDamageInfo.DamageType,
+            // populated at SmartEventBridge.OnTankDamage from ManDamage.DamageInfo.DamageType
+            // (ManDamage.cs:58). Feeds SumWithin's DominantTypeCode mode aggregation.
             inst.Push(ev.Id, new DamageHint(
                 magnitude: ev.Damage.Damage,
                 tickMono: MonoClock.Now(),
                 attackerIfKnown: ev.Damage.AttackerIfKnown,
                 hasAttacker: ev.Damage.HasAttacker,
                 impactPositionWorld: ev.Damage.ImpactPositionWorld,
-                impactDirectionWorld: ev.Damage.ImpactDirectionWorld));
+                impactDirectionWorld: ev.Damage.ImpactDirectionWorld,
+                damageType: ev.Damage.DamageType));
         }
 
         private void Push(TechId victim, DamageHint h)
@@ -158,6 +192,70 @@ namespace TAC_AI.AI.Forms.Smart.World
             int copyN = n < dst.Length ? n : dst.Length;
             for (int i = 0; i < copyN; i++) dst[i] = tmp[n - copyN + i];  // most recent at the end
             return copyN;
+        }
+
+        /// <summary>
+        /// Smart §8.5 / F-05: sum + dominant-type + attacker-count over the per-victim ring
+        /// for hints whose <c>TickMono</c> falls in <c>[fromMonoTick, toMonoTick]</c> inclusive.
+        /// Returns <see cref="DamageSummary.Empty"/> when the victim has no ring or no entries
+        /// land in the window. Bounds reversed (from &gt; to) also returns Empty.
+        ///
+        /// Background-thread safe — snapshots under the same per-instance lock the writer uses
+        /// (`Ring._slots`), then aggregates lock-free. Distinct-attacker count uses an O(n²)
+        /// scan over the visible window, bounded by <see cref="CapacityPerTech"/>=8.
+        /// </summary>
+        public DamageSummary SumWithin(TechId victimId, long fromMonoTick, long toMonoTick)
+        {
+            if (toMonoTick < fromMonoTick) return DamageSummary.Empty;
+            Ring r;
+            if (!_byTech.TryGetValue(victimId, out r)) return DamageSummary.Empty;
+
+            var tmp = new DamageHint[CapacityPerTech];
+            int n = r.Snapshot(tmp);
+            if (n <= 0) return DamageSummary.Empty;
+
+            float total = 0f;
+            // Type-mode histogram on the fly. 8 buckets cover the ManDamage.DamageType enum's
+            // realistic range; anything wider just falls into the last bucket without losing
+            // the dominant winner (collisions are accepted — same engine semantics across
+            // enum widening).
+            int[] typeCounts = new int[256];
+            byte dominantType = 0;
+            int dominantCount = 0;
+            // Distinct-attacker collector. Stack-bounded by CapacityPerTech.
+            TechId[] seenAttackers = new TechId[CapacityPerTech];
+            int seenAttackerCount = 0;
+
+            for (int i = 0; i < n; i++)
+            {
+                long tick = tmp[i].TickMono;
+                if (tick < fromMonoTick || tick > toMonoTick) continue;
+
+                total += tmp[i].Magnitude;
+
+                byte t = tmp[i].DamageType;
+                int c = ++typeCounts[t];
+                if (c > dominantCount)
+                {
+                    dominantCount = c;
+                    dominantType = t;
+                }
+
+                if (tmp[i].HasAttacker)
+                {
+                    TechId a = tmp[i].AttackerIfKnown;
+                    bool dup = false;
+                    for (int j = 0; j < seenAttackerCount; j++)
+                    {
+                        if (seenAttackers[j].Equals(a)) { dup = true; break; }
+                    }
+                    if (!dup && seenAttackerCount < seenAttackers.Length)
+                        seenAttackers[seenAttackerCount++] = a;
+                }
+            }
+
+            if (dominantCount == 0) return DamageSummary.Empty;
+            return new DamageSummary(total, dominantType, seenAttackerCount);
         }
 
         public void Forget(TechId victim) { Ring _; _byTech.TryRemove(victim, out _); }

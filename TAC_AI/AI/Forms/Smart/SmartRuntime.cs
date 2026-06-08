@@ -7,6 +7,7 @@ using TAC_AI.AI.Forms.Smart.Coordination;
 using TAC_AI.AI.Forms.Smart.Control;
 using TAC_AI.AI.Forms.Smart.Identity;
 using TAC_AI.AI.Forms.Smart.Learning;
+using TAC_AI.AI.Forms.Smart.Learning.Features;
 using TAC_AI.AI.Forms.Smart.Pathing;
 using TAC_AI.AI.Forms.Smart.Planning;
 using TAC_AI.AI.Forms.Smart.Threading;
@@ -44,6 +45,17 @@ namespace TAC_AI.AI.Forms.Smart
         public DoubleBuffer<TargetAssignment> ExternalTargetBuffer { get; }
         public ContinuousController Controller { get; }
 
+        // Per-tech main-thread publisher feeding StrategicStateExtractor (Phase-4 wiring).
+        // Constructed alongside the other per-tech buffers; ticked main-thread inside
+        // TickMainThread via Publish (gated on tank presence). The extractor's probeLookup
+        // delegate routes (TechId → SelfStateProbe) through TeamRuntime.TryGetTechState.
+        public SelfStateProbe SelfStateProbe { get; }
+
+        // Last published Hp fraction proxy — pulled from HealthSidecar.Get on the tick.
+        // Cached so the probe Publish call has a finite value without a per-tick lookup
+        // when the sidecar is null (early Init race).
+        private float _hpFractionCache = 1f;
+
         public long LastObservationTick { get; private set; }
 
         // Coordination publishes per-tech goals + per-tech target assignments on its
@@ -69,6 +81,9 @@ namespace TAC_AI.AI.Forms.Smart
         {
             IdentityStamp = stamp;
             GoalSource = src;
+            // Mirror the identity byte into the probe so the daemon's SelfRoleHintCode
+            // slot (§3.3 [39]) reads the right value without a back-channel lookup.
+            if (SelfStateProbe != null) SelfStateProbe.Identity = stamp.Identity;
         }
 
         public SmartPerTechState(
@@ -88,6 +103,7 @@ namespace TAC_AI.AI.Forms.Smart
             VehicleBuffer = new DoubleBuffer<VehicleModelSnapshot>(VehicleModelSnapshot.Empty(TechId.Value));
             ExternalGoalBuffer = new DoubleBuffer<TacticalGoal>(TacticalGoal.AtCurrent(Vector3.zero, 0f));
             ExternalTargetBuffer = new DoubleBuffer<TargetAssignment>(TargetAssignment.None);
+            SelfStateProbe = new SelfStateProbe();
 
             Controller = new ContinuousController(
                 pool, teamId, VehicleBuffer, KinematicBuffer, readBeliefs,
@@ -195,31 +211,71 @@ namespace TAC_AI.AI.Forms.Smart
                 RebuildVehicleSnapshotInternal();
             }
 
-            // P7 Item 16: append observation row to the per-tech sequence buffer for the
-            // intent classifier. Row is FeatureDim=12 floats derived from current kinematic
-            // state. Buffer rolls automatically; TryBuildEvent currently returns false (label
-            // inference deferred — see Implementation Gaps Log).
-            var obsBuf = Learning.LearningService.ObservationSequence;
-            if (obsBuf != null)
+            // Phase-4 wiring: publish a SelfProbeSnapshot every main-thread tick so the
+            // StrategicStateExtractor daemon has fresh self-state. Reads from cached
+            // VehicleBuffer (ArmorMap, weapon agg) and HealthSidecar. Wrapped in try/catch
+            // so a snapshot failure on one tech doesn't drop Operations for the rest.
+            try
             {
-                var k = KinematicTracker.Latest;
-                var row = new float[Learning.TargetObservationSequenceBuffer.FeatureDim];
-                // Slot layout (v0.2; 12 floats): position xyz, velocity xyz, heading xz,
-                // angular velocity xyz, recent-kinematic timing slot. Caller can substitute
-                // richer features when label-inference lands.
-                row[0]  = k.PositionWorld.x;
-                row[1]  = k.PositionWorld.y;
-                row[2]  = k.PositionWorld.z;
-                row[3]  = k.VelocityWorld.x;
-                row[4]  = k.VelocityWorld.y;
-                row[5]  = k.VelocityWorld.z;
-                row[6]  = k.HeadingWorld.x;
-                row[7]  = k.HeadingWorld.z;
-                row[8]  = k.AngularVelocityWorld.x;
-                row[9]  = k.AngularVelocityWorld.y;
-                row[10] = k.AngularVelocityWorld.z;
-                row[11] = LastObservationTick;
-                obsBuf.RecordRow(TechId, row, MonoClock.Now());
+                if (SelfStateProbe != null && Tank != null)
+                {
+                    var vsnap = VehicleBuffer.Read();
+                    if (SmartRuntime.Health != null)
+                        _hpFractionCache = SmartRuntime.Health.Get(TechId);
+
+                    // Stamp cached aggregates from the last vehicle rebuild. WeaponAggregate
+                    // here is derived from the existing WeaponProfile (count + ranges); the
+                    // probe's main-thread Publish path reads them through StampCachedAggregates.
+                    var wagg = BuildWeaponAggregateFromSnapshot(vsnap);
+                    int blockCountTotal = SumKindCounts(vsnap.KindCounts);
+                    SelfStateProbe.StampCachedAggregates(
+                        wagg,
+                        blockCount: blockCountTotal,
+                        energyModuleCount: vsnap.KindCounts.EnergyStore,
+                        generatingModuleCount: vsnap.KindCounts.Generator);
+
+                    int cargoNum = 0, cargoCap = 0;
+                    if (SmartRuntime.CargoState != null)
+                    {
+                        var cs = SmartRuntime.CargoState.GetSnapshot(TechId);
+                        if (cs.CapacityKnown) { cargoNum = cs.NumChunks; cargoCap = cs.CapacityChunks; }
+                    }
+
+                    SelfStateProbe.Publish(
+                        TechId, TeamId,
+                        Tank, Helper,
+                        vsnap.Armor, _hpFractionCache,
+                        cargoNum, cargoCap);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugTAC_AI.LogWarning("Smart.SelfStateProbe.Publish[" + TechId + "]: " + ex.Message);
+            }
+
+            // P7 Item 16 (Phase-3 §7.1 widening 12 → 40): append the self-tech's IntentSlots
+            // view from the published StrategicStateVector as one timestep in the per-tech
+            // observation ring. The extractor daemon already populates all 40 slots from
+            // BeliefSnapshot + SelfProbeSnapshot + nearest-hostile + DamageHints + sidecars
+            // at ~30 Hz; we just slice IntentBase..IntentBase+39 into the row and hand it to
+            // the ring. Skip the record when the daemon hasn't published yet (early ticks
+            // before the extractor warms up) so we never feed half-populated rows into the
+            // heuristic labeler.
+            var obsBuf = Learning.LearningService.ObservationSequence;
+            if (obsBuf != null && SmartRuntime.StrategicVectors != null)
+            {
+                var vec = SmartRuntime.StrategicVectors.TryRead(TechId);
+                if (vec != null && vec.Raw != null
+                    && vec.Raw.Length >= StrategicStateVector.IntentBase + StrategicStateVector.IntentDim)
+                {
+                    var row = new float[Learning.TargetObservationSequenceBuffer.FeatureDim];
+                    int B = StrategicStateVector.IntentBase;
+                    // Copy the full 40-slot IntentSlots view verbatim. Field-by-field would
+                    // re-list the daemon's work; Array.Copy keeps the producer honest about
+                    // §3.2 being the single source of truth.
+                    Array.Copy(vec.Raw, B, row, 0, StrategicStateVector.IntentDim);
+                    obsBuf.RecordRow(TechId, row, MonoClock.Now());
+                }
             }
         }
 
@@ -298,6 +354,56 @@ namespace TAC_AI.AI.Forms.Smart
         // level rather than instance so all techs share the cap.
         internal static int VehicleRebuildTimingCounter = 0;
         internal const int VehicleRebuildTimingCap = 10;
+
+        // Sum every BlockKindCounts field so the probe gets a block-count total without
+        // adding a method to the (struct) BlockKindCounts file.
+        private static int SumKindCounts(BlockKindCounts k)
+        {
+            return k.Structural + k.Wheel + k.Hover + k.Booster + k.Wing + k.Walker
+                + k.WeaponFixed + k.WeaponTurret + k.Anchor + k.Conveyor + k.Holder
+                + k.Producer + k.Repair + k.Shield + k.EnergyStore + k.Generator
+                + k.Drill + k.GyroStabilizer;
+        }
+
+        // Build a WeaponAggregateSnapshot from the live vehicle snapshot. WeaponProfile
+        // is the existing rebuild output (no extra walk); count and the aggregate stats
+        // collapse to a single pass. Kept light: ReadyToFireCount is a heuristic of
+        // CooldownRemaining<=0; MeleeWeaponCount counts profiles with Range<=2m (engine
+        // hammer/drill convention).
+        private static WeaponAggregateSnapshot BuildWeaponAggregateFromSnapshot(VehicleModelSnapshot vsnap)
+        {
+            if (vsnap == null || vsnap.Weapons == null || vsnap.Weapons.Count == 0)
+                return WeaponAggregateSnapshot.Empty;
+            int total = vsnap.Weapons.Count;
+            int melee = 0, ready = 0, energy = 0, gunCount = 0, beamMelee = 0;
+            float rangeMax = 0f, rangeSum = 0f, fireSum = 0f, dmgSum = 0f, muzzleSum = 0f;
+            for (int i = 0; i < total; i++)
+            {
+                var w = vsnap.Weapons[i];
+                if (w.Range > rangeMax) rangeMax = w.Range;
+                rangeSum += w.Range;
+                fireSum += w.FireRateHz;
+                dmgSum += w.DamagePerProjectile;
+                muzzleSum += w.ProjectileVelocity;
+                if (w.CooldownRemaining <= 0f) ready++;
+                if (w.IsEnergyWeapon) energy++;
+                if (w.Range <= 2f) { melee++; beamMelee++; }
+                else gunCount++;
+            }
+            float inv = total > 0 ? 1f / total : 0f;
+            return new WeaponAggregateSnapshot(
+                weaponCount: total,
+                meleeWeaponCount: melee,
+                readyToFireCount: ready,
+                rangeMax: rangeMax,
+                rangeMean: rangeSum * inv,
+                fireRateMean: fireSum * inv,
+                damagePerShotMean: dmgSum * inv,
+                muzzleVelMean: muzzleSum * inv,
+                energyWeaponFraction: energy * inv,
+                kindMixGun: gunCount * inv,
+                kindMixBeamMelee: beamMelee * inv);
+        }
     }
 
     /// <summary>
@@ -403,6 +509,11 @@ namespace TAC_AI.AI.Forms.Smart
             }
             state.OwnerTeam = this;
             _techs[state.TechId] = state;
+            // FEATURE-EXPANSION-PLAN Phase-4: pre-allocate the StrategicStateVector slot so
+            // the first extractor Publish doesn't race a lazy GetOrAdd. Optional per buffer
+            // contract — lazy alloc works either way — but matches the OnTechSpawn/Recycle
+            // pairing that Smart's lifecycle audit (L-028) treats as the canonical edge.
+            SmartRuntime.StrategicVectors?.OnTechSpawn(state.TechId);
             return true;
         }
         public bool DeregisterTech(TechId id)
@@ -683,6 +794,17 @@ namespace TAC_AI.AI.Forms.Smart
         /// </summary>
         public static HealthSidecar Health { get; private set; }
 
+        // FEATURE-EXPANSION-PLAN Phase-4 wiring: the four new feature-pipeline sidecars
+        // plus the per-tech StrategicStateVector publisher and the extractor daemon. All
+        // ctored in Init after Health, torn down in Shutdown after WorkerLifecycleRegistry
+        // cancels the extractor.
+        public static NearestTechCache NearestTechCache { get; private set; }
+        public static RecentDamageDealtAccumulator DealtAccumulator { get; private set; }
+        public static WeaponFireBuffer WeaponFires { get; private set; }
+        public static CargoStatePublisher CargoState { get; private set; }
+        public static StrategicStateBuffer StrategicVectors { get; private set; }
+        public static StrategicStateExtractor StrategicExtractor { get; private set; }
+
         // Per-team runtimes (Planning + Coordination workers scoped per team).
         // Lazy creation on first OnTechSpawn for each team — happens on the main thread,
         // so the GetOrAdd factory race is not a concern in practice.
@@ -833,6 +955,19 @@ namespace TAC_AI.AI.Forms.Smart
             DamageHints = new DamageHintBuffer();
             DamageHintBuffer.Wire(DamageHints);
             Health = new HealthSidecar();
+
+            // FEATURE-EXPANSION-PLAN Phase-4: feature-pipeline sidecars. Order matters —
+            // RecentDamageDealtAccumulator + CargoStatePublisher + WeaponFireBuffer must
+            // exist BEFORE the extractor's ctor; StrategicStateBuffer is the extractor's
+            // output. Sidecars register with TechLifecycleRegistry below so Forget(id)
+            // fan-out covers them.
+            NearestTechCache = new NearestTechCache();
+            DealtAccumulator = new RecentDamageDealtAccumulator();
+            RecentDamageDealtAccumulator.Wire(DealtAccumulator);
+            WeaponFires = new WeaponFireBuffer();
+            CargoState = new CargoStatePublisher();
+            CargoStatePublisher.Wire(CargoState);
+            StrategicVectors = new StrategicStateBuffer();
             // L-028 + L-029: wire all 8 sidecars into TechLifecycleRegistry. L-055 (Wave 2)
             // refactors SmartRuntime.Deregister to enumerate the registry instead of the
             // prior hand-coded fan-out, and TechLeakWatchdog (L-056, Wave 2) walks each
@@ -840,6 +975,10 @@ namespace TAC_AI.AI.Forms.Smart
             TechLifecycleRegistry.Register(IntentSidecar);                              // L-028
             TechLifecycleRegistry.Register(DamageHints);                                // L-028
             TechLifecycleRegistry.Register(Health);                                     // L-028
+            // FEATURE-EXPANSION-PLAN Phase-4 sidecars — all ITechSidecar implementors.
+            TechLifecycleRegistry.Register(DealtAccumulator);
+            TechLifecycleRegistry.Register(WeaponFires);
+            TechLifecycleRegistry.Register(CargoState);
             // L-028: 5 more — WorldModel (registered later in Init after World construction),
             // LeadResidualRecorder (registered by LearningService.Init via its Instance),
             // TargetObservationSequenceBuffer (registered by LearningService.Init). The
@@ -899,6 +1038,29 @@ namespace TAC_AI.AI.Forms.Smart
 
             PathingService.Init(Pool);
             DebugTAC_AI.Log("Smart.Init[TIMING] PathingService.Init: " + sw.ElapsedMilliseconds + "ms");
+            sw.Restart();
+
+            // FEATURE-EXPANSION-PLAN Phase-4 daemon: StrategicStateExtractor. Constructed
+            // AFTER PathingService.Init so CurrentTerrain is non-null. probeLookup walks
+            // every TeamRuntime for a SmartPerTechState matching TechId; null for unknown
+            // (daemon skips). Registered with both DaemonWatchdog + WorkerHealthMonitor below.
+            StrategicExtractor = new StrategicStateExtractor(
+                World, StrategicVectors, NearestTechCache, PathingService.CurrentTerrain,
+                Health, DamageHints, DealtAccumulator, WeaponFires, CargoState,
+                LookupSelfStateProbe);
+            Pool.EnqueueLongRunning(StrategicExtractor.RunLoop, StrategicStateExtractor.CanonicalName);
+            // Respawn factory + canonical-roster registration (matches the Reg() pattern at
+            // SmartRuntime.cs:1036 — captured pool variable, null-safe). Uses the extractor's
+            // CanonicalName const so DaemonWatchdog identity stays in lockstep with the label.
+            {
+                var extractorRef = StrategicExtractor;
+                var poolRef = Pool;
+                Func<string> extractorFactory = () => poolRef?.EnqueueLongRunning(
+                    extractorRef.RunLoop, StrategicStateExtractor.CanonicalName);
+                Threading.DaemonWatchdog.RegisterCanonical(StrategicStateExtractor.CanonicalName, extractorFactory);
+                Threading.WorkerHealthMonitor.RegisterCanonical(StrategicStateExtractor.CanonicalName, extractorFactory);
+            }
+            DebugTAC_AI.Log("Smart.Init[TIMING] StrategicStateExtractor ctor + enqueue: " + sw.ElapsedMilliseconds + "ms");
             sw.Restart();
 
             // Phase 5 (FIX-PLAN.md) — AUDIT R1 2.7: the previous path was
@@ -989,6 +1151,24 @@ namespace TAC_AI.AI.Forms.Smart
             IntentSidecar = null;
             Health?.Clear();
             Health = null;
+
+            // FEATURE-EXPANSION-PLAN Phase-4: matched Wire/Unwire pair on the two static-
+            // singleton sidecars (RecentDamageDealtAccumulator + CargoStatePublisher) so a
+            // subsequent Init's Wire doesn't double-subscribe. WeaponFireBuffer is per-tech
+            // wired (no Wire/Unwire static pair) — Clear drops every per-tech subscription.
+            // StrategicExtractor's RunLoop has already exited via CancelAllAndJoin above.
+            RecentDamageDealtAccumulator.Unwire();
+            DealtAccumulator?.Clear();
+            DealtAccumulator = null;
+            CargoStatePublisher.Unwire();
+            CargoState?.Clear();
+            CargoState = null;
+            WeaponFires?.Clear();
+            WeaponFires = null;
+            StrategicVectors?.Clear();
+            StrategicVectors = null;
+            NearestTechCache = null;
+            StrategicExtractor = null;
 
             // P5 Item 23: drop the producer's per-team snapshots so the next session
             // doesn't see stale dicts. Reset is idempotent.
@@ -1128,6 +1308,16 @@ namespace TAC_AI.AI.Forms.Smart
             // ONE Register call, not a PR-review-only convention.
             TAC_AI.AI.Forms.Smart.World.TechLifecycleRegistry.ForgetAll(techId);
 
+            // FEATURE-EXPANSION-PLAN Phase-4: StrategicStateBuffer is NOT an ITechSidecar
+            // (it's a per-tech double-buffer registry, not a per-id sidecar dict), so the
+            // Forget call has to fire here outside the registry sweep. SelfStateProbe lives
+            // on SmartPerTechState — the lifecycle reset just bumps Generation so any pending
+            // bg-thread Read sees the stale-discard sentinel.
+            StrategicVectors?.OnTechRecycle(techId);
+            StrategicExtractor?.OnTechRecycle(techId);
+            // SelfStateProbe lives on the SmartPerTechState we just dropped from the team —
+            // its lifecycle ends with the SmartPerTechState ref. No explicit Forget needed.
+
             // SmartEventBridge stays out of the registry — it's keyed by Tank (not TechId
             // alone) and the L-010 TechId-shadow path is here below.
             if (tankOrNull != null)
@@ -1156,6 +1346,21 @@ namespace TAC_AI.AI.Forms.Smart
         /// to rebuild every active team's threat field per tick.
         /// </summary>
         internal static System.Collections.Generic.IEnumerable<TeamRuntime> EnumerateTeams() => _teams.Values;
+
+        // FEATURE-EXPANSION-PLAN Phase-4: probeLookup delegate for StrategicStateExtractor.
+        // Walks every TeamRuntime looking for the SmartPerTechState with the matching id.
+        // Returns null for techs we don't own — extractor then skips that tech.
+        internal static SelfStateProbe LookupSelfStateProbe(TechId id)
+        {
+            foreach (var kv in _teams)
+            {
+                var team = kv.Value;
+                if (team == null) continue;
+                var state = team.TryGetTechState(id);
+                if (state != null) return state.SelfStateProbe;
+            }
+            return null;
+        }
 
         /// <summary>
         /// P11 T4 Item 54: look up a Smart-driven tech's VehicleModelSnapshot. Walks every
