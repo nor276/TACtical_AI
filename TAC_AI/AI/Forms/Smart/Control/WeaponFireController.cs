@@ -68,7 +68,8 @@ namespace TAC_AI.AI.Forms.Smart.Control
         }
         private readonly List<PerWeaponState> _states = new List<PerWeaponState>();
 
-        // Energy estimation (simplified — TerraTech energy access TODO).
+        // Energy estimation: per-weapon cost reflected from ModuleWeapon.m_FiringEnergyRequired
+        // via WeaponReflectionCache → WeaponSpec.EnergyCostPerShot (P11 T6 Item 57).
         // Phase 7 (FIX-PLAN.md) — AUDIT R1 2.5 / 2.7: previously reserve only depleted
         // inside EnforceEnergyBudget. Once it dropped below EnergyReserveThreshold every
         // energy weapon was permanently locked out for the rest of the match. Refill

@@ -73,6 +73,8 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
         private readonly float _cellSize;
         private readonly int _w;
         private readonly int _h;
+        private readonly float _waterHeight;     // KickStart.WaterHeight sampled at ctor; -9001 sentinel when no water mod
+        private readonly bool _waterPresent;     // true iff WaterMod present at ctor time
 
         private int _lastRefreshEnvMs = int.MinValue;
 
@@ -123,6 +125,14 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             _w = width;
             _h = height;
             _buffer = new DoubleBuffer<TerrainMapSnapshot>(TerrainMapSnapshot.Empty(_origin, _cellSize, _w, _h));
+
+            // Snapshot the WaterMod height once at construction. KickStart.WaterHeight
+            // calls into WaterMod.QPatch.WaterHeight which is not documented as thread-safe;
+            // capturing once here keeps IsTraversable's worker-thread read pure. -9001 is
+            // KickStart's "no water mod" sentinel — _waterPresent flips off in that case
+            // so the gate degrades to a no-op (matching prior behavior on non-water saves).
+            _waterHeight = KickStart.WaterHeight;
+            _waterPresent = KickStart.isWaterModPresent && _waterHeight > -9000f;
         }
 
         /// <summary>
@@ -261,14 +271,29 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
 
         public bool IsTraversable(Vector2 worldXZ, VehicleCapability filter)
         {
-            // Airplane / hover ignore ground slope.
+            // Airplane / hover ignore ground slope and water entirely.
             if (filter.Class == VehicleClass.Airplane) return true;
             if (filter.Class == VehicleClass.Hover && filter.VerticalAuthority > 1.0f) return true;
 
             if (SlopeAt(worldXZ) > filter.ClimbAngleMax) return false;
 
-            // Water check: TODO v0.2 — uses KickStart.WaterHeight; non-water vehicles need
-            // height check vs WaterHeight; submarines need the inverse.
+            // Water gate. Ground-bound wheeled/walker techs without WaterCapable can't
+            // traverse cells whose terrain height sits below the water surface (would be
+            // under-water). Submarines are the inverse — they only traverse cells where
+            // terrain is below the water surface. Hovers handled above. Skip entirely
+            // when WaterMod isn't installed (KickStart.WaterHeight returns -9001 sentinel).
+            if (_waterPresent)
+            {
+                float groundH = HeightAt(worldXZ);
+                if (filter.Class == VehicleClass.Submarine)
+                {
+                    if (groundH > _waterHeight) return false;
+                }
+                else if (!filter.WaterCapable)
+                {
+                    if (groundH < _waterHeight) return false;
+                }
+            }
             return true;
         }
 

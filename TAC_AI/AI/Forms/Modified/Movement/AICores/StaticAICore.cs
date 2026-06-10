@@ -25,11 +25,6 @@ namespace TAC_AI.AI.Movement.AICores
             //DebugTAC_AI.Log(KickStart.ModID + ": StaticAICore - Init");
         }
 
-        public Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset)
-        {
-            throw new NotImplementedException(GetType().Name + " should not be calling AvoidAssist pathfinding");
-        }
-
         public bool DriveDirector(ref EControlCoreSet core)
         {
             var helper = controller.Helper;

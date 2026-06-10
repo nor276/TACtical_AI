@@ -50,6 +50,10 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         private readonly WorkerHandle[] _handles;
         private readonly CancellationTokenSource _rootCts;
         private readonly ConcurrentQueue<Action<CancellationToken>> _queue;
+        // Idle workers BLOCK on this instead of spinning. Enqueue Sets it to wake a worker;
+        // the timeout is a safety re-poll so no item ever sits longer than IdleWaitMs.
+        private readonly System.Threading.AutoResetEvent _workSignal = new System.Threading.AutoResetEvent(false);
+        private const int IdleWaitMs = 5;
         private bool _disposed;
 
         public string Name => _name;
@@ -108,6 +112,7 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             if (work == null) return;
             if (_disposed) return;
             _queue.Enqueue(work);
+            try { _workSignal.Set(); } catch { /* disposed mid-shutdown */ }
         }
 
         /// <summary>
@@ -261,13 +266,13 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                         }
                         else
                         {
-                            // Idle branch — protected by the outer try so an abort delivered
-                            // during SpinWait/Sleep(0) doesn't bypass our handler. SpinWait
-                            // to absorb short idle gaps, then Sleep(0) to yield. Phase 2.1
-                            // fix (FIX-PLAN.md R2 1.R2-G): the prior destructive second
-                            // TryDequeue here silently discarded work items; gone.
-                            Thread.SpinWait(IdleSpinIterations);
-                            Thread.Sleep(0);
+                            // Idle branch — BLOCK on the work signal instead of spinning.
+                            // Enqueue Sets the signal to wake a worker; the timeout is a
+                            // safety re-poll so a missed Set never strands an item. This is
+                            // what keeps idle pool workers off the CPU (was a SpinWait+Sleep(0)
+                            // busy-loop that pegged one core per worker). Protected by the
+                            // outer try so an abort delivered here still hits our handler.
+                            _workSignal.WaitOne(IdleWaitMs);
                         }
                     }
                     catch (OperationCanceledException)
@@ -371,6 +376,11 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             {
                 DebugTAC_AI.LogWarning("Smart.Threading: pool '" + _name + "' Cancel threw: " + ex.Message);
             }
+            // Wake any workers blocked in the idle wait so they see the cancel immediately.
+            for (int w = 0; w < _workers.Length; w++)
+            {
+                try { _workSignal.Set(); } catch { break; }
+            }
 
             // Phase 2: join workers within the total shutdown timeout, share proportionally.
             var perWorkerMs = TotalShutdownTimeout.TotalMilliseconds / _workers.Length;
@@ -402,6 +412,7 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                 try { _handles[i].Cts.Dispose(); } catch { }
             }
             try { _rootCts.Dispose(); } catch { }
+            try { _workSignal.Dispose(); } catch { }
         }
     }
 }

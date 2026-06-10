@@ -130,6 +130,12 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             }
             DebugTAC_AI.Log("SmartEventBridge.Install[TIMING] Harmony.PatchAll: " + sw.ElapsedMilliseconds + "ms");
 
+            // Director outcome publishers. No-op-safe before Director.Init completes —
+            // PublishFromWorker events are ignored by IdentityOutcomeConsumer until the
+            // Director's constraint engine reads them.
+            try { InstallDirectorPublishers(); }
+            catch (Exception ex) { LogPub("install-fanout", ex); }
+
             DebugTAC_AI.Log("SmartEventBridge.Install[TIMING] TOTAL: " + swTotal.ElapsedMilliseconds + "ms");
         }
 
@@ -137,6 +143,9 @@ namespace TAC_AI.AI.Forms.Smart.Integration
         public static void Uninstall()
         {
             if (!_installed) return;
+
+            try { UninstallDirectorPublishers(); }
+            catch (Exception ex) { LogPub("uninstall-fanout", ex); }
 
             try
             {
@@ -158,10 +167,24 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             _tankDestroyedHandler = null;
 
             // Drop every still-attached per-tank handler.
+            // BUG-053: AttachPerTank wires three surfaces (damage + cargo + weapon-fire);
+            // Uninstall must mirror all three or per-tank cargo / fire subscriptions stay
+            // bound to live techs after the bridge tears down. Per-tech iteration matches
+            // the AttachPerTank pairing.
             foreach (var pair in _damageHandlers)
             {
-                try { if (pair.Key != null) pair.Key.DamageEvent.Unsubscribe(pair.Value); }
+                var tank = pair.Key;
+                try { if (tank != null) tank.DamageEvent.Unsubscribe(pair.Value); }
                 catch { /* tank may already be gone */ }
+                if (tank == null) continue;
+                try
+                {
+                    var techId = TechId.FromTank(tank);
+                    SmartRuntime.CargoState?.DetachPerTank(tank);
+                    if (SmartRuntime.WeaponFires != null && tank.Weapons != null)
+                        SmartRuntime.WeaponFires.Unwire(techId, tank.Weapons);
+                }
+                catch { /* tank may be partially recycled */ }
             }
             _damageHandlers.Clear();
             _damageHandlersByTechId.Clear();   // L-010 shadow map
@@ -169,6 +192,52 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             try { _harmony?.UnpatchAll(HarmonyId); } catch { }
             _harmony = null;
             _installed = false;
+        }
+
+        // Per-minute DamageObserved counter for the damage_events_per_min constraint.
+        private static long _damageEventsCounter;
+        public static long DamageEventsCounter => System.Threading.Interlocked.Read(ref _damageEventsCounter);
+        private static System.Action<DamageObserved> _damageCounterHandler;
+
+        // Director publisher fan-out. Installs the 3 outcome publishers (BlockDelivered,
+        // BaseHeld+BaseLost, AllyProtected) + the damage counter. GuardWorker is installed
+        // via its own daemon (TrainingDirector.Init). Idempotent.
+        public static void InstallDirectorPublishers()
+        {
+            try { Director.Publishers.BlockDeliveredPublisher.Install(); } catch (Exception ex) { LogPub("BlockDelivered", ex); }
+            try { Director.Publishers.BaseHeldPublisher.Install(); } catch (Exception ex) { LogPub("BaseHeld", ex); }
+            try { Director.Publishers.AllyProtectionPublisher.Install(); } catch (Exception ex) { LogPub("AllyProtection", ex); }
+            try
+            {
+                if (_damageCounterHandler == null)
+                {
+                    _damageCounterHandler = _ => System.Threading.Interlocked.Increment(ref _damageEventsCounter);
+                    WorldEventBus.Subscribe(_damageCounterHandler);
+                }
+            }
+            catch (Exception ex) { LogPub("DamageCounter", ex); }
+        }
+
+        public static void UninstallDirectorPublishers()
+        {
+            try { Director.Publishers.BlockDeliveredPublisher.Uninstall(); } catch (Exception ex) { LogPub("BlockDelivered", ex); }
+            try { Director.Publishers.BaseHeldPublisher.Uninstall(); } catch (Exception ex) { LogPub("BaseHeld", ex); }
+            try { Director.Publishers.AllyProtectionPublisher.Uninstall(); } catch (Exception ex) { LogPub("AllyProtection", ex); }
+            try
+            {
+                if (_damageCounterHandler != null)
+                {
+                    WorldEventBus.Unsubscribe(_damageCounterHandler);
+                    _damageCounterHandler = null;
+                }
+            }
+            catch (Exception ex) { LogPub("DamageCounter", ex); }
+        }
+
+        private static void LogPub(string name, Exception ex)
+        {
+            DebugTAC_AI.LogWarnFileOnly("director-publisher-" + name,
+                "[AIWARN] Director publisher " + name + " " + ex.GetType().Name + ": " + ex.Message);
         }
 
         /// <summary>
@@ -205,6 +274,15 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             {
                 DebugTAC_AI.LogWarning("SmartEventBridge.AttachPerTank: cargo/fire wire: " + ex.Message);
             }
+
+            // BlockDelivered: lazy-subscribe Smart Base techs with a Chunks holder so
+            // cross-tank cargo handoffs attribute a Gatherer delivery.
+            try
+            {
+                var bd = Director.Publishers.BlockDeliveredPublisher.Instance;
+                if (bd != null) bd.TrySubscribeBase(tank);
+            }
+            catch (Exception ex) { LogPub("attach-base", ex); }
         }
 
         /// <summary>Detach a per-tank damage subscription. Called from <c>SmartForm.OnTechRecycle</c>.</summary>
@@ -227,6 +305,13 @@ namespace TAC_AI.AI.Forms.Smart.Integration
                     SmartRuntime.WeaponFires.Unwire(techId, tank.Weapons);
             }
             catch { /* tank partially recycled — drop quietly */ }
+
+            try
+            {
+                var bd = Director.Publishers.BlockDeliveredPublisher.Instance;
+                if (bd != null) bd.ForgetTank(tank);
+            }
+            catch { /* drop quietly */ }
         }
 
         /// <summary>
@@ -250,10 +335,13 @@ namespace TAC_AI.AI.Forms.Smart.Integration
             // path. CargoStatePublisher exposes a TechId overload that walks its own shadow
             // map; WeaponFireBuffer takes (TechId, TechWeapon) so we only call it if the
             // tank ref is still alive enough to dereference Weapons.
+            // BUG-068: Unity-null-test the tank before reading .Weapons — Unity returns a
+            // fake-null when the GameObject has been destroyed but our shadow map still holds
+            // the managed ref. Implicit bool cast is the engine's UnityEngine.Object overload.
             try
             {
                 SmartRuntime.CargoState?.DetachPerTank(id);
-                if (SmartRuntime.WeaponFires != null && tank.Weapons != null)
+                if (SmartRuntime.WeaponFires != null && tank && tank.Weapons != null)
                     SmartRuntime.WeaponFires.Unwire(id, tank.Weapons);
             }
             catch { /* engine-purged ref — best-effort */ }
@@ -310,7 +398,8 @@ namespace TAC_AI.AI.Forms.Smart.Integration
                         {
                             var attackerTechId = World.TechId.FromTank(info.SourceTank);
                             World.WorldEventBus.Publish(new World.IdentityOutcome(
-                                attackerTechId, attackerIdentity, World.OutcomeKind.KillScored, 1f));
+                                attackerTechId, attackerIdentity, World.OutcomeKind.KillScored, 1f,
+                                (byte)(15 << 4)));
                         }
                     }
                 }

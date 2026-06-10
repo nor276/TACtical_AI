@@ -41,11 +41,27 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
         /// </summary>
         public static VehicleCapability FromMobility(MobilityProfile mob)
         {
+            return FromMobility(mob, isWalker: false);
+        }
+
+        /// <summary>
+        /// Walker-aware overload. When <paramref name="isWalker"/> is true and the tech
+        /// isn't flyer/hover/submarine, classify as Walker so CapabilityRelevance's
+        /// walker case applies and downstream consumers can use a leg-arc cone instead
+        /// of the wheeled cone. ModuleWalker is reserved-unreachable in the current
+        /// TerraTech version (per Chassis Decisions #7/#12); callers that synthesize
+        /// walker-mobility hints from RawTech metadata or BlockKindFlags (when those
+        /// bits become live) pass true here. Existing callers go through the
+        /// no-hint overload above and continue to receive the historical Wheel default.
+        /// </summary>
+        public static VehicleCapability FromMobility(MobilityProfile mob, bool isWalker)
+        {
             VehicleClass cls;
             if (!mob.WaterCapable && mob.VerticalAuthority > 1.5f) cls = VehicleClass.Airplane;
             else if (mob.VerticalAuthority >= 0.5f && mob.VerticalAuthority <= 1.5f) cls = VehicleClass.Hover;
             else if (mob.WaterCapable && mob.VerticalAuthority < 0.5f) cls = VehicleClass.Submarine;
-            else cls = VehicleClass.Wheel; // Walker classification needs leg-block detection (TODO v0.2)
+            else if (isWalker) cls = VehicleClass.Walker;
+            else cls = VehicleClass.Wheel;
 
             return new VehicleCapability(
                 cls,

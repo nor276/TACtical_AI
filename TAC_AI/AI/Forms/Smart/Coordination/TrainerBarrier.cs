@@ -115,5 +115,102 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
         }
 
         public static int RegisteredCount => _barriers.Count;
+
+        // ---- Director pause-token (Phase 1, hardened per §7.3 R3-M6) ----
+        // Mutual-exclusion lock so host-change racing a rollback serialises. Only
+        // one owner may hold the token at a time; the same owner string releases.
+        // Director.BeginShutdown MUST NOT acquire — it signals via _killSwitch and
+        // waits for the in-flight rollback's finally to release.
+
+        private static string _pausingOwner;
+        private static long _pauseAcquiredMonoTicks;
+        private static readonly object _ownerLock = new object();
+        public const double StuckTokenSeconds = 30.0;
+
+        /// <summary>Block until the token is free, then claim it for <paramref name="owner"/>.</summary>
+        public static void AcquirePauseToken(string owner)
+        {
+            if (string.IsNullOrEmpty(owner)) return;
+            lock (_ownerLock)
+            {
+                while (_pausingOwner != null)
+                {
+                    try { System.Threading.Monitor.Wait(_ownerLock, 1000); }
+                    catch (System.Exception ex)
+                    {
+                        DebugTAC_AI.LogWarning("TrainerBarrier.AcquirePauseToken: " + ex.Message);
+                        return;
+                    }
+                }
+                _pausingOwner = owner;
+                _pauseAcquiredMonoTicks = TAC_AI.AI.Forms.Smart.World.MonoClock.Now();
+            }
+        }
+
+        /// <summary>Release the token if <paramref name="owner"/> currently holds it.</summary>
+        public static void ReleasePauseToken(string owner)
+        {
+            if (string.IsNullOrEmpty(owner)) return;
+            lock (_ownerLock)
+            {
+                if (_pausingOwner == owner)
+                {
+                    _pausingOwner = null;
+                    _pauseAcquiredMonoTicks = 0;
+                    try { System.Threading.Monitor.PulseAll(_ownerLock); }
+                    catch { /* defensive */ }
+                }
+            }
+        }
+
+        public static string CurrentPauseOwner
+        {
+            get { lock (_ownerLock) { return _pausingOwner; } }
+        }
+
+        /// <summary>
+        /// Stuck-token watchdog. Called from TrainingDirector's 1 Hz loop. Force-release
+        /// after 30 s if no rollback is in flight, then journal the leak. Director's
+        /// own shutdown path does NOT acquire the token; it just signals and waits.
+        /// </summary>
+        public static void TickPauseTokenWatchdog()
+        {
+            string ownerSnapshot;
+            long acquiredSnapshot;
+            lock (_ownerLock)
+            {
+                ownerSnapshot = _pausingOwner;
+                acquiredSnapshot = _pauseAcquiredMonoTicks;
+            }
+            if (ownerSnapshot == null) return;
+            // In Phase 1 there is no rollback; this is always 0.
+            if (Director.TrainingDirector.RollbackInProgress != 0) return;
+            long now = TAC_AI.AI.Forms.Smart.World.MonoClock.Now();
+            double held = (now - acquiredSnapshot) * TAC_AI.AI.Forms.Smart.World.MonoClock.TickFreq;
+            if (held < StuckTokenSeconds) return;
+
+            string leaked;
+            lock (_ownerLock)
+            {
+                if (_pausingOwner == ownerSnapshot)
+                {
+                    leaked = _pausingOwner;
+                    _pausingOwner = null;
+                    _pauseAcquiredMonoTicks = 0;
+                    try { System.Threading.Monitor.PulseAll(_ownerLock); }
+                    catch { /* defensive */ }
+                }
+                else
+                {
+                    return; // owner changed under us
+                }
+            }
+            DebugTAC_AI.LogWarnFileOnly("trainerbarrier-pausetoken-leaked-" + leaked,
+                "[PAUSETOKEN-LEAKED owner=" + leaked + "] held " + held.ToString("F1",
+                    System.Globalization.CultureInfo.InvariantCulture) + "s — force-released");
+            Director.DirectorJournal.Append("PAUSETOKEN-LEAKED",
+                "owner=" + leaked + " heldSec=" + held.ToString("F1",
+                    System.Globalization.CultureInfo.InvariantCulture));
+        }
     }
 }

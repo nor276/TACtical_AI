@@ -104,9 +104,9 @@ namespace TAC_AI.AI.Forms.Smart.Control
         }
 
         /// <summary>
-        /// Utility function. Per CONTROL §6.2. v0.1.0 implements engagement-range and
-        /// kinematic-feasibility terms. Other terms (armor facing, cover, team role) are
-        /// no-ops or stubs until their dependent subsystems are authored.
+        /// Utility function. Per CONTROL §6.2. All five terms (engagement, feasibility,
+        /// armor facing, cover, team role) are live in v0.2 — see P11 T6 Item 56 for the
+        /// wire-up of the latter three at lines 125-127.
         /// </summary>
         private float Utility(BeliefState ownBelief, VehicleModelSnapshot vehicle, BeliefSnapshot beliefs)
         {

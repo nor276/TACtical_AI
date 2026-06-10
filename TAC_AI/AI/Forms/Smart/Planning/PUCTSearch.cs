@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using UnityEngine;
+using TAC_AI.AI.Forms.Smart.World;
 
 namespace TAC_AI.AI.Forms.Smart.Planning
 {
@@ -58,7 +59,9 @@ namespace TAC_AI.AI.Forms.Smart.Planning
     }
 
     /// <summary>
-    /// PUCT search. v0.1.0: uniform prior (Learning's policy slot activates the prior later).
+    /// PUCT search. Prior pulls from <see cref="SmartRuntime.IntentSidecar"/>'s published
+    /// opponent-intent snapshots when available; falls back to uniform when no producer
+    /// has published (sidecar null, no entries for hostiles in state, or stale).
     /// </summary>
     public sealed class PUCTSearch
     {
@@ -70,8 +73,8 @@ namespace TAC_AI.AI.Forms.Smart.Planning
         private PUCTNode _root;
         private int _nodeCount;
         // System.Random — fully qualified to avoid UnityEngine.Random ambiguity from
-        // the using UnityEngine import. Currently allocated but unused; reserved for
-        // policy sampling once Learning ships a non-uniform prior.
+        // the using UnityEngine import. Reserved for stochastic policy sampling if/when
+        // we switch from deterministic argmax to a softmax over visit counts at the root.
         private readonly System.Random _rng = new System.Random();
 
         // Phase 9 (FIX-PLAN.md): per-Search node pool. Search rebuilds the tree every
@@ -100,7 +103,8 @@ namespace TAC_AI.AI.Forms.Smart.Planning
             for (int i = 0; i < _allAllocatedNodes.Count; i++) _nodePool.Push(_allAllocatedNodes[i]);
         }
 
-        /// <summary>Run search from a fresh root (v0.1.0: tree reuse TODO — rebuild each tick).</summary>
+        /// <summary>Run search from a fresh root. Tree is rebuilt every tick (no reuse); the
+        /// per-tick node pool from <see cref="ReleaseAllToPool"/> keeps that cheap.</summary>
         public PlanLibrary.StrategicPlan Search(StrategicState rootState, CancellationToken cancellation)
         {
             // Recycle all nodes allocated in any previous Search call back to the pool.
@@ -185,17 +189,106 @@ namespace TAC_AI.AI.Forms.Smart.Planning
         private void Expand(PUCTNode node)
         {
             var actions = PlanLibrary.LegalActions(node.State);
-            float uniform = actions.Count > 0 ? 1f / actions.Count : 0f;
-            foreach (var a in actions)
+            if (actions.Count == 0) { node.Expanded = true; return; }
+
+            // Aggregate hostile intent from the sidecar so we can bias plan selection
+            // toward the right macro-response. Null-safe: missing sidecar / no entries
+            // collapses to a flat distribution which makes the prior uniform.
+            float aggressing, retreating, flanking, repositioning, holding, idle;
+            int matched = SampleHostileIntent(node.State,
+                out aggressing, out retreating, out flanking, out repositioning, out holding, out idle);
+
+            float uniform = 1f / actions.Count;
+            float[] priors = new float[actions.Count];
+            float sum = 0f;
+            for (int i = 0; i < actions.Count; i++)
             {
+                float w = matched > 0
+                    ? PriorForPlan(actions[i], aggressing, retreating, flanking, repositioning, holding, idle)
+                    : uniform;
+                if (w < 1e-6f) w = 1e-6f;   // keep every legal action explorable
+                priors[i] = w;
+                sum += w;
+            }
+            if (sum < 1e-6f) { for (int i = 0; i < priors.Length; i++) priors[i] = uniform; sum = 1f; }
+            else { for (int i = 0; i < priors.Length; i++) priors[i] /= sum; }
+
+            for (int i = 0; i < actions.Count; i++)
+            {
+                var a = actions[i];
                 int hash = PlanLibrary.ActionHash(a);
                 if (node.ActionsByHash.ContainsKey(hash)) continue;
                 node.ActionsByHash[hash] = a;
                 node.VisitsByAction[hash] = 0;
                 node.ValueByAction[hash] = 0f;
-                node.PriorByAction[hash] = uniform; // TODO v0.2: learned policy when Learning ships.
+                node.PriorByAction[hash] = priors[i];
             }
             node.Expanded = true;
+        }
+
+        // Pull every hostile's published IntentSnapshot, average the category masses, and
+        // return how many were matched (zero -> fall back to uniform). Categories use the
+        // IntentCategories constants (Aggressing=0..Idle=5). One snapshot per tech; if a
+        // tech isn't in the sidecar we silently skip it (producer hasn't published).
+        private int SampleHostileIntent(StrategicState state,
+            out float aggressing, out float retreating, out float flanking,
+            out float repositioning, out float holding, out float idle)
+        {
+            aggressing = retreating = flanking = repositioning = holding = idle = 0f;
+            var sidecar = SmartRuntime.IntentSidecar;
+            if (sidecar == null || sidecar.Count == 0) return 0;
+
+            int matched = 0;
+            for (int i = 0; i < state.Hostile.Count; i++)
+            {
+                if (!sidecar.TryGet(state.Hostile[i].Id, out IntentSnapshot snap)) continue;
+                float w = Mathf.Clamp01(snap.Confidence);
+                if (w <= 0f) continue;
+                switch (snap.CategoryIndex)
+                {
+                    case IntentCategories.Aggressing:   aggressing   += w; break;
+                    case IntentCategories.Retreating:   retreating   += w; break;
+                    case IntentCategories.Flanking:     flanking     += w; break;
+                    case IntentCategories.Repositioning:repositioning+= w; break;
+                    case IntentCategories.Holding:      holding      += w; break;
+                    case IntentCategories.Idle:         idle         += w; break;
+                    default: continue;
+                }
+                matched++;
+            }
+            if (matched > 0)
+            {
+                float inv = 1f / matched;
+                aggressing *= inv; retreating *= inv; flanking *= inv;
+                repositioning *= inv; holding *= inv; idle *= inv;
+            }
+            return matched;
+        }
+
+        // Hand-crafted intent->plan weight. Aggressing opponents bias toward defense /
+        // disengage; idle/holding opponents bias toward initiative (Engage/Skirmish);
+        // Flanking opponents bias toward Bait + counter-Flank. Numbers are coarse priors
+        // — PUCT visits will dominate once exploration warms.
+        private static float PriorForPlan(PlanLibrary.StrategicPlan a,
+            float aggressing, float retreating, float flanking,
+            float repositioning, float holding, float idle)
+        {
+            float passive = holding + idle;
+            float closing = aggressing + flanking;
+            switch (a.Type)
+            {
+                case PlanLibrary.PlanType.EngageFocused:      return 0.5f + 0.8f * passive + 0.4f * retreating;
+                case PlanLibrary.PlanType.EngageDistributed:  return 0.5f + 0.7f * passive + 0.3f * repositioning;
+                case PlanLibrary.PlanType.Skirmish:           return 0.6f + 0.4f * repositioning + 0.3f * idle;
+                case PlanLibrary.PlanType.Flank:              return 0.5f + 0.6f * (holding + repositioning) + 0.4f * flanking;
+                case PlanLibrary.PlanType.Bait:               return 0.4f + 0.7f * aggressing + 0.5f * flanking;
+                case PlanLibrary.PlanType.DefensivePerimeter: return 0.3f + 0.9f * aggressing + 0.3f * flanking;
+                case PlanLibrary.PlanType.MobileScreen:       return 0.4f + 0.5f * flanking + 0.3f * repositioning;
+                case PlanLibrary.PlanType.FightingRetreat:    return 0.2f + 0.9f * closing;
+                case PlanLibrary.PlanType.Disengage:          return 0.2f + 0.8f * closing + 0.2f * retreating;
+                case PlanLibrary.PlanType.Hold:               return 0.4f + 0.5f * (passive + retreating);
+                default:                                       return 0.5f;
+            }
         }
 
         // Phase 7 (FIX-PLAN.md) — AUDIT R1 2.5: dictionary enumeration order is not

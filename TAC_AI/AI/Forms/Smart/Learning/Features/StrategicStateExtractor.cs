@@ -66,7 +66,12 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
         private readonly WorldModel _world;
         private readonly StrategicStateBuffer _output;
         private readonly NearestTechCache _nearestCache;
-        private readonly TerrainMap _terrainMap;
+        // BUG-048: do NOT hold a captured TerrainMap. PathingService.OnWorldReset
+        // reassigns its _terrain field; a captured reference here would freeze on
+        // the old map and silently poison every per-tech terrain read across mission
+        // transitions. The ctor parameter is retained for ABI / wiring compat but
+        // every Tick reads PathingService.CurrentTerrain live.
+        private readonly TerrainMap _terrainMapCtorRef;
         // HealthSidecar is held for forward compat — the SelfProbeSnapshot already
         // carries HpFraction so the daemon doesn't need to call Get(id) per tick.
         // GetAt(id, monoCutoff, ...) becomes relevant when reserved-shield-charge
@@ -93,7 +98,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
             _world = world;
             _output = output;
             _nearestCache = nearestCache;
-            _terrainMap = terrainMap;
+            _terrainMapCtorRef = terrainMap;
             _health = health;
             _damageHints = damageHints;
             _dealt = dealt;
@@ -106,12 +111,10 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
         // _health as unused. Phase-4 wiring can replace this with real GetAt reads.
         public bool HealthAvailable { get { return _health != null; } }
 
-        // Spawn / recycle hooks. Per F-19: routed through IAIForm.OnTechRecycle by the
-        // wiring phase, NOT Tank.TankRecycledEvent. OnTechSpawn is optional (lazy alloc).
-        public void OnTechSpawn(TechId id)
-        {
-            if (_output != null) _output.OnTechSpawn(id);
-        }
+        // Recycle hook. Per F-19: routed through IAIForm.OnTechRecycle by the wiring
+        // phase, NOT Tank.TankRecycledEvent. BUG-042: OnTechSpawn forwarder removed —
+        // StrategicStateBuffer.OnTechSpawn is wired directly at SmartRuntime, and the
+        // buffer's Publish path is lazy-alloc anyway.
         public void OnTechRecycle(TechId id)
         {
             if (_output != null) _output.OnTechRecycle(id);
@@ -156,7 +159,6 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
         {
             CancellationHelpers.ThrowIfCancelled(cancellation);
             long tickStartStopwatch = System.Diagnostics.Stopwatch.GetTimestamp();
-            long nowMono = MonoClock.Now();
 
             // §4.2 step 0: read the world belief snapshot. F-11: WorldModel.FusedBuffer
             // is the PUBLIC accessor; AetherFuser._snapshotBuffer is private.
@@ -170,7 +172,11 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
             // §4.2 terrain-fresh gate per F-07 / R2-03. Until the first MainThreadTick
             // pass populates the grid every query returns ±Inf/NaN-y values; daemon
             // must skip the tick rather than poison the vector.
-            bool terrainReady = _terrainMap != null && !_terrainMap.IsFreshlyAllocated;
+            // BUG-048: read PathingService.CurrentTerrain live every tick — the ctor's
+            // captured reference goes stale when PathingService.OnWorldReset swaps in
+            // a fresh TerrainMap across mission transitions.
+            TerrainMap terrainMap = PathingService.CurrentTerrain ?? _terrainMapCtorRef;
+            bool terrainReady = terrainMap != null && !terrainMap.IsFreshlyAllocated;
             if (!terrainReady)
             {
                 AccumulateTickDiagnostics(tickStartStopwatch, 0, 1, 0);
@@ -205,13 +211,18 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
                     SelfProbeSnapshot selfProbe = probe.TryRead();
                     if (selfProbe == null) { skippedNoProbe++; continue; }
 
+                    // Stamp per-tech publish time so each vector's window math runs against
+                    // the moment the vector was actually built (~30 techs × 33 ms tick = a
+                    // ~1 ms drift between first/last tech otherwise).
+                    long nowMono = MonoClock.Now();
+
                     // §6.5 lifecycle-race: vector carries the probe's Generation; readers
                     // discard stale generations.
                     var vec = new StrategicStateVector(
                         techId, selfBelief.Team, nowMono, selfProbe.Generation);
 
                     // Per-tech fill — every slot derived from snapshots above.
-                    FillVector(vec, snapshot, selfBelief, selfProbe);
+                    FillVector(vec, snapshot, selfBelief, selfProbe, terrainMap);
 
                     // §4.2 step 8: NaN/Inf scrub before atomic publish. Last write into
                     // Raw[] before Write.
@@ -229,7 +240,8 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
 
         private void FillVector(
             StrategicStateVector vec, BeliefSnapshot snapshot,
-            BeliefState selfBelief, SelfProbeSnapshot selfProbe)
+            BeliefState selfBelief, SelfProbeSnapshot selfProbe,
+            TerrainMap terrainMap)
         {
             // K-nearest queries. K=1 hostile + K=1 friendly per plan §4.2; the
             // reserved-multi-target [110..119] AV block can be wired to K=3 later.
@@ -244,8 +256,8 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
             // Pseudocode in plan uses `.xz`; Unity 4.6.1 has no swizzle so materialize
             // Vector2 explicitly.
             Vector2 selfXZ = new Vector2(selfBelief.PositionMean.x, selfBelief.PositionMean.z);
-            float selfSlope = _terrainMap.SlopeAt(selfXZ);
-            float selfTerrainH = _terrainMap.HeightAt(selfXZ);
+            float selfSlope = terrainMap.SlopeAt(selfXZ);
+            float selfTerrainH = terrainMap.HeightAt(selfXZ);
             float selfHeightAboveTerrain = selfBelief.PositionMean.y - selfTerrainH;
 
             float tgtSlope = 0f;
@@ -255,10 +267,10 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
             if (hasHostile && hostile.Belief != null)
             {
                 Vector2 tgtXZ = new Vector2(hostile.Belief.PositionMean.x, hostile.Belief.PositionMean.z);
-                tgtSlope = _terrainMap.SlopeAt(tgtXZ);
-                tgtTerrainH = _terrainMap.HeightAt(tgtXZ);
+                tgtSlope = terrainMap.SlopeAt(tgtXZ);
+                tgtTerrainH = terrainMap.HeightAt(tgtXZ);
                 tgtHeightAboveTerrain = hostile.Belief.PositionMean.y - tgtTerrainH;
-                losBlocked = _terrainMap.RaycastSegment(selfBelief.PositionMean, hostile.Belief.PositionMean) ? 1f : 0f;
+                losBlocked = terrainMap.RaycastSegment(selfBelief.PositionMean, hostile.Belief.PositionMean) ? 1f : 0f;
             }
 
             // Recent-damage / fire windows. Per F-05 / R2-09 the new sidecar APIs take
@@ -324,14 +336,15 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
                 cargoNum, cargoCap, cargoFill, cargoValue);
 
             // ---- Residual block (48 dims; §3.4) -------------------------------
-            // §4.3 + §3.4: Residual is FIRE-TIME-CAPTURED — populated when the
-            // ContinuousController fire-commit site widens LeadResidualRecorder.Pending
-            // with the FireTimeFeatures array (plan §4.4 readers section + R2-04).
-            // The daemon does NOT pre-fill Residual on every tick; slots stay zero
-            // until the fire-time capture path passes the slice to OnFireCommit.
-            // Per §3.4 closing note: input dims at fire = [0..34]; reserved [35..47]
-            // stay zero on forward. We leave the whole 48-slot block zero here; the
-            // capture path is the only writer. Documented for the wiring phase.
+            // §3.4: input dims [0..34] = projection geometry + shooter/target kinematics
+            // + weapon spec + cached LinearExtrap. The daemon pre-fills these every tick
+            // against the K-nearest hostile so the ContinuousController fire-commit
+            // slicer (ExtractResidualSlice) hands the recorder a non-zero feature vector.
+            // ProjTime + LinearExtrap are recomputed at the actual fire moment by the
+            // recorder if it cares; the daemon's per-tick value is the K-nearest proxy.
+            // Reserved [35..47] stay zero — no formula in §3.6.
+            FillResidualSlots(vec, selfBelief, selfProbe, hostile, hasHostile,
+                selfSlope, selfHeightAboveTerrain, tgtSlope, tgtHeightAboveTerrain, losBlocked);
 
             // ---- Threat block (48 dims; §3.5) ---------------------------------
             // Per §4.4 + R2-11: subject == attacker from the consumer's POV. Slope/
@@ -590,6 +603,104 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
             // formula in §4.3. Zero.
         }
 
+        // --- Residual block (48 dims) ---------------------------------------------
+        // Per §3.4: input dims [0..34] populated each tick against the K-nearest
+        // hostile as the per-tick proxy target. The fire-commit recorder slice this
+        // out at the actual fire moment via ContinuousController.ExtractResidualSlice
+        // so the residual model trains against a non-zero feature vector. Reserved
+        // [35..47] stay zero.
+        private static void FillResidualSlots(
+            StrategicStateVector vec,
+            BeliefState selfBelief, SelfProbeSnapshot selfProbe,
+            NearestTechCache.KNearestResult target, bool hasTarget,
+            float selfSlope, float selfHeightAboveTerrain,
+            float tgtSlope, float tgtHeightAboveTerrain, float losBlocked)
+        {
+            float[] raw = vec.Raw;
+            int B = StrategicStateVector.ResidualBase;
+
+            // Projection geometry [0..7]. Distance + ProjTime + LosUnit + LosBlocked are
+            // the v0.1 6-slot baseline. ElapsedSec is fire-time-only — stays zero here.
+            float muzzleProxy = selfProbe.WeaponAggregate.MuzzleVelMean;
+            if (hasTarget && target.Belief != null)
+            {
+                Vector3 toTarget = target.Belief.PositionMean - selfBelief.PositionMean;
+                float dist = toTarget.magnitude;
+                raw[B + ResidualSlots.DistAtFire] = dist;
+                if (muzzleProxy > 1e-3f)
+                    raw[B + ResidualSlots.ProjTimeOfFlight] = dist / muzzleProxy;
+                if (dist > 1e-3f)
+                {
+                    Vector3 los = toTarget / dist;
+                    raw[B + ResidualSlots.LosUnitVecX] = los.x;
+                    raw[B + ResidualSlots.LosUnitVecY] = los.y;
+                    raw[B + ResidualSlots.LosUnitVecZ] = los.z;
+                }
+                raw[B + ResidualSlots.LosBlockedAtFire] = losBlocked;
+                raw[B + ResidualSlots.TargetSightCode] = SightCode(target.Belief.Sight);
+            }
+
+            // Shooter kinematics [8..15].
+            raw[B + ResidualSlots.ShooterSpeed] = selfBelief.VelocityMean.magnitude;
+            raw[B + ResidualSlots.ShooterHeadingSin] = Mathf.Sin(selfBelief.HeadingMean);
+            raw[B + ResidualSlots.ShooterHeadingCos] = Mathf.Cos(selfBelief.HeadingMean);
+            raw[B + ResidualSlots.ShooterAngVelZ] = selfProbe.AngularVelocityWorld.y;
+            // ShooterAccelMag — KinematicTracker isn't on the snapshot; use belief's
+            // MaxAccelerationEstimate as the per-tick proxy (matches §4.3 fallback).
+            raw[B + ResidualSlots.ShooterAccelMag] = selfBelief.MaxAccelerationEstimate;
+            raw[B + ResidualSlots.ShooterSlopeUnder] = selfSlope;
+            raw[B + ResidualSlots.ShooterHeightAboveTerrain] = selfHeightAboveTerrain;
+            raw[B + ResidualSlots.ShooterAnchored] = AnchorCode(selfProbe.AnchorState);
+
+            // Target kinematics [16..23].
+            if (hasTarget && target.Belief != null)
+            {
+                BeliefState tb = target.Belief;
+                raw[B + ResidualSlots.TargetSpeed] = tb.VelocityMean.magnitude;
+                raw[B + ResidualSlots.TargetHeadingSin] = Mathf.Sin(tb.HeadingMean);
+                raw[B + ResidualSlots.TargetHeadingCos] = Mathf.Cos(tb.HeadingMean);
+                raw[B + ResidualSlots.TargetAccelEstMag] = tb.MaxAccelerationEstimate;
+                raw[B + ResidualSlots.TargetAge] = tb.AgeSeconds;
+                raw[B + ResidualSlots.TargetUncertaintyM] = tb.UncertaintyMeters;
+                raw[B + ResidualSlots.TargetSlopeUnder] = tgtSlope;
+                raw[B + ResidualSlots.TargetHeightAboveTerrain] = tgtHeightAboveTerrain;
+            }
+
+            // Weapon spec [24..31]. Per-weapon spec isn't on the snapshot; the daemon
+            // uses the WeaponAggregate as a per-tick proxy (matches BUG-009 plan §3.4
+            // closing — "shooter's predicted impact point at fire" is fire-time-only,
+            // arc/kind codes are weapon-specific, so use aggregates as the proxy).
+            var agg = selfProbe.WeaponAggregate;
+            raw[B + ResidualSlots.WeaponMuzzleVel] = agg.MuzzleVelMean;
+            raw[B + ResidualSlots.WeaponRange] = agg.RangeMax;
+            // YawArcRad / PitchArcRad are per-weapon-spec; aggregate has no field —
+            // leave zero. KindMix gives the categorical mix proxy.
+            raw[B + ResidualSlots.WeaponIsEnergy] = agg.EnergyWeaponFraction;
+            raw[B + ResidualSlots.WeaponFireRateHz] = agg.FireRateMean;
+            raw[B + ResidualSlots.WeaponDamagePerShot] = agg.DamagePerShotMean;
+            // WeaponKindCode: GunFixed=1, GunTurret=2, Beam=3 normalized /3. Mix proxy.
+            float kindCode = agg.KindMixGun + 2f * agg.KindMixBeamMelee;
+            raw[B + ResidualSlots.WeaponKindCode] = kindCode / 3f;
+
+            // LinearExtrapXYZ [32..34] — predicted impact at fire. Daemon proxy is
+            // target_pos + target_vel * ProjTime (linear-coast lead). The recorder
+            // replaces with the actual fire-time prediction.
+            if (hasTarget && target.Belief != null && muzzleProxy > 1e-3f)
+            {
+                Vector3 tp = target.Belief.PositionMean;
+                Vector3 tv = target.Belief.VelocityMean;
+                float dist = (tp - selfBelief.PositionMean).magnitude;
+                float tof = dist / muzzleProxy;
+                Vector3 extrap = tp + tv * tof;
+                raw[B + ResidualSlots.LinearExtrapX] = extrap.x;
+                raw[B + ResidualSlots.LinearExtrapY] = extrap.y;
+                raw[B + ResidualSlots.LinearExtrapZ] = extrap.z;
+            }
+
+            // Reserved [35..47] — projectile-physics / wind-state / multi-shooter.
+            // No formula in §3.6. Zero.
+        }
+
         // --- Threat block (48 dims) -----------------------------------------------
 
         private static void FillThreatSlots(
@@ -670,10 +781,12 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
                 // Attacker forward dot toward victim — uses selfProbe.ForwardWorld.
                 Vector3 toVictim = attacker.Belief.PositionMean - selfProbe.PositionWorld;
                 float toV = toVictim.magnitude;
+                Vector3 losDir = Vector3.zero;
                 if (toV > 1e-3f)
                 {
+                    losDir = toVictim / toV;
                     raw[B + ThreatSlots.AttackerHeadingTowardVictimDot] =
-                        Vector3.Dot(selfProbe.ForwardWorld, toVictim / toV);
+                        Vector3.Dot(selfProbe.ForwardWorld, losDir);
                 }
                 raw[B + ThreatSlots.LosBlockedToVictim] = losBlocked;
                 // WeaponInRange: distance <= RangeMax?
@@ -684,19 +797,17 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
                 raw[B + ThreatSlots.AttackerAimableFlag] =
                     (losBlocked < 0.5f && rmax > 0f && attacker.SqrDistance <= rmax * rmax) ? 1f : 0f;
 
-                // VictimWeakFaceTowardAttackerDot — requires the victim's ArmorMap
-                // queried against the attacker→victim direction in the victim's
-                // local frame. We only have victimProbe when the victim is on a
-                // Smart team. When present, query its ArmorMap; otherwise leave 0.
-                if (victimProbe != null && victimProbe.Armor != null && victimProbe.Armor != ArmorMap.Empty)
+                // VictimWeakFaceTowardAttackerDot — must match the training-time
+                // formula in LearningService.BuildThreatEventFeatures: dot against
+                // -losDir (the geometric victim→attacker ray), NOT -attacker.forward.
+                // BUG-072: prior code used selfProbe.ForwardWorld which only matches
+                // training when the attacker is facing its target exactly. Align to
+                // the geometric ray so train/infer feature distributions agree.
+                if (victimProbe != null && victimProbe.Armor != null && victimProbe.Armor != ArmorMap.Empty
+                    && toV > 1e-3f)
                 {
-                    // The probe-side weakFaceNormalWorld is the baseline (forward-
-                    // attack) face. A precise per-attacker query needs to rotate
-                    // toVictim into the victim's local frame; the daemon doesn't
-                    // own the victim's rotation. Best-effort: dot against attacker
-                    // forward (a coarse proxy).
                     raw[B + ThreatSlots.VictimWeakFaceTowardAttackerDot] =
-                        Vector3.Dot(victimProbe.WeakFaceNormalWorld, -selfProbe.ForwardWorld);
+                        Vector3.Dot(victimProbe.WeakFaceNormalWorld, -losDir);
                 }
             }
             // §4.4 + R2-11: when a downstream consumer calls Read(victimId), it
@@ -766,7 +877,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
                 double avgMs = _windowSumStopwatchTicks * 1000.0 * MonoClock.TickFreq / _windowTickCount;
                 double maxMs = _windowMaxStopwatchTicks * 1000.0 * MonoClock.TickFreq;
                 DebugTAC_AI.Log(string.Format(
-                    "Smart.StrategicStateExtractor[diag] ticks={0} avg={1:F2}ms max={2:F2}ms published={3} terrainStale={4} noProbe={5}",
+                    "Smart.StrategicStateExtractor[diag] ticks={0} avg={1:F2}ms max={2:F2}ms publishedTechs={3} terrainStaleTicks={4} noProbeTechs={5}",
                     _windowTickCount, avgMs, maxMs,
                     _windowTechsPublished, _windowSkippedTerrainStale, _windowSkippedNoProbe));
                 _windowTickCount = 0;

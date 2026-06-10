@@ -667,15 +667,15 @@ namespace TAC_AI
         }
 
         /// <summary>
-        /// WIP
+        /// Position-aware overload: routes the scene position through PlayerCanDetectTile
+        /// so techs in unrevealed tiles get RadarTypes.Hidden by default. Falls through to
+        /// the (ID, show, anchored) overload with the fog-of-war answer.
         /// </summary>
-        /// <param name="posScene"></param>
-        /// <param name="anchored"></param>
-        /// <returns></returns>
         public static RadarTypes DetermineRadarType(int ID, Vector3 posScene, bool anchored)
         {
             WorldPosition WP = WorldPosition.FromScenePosition(posScene);
-            return DetermineRadarType(ID, true, anchored);
+            bool show = PlayerCanDetectTile(WP.TileCoord);
+            return DetermineRadarType(ID, show, anchored);
         }
         public static RadarTypes DetermineRadarType(int ID, bool show, bool anchored)
         {

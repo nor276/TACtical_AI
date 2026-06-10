@@ -936,6 +936,12 @@ namespace TAC_AI.Templates
                     try
                     {
                         Tank tank = techsTracker[step];
+                        // Director scenario techs are operator-curated population — their
+                        // count is governed by the scenario, not the ambient world cap, so
+                        // skip them here instead of culling them out from under the operator.
+                        if (TAC_AI.AI.Forms.Smart.Director.DirectorState.ScenarioOwnedTechs.ContainsKey(
+                                TAC_AI.AI.Forms.Smart.World.TechId.FromTank(tank).Value))
+                            continue;
                         float sqrMag = (tank.boundsCentreWorldNoCheck - playerTank.boundsCentreWorldNoCheck).sqrMagnitude;
                         if (AIGlobals.TechIsSafelyRemoveable(tank))
                         {

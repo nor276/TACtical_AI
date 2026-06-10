@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using TAC_AI.AI.Forms.Smart.Threading;
 using TAC_AI.AI.Forms.Smart.World;
 
@@ -25,11 +26,18 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     /// Opponent intent classifier — single-layer GRU(64) → Dense(6) → Softmax.
     /// Per LEARNING-CONTRACT §3.1.
     ///
-    /// v0.1.0 HONESTY: forward pass + the Dense output head's training are fully
-    /// implemented; the GRU recurrent state's parameters (W_r/U_r/b_r/W_z/U_z/b_z/W_h/U_h/b_h)
-    /// are frozen — BPTT through them is TODO v0.2. The model still produces non-trivial
-    /// per-sequence outputs (the dense head learns over the GRU's projected hidden state).
-    /// This satisfies the "untrained" workflow gate without implementing the full BPTT machinery.
+    /// Training paths: the active branch is full BPTT (P8 Item 19 / migration
+    /// M0002_BpttUnfreeze) — all 9 GRU gate parameters (W_r/U_r/b_r/W_z/U_z/b_z/
+    /// W_h/U_h/b_h) plus the Dense head (W_o/b_o) update each minibatch via
+    /// <see cref="TrainOneMinibatch_FullBptt"/>. The dense-head-only path is
+    /// preserved at <see cref="TrainOneMinibatch_DenseOnly"/> as a one-flip revert
+    /// behind <c>LearningTuning.UseFullBPTT</c> for CircuitBreaker recovery when
+    /// the BPTT trainer NaN-trips.
+    ///
+    /// Consumption: <see cref="Evaluate"/> produces a per-target intent distribution
+    /// for the SmartRuntime.IntentSidecar registry; today there is no in-tree caller
+    /// — the v0.3 identity-classifier (RepairSupportGoalSource etc.) is the planned
+    /// reader. The sidecar wiring at SmartRuntime is producer-only today. See BUG-063.
     /// </summary>
     public sealed class OpponentIntentClassifier : ILearnedModel
     {
@@ -60,6 +68,58 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         // L-013: per-model save mutex; TrainerWorker locks around TrainOneMinibatch.
         private readonly object _saveMutex = new object();
         public object SaveMutex => _saveMutex;
+
+        // Director freeze ticket. Plain long with Interlocked accessors —
+        // volatile long is illegal CS0677.
+        private long _frozenUntilTickMono;
+        public bool Frozen
+        {
+            get { return System.Threading.Interlocked.Read(ref _frozenUntilTickMono) > TAC_AI.AI.Forms.Smart.World.MonoClock.Now(); }
+        }
+        public long FrozenUntilTickMono
+        {
+            get { return System.Threading.Interlocked.Read(ref _frozenUntilTickMono); }
+            set { System.Threading.Interlocked.Exchange(ref _frozenUntilTickMono, value); }
+        }
+        public void LoadAdamState(AdamSnapshot snap)
+        {
+            if (snap.M == null || snap.V == null) return;
+            lock (_saveMutex)
+            {
+                if (snap.M.Length == _adam.M.Length) Array.Copy(snap.M, _adam.M, snap.M.Length);
+                if (snap.V.Length == _adam.V.Length) Array.Copy(snap.V, _adam.V, snap.V.Length);
+                _adam.T = snap.T;
+                _adam.LearningRate = snap.LR;
+            }
+        }
+        public AdamSnapshot GetAdamSnapshot()
+        {
+            lock (_saveMutex)
+            {
+                return new AdamSnapshot(
+                    (float[])_adam.M.Clone(),
+                    (float[])_adam.V.Clone(),
+                    _adam.T, _adam.LearningRate, _adam.BaseLearningRate);
+            }
+        }
+        public void ReadAdamMoments(float[] mDest, float[] vDest, out long T, out float lr, out float baseLr)
+        {
+            lock (_saveMutex)
+            {
+                if (mDest != null && mDest.Length >= _adam.M.Length) Array.Copy(_adam.M, mDest, _adam.M.Length);
+                if (vDest != null && vDest.Length >= _adam.V.Length) Array.Copy(_adam.V, vDest, _adam.V.Length);
+                T = _adam.T;
+                lr = _adam.LearningRate;
+                baseLr = _adam.BaseLearningRate;
+            }
+        }
+        public void DrainOneMinibatchDiscard()
+        {
+            // Drop up to a minibatch's worth of queued events so the queue doesn't
+            // grow unbounded while the model is soft-frozen.
+            IntentEvent _;
+            for (int i = 0; i < MinibatchSize; i++) { if (!_events.TryDequeue(out _)) break; }
+        }
 
         // Offsets — three gates of (W: H*F, U: H*H, b: H).
         private readonly int _wrOff, _urOff, _brOff;
@@ -227,8 +287,18 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             while (n < MinibatchSize && _events.TryDequeue(out var ev)) batch[n++] = ev;
             if (n == 0) return TrainStepResult.Empty;
 
+            // Snapshot tau once per batch — torn reads mid-batch would mix two regimes
+            // inside one Adam step. Both LossBefore and LossAfter use this local.
+            float tau = Volatile.Read(ref LearningTuning.IntentTemperature);
+            if (tau < 1e-3f || float.IsNaN(tau)) tau = 1f;
+            float invTau = 1f / tau;
+
             var grad = new float[_totalParams];
             float lossBefore = 0f;
+            // Aggregated normalised Shannon entropy for the entropy reservoir push.
+            float entropySum = 0f;
+            int entropyCount = 0;
+            bool degenerate = false;
 
             // Cache + scratch buffers — reused across the minibatch (allocation-free per event).
             var cache = GruBackprop.AllocateCache(SeqLen, Hidden);
@@ -253,10 +323,24 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 GruBackprop.Forward(_params, ev.Sequence, SeqLen, FeatureDim, Hidden, offsets, cache);
                 var hT = cache[SeqLen - 1].H;
 
-                // 2. Dense head forward.
+                // 2. Dense head forward + tau-scaled softmax.
                 MlpUtil.MatMulAdd(_params, _woOff, _params, _boOff, hT, logits, Hidden, OutDim);
-                for (int o = 0; o < OutDim; o++) probs[o] = logits[o];
+                for (int o = 0; o < OutDim; o++) probs[o] = logits[o] * invTau;
                 MlpUtil.Softmax(probs, OutDim);
+
+                // Telemetry push: Shannon entropy / ln(OutDim). Degenerate sum<1e-12 flags
+                // INSUFFICIENT_DATA. Softmax has already normalized; we still verify.
+                float sum = 0f;
+                for (int o = 0; o < OutDim; o++) sum += probs[o];
+                if (sum < 1e-12f)
+                {
+                    degenerate = true;
+                }
+                else
+                {
+                    entropySum += NormalizedShannonEntropy(probs, OutDim);
+                    entropyCount++;
+                }
 
                 lossBefore += MlpUtil.CrossEntropy(probs, ev.Label);
 
@@ -291,15 +375,51 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             _adam.Step(_params, grad);
             _publishedParams.Write(Clone(_params));
 
+            // LossAfter inlined — must reuse the same tau or LossBefore/LossAfter compare
+            // different regimes. Re-run forward on updated params with the captured tau.
             float lossAfter = 0f;
             for (int i = 0; i < n; i++)
             {
                 if ((uint)batch[i].Label >= (uint)OutDim) continue;
-                var afterProbs = Evaluate(batch[i].Sequence);
-                lossAfter += MlpUtil.CrossEntropy(afterProbs, batch[i].Label);
+                GruBackprop.Forward(_params, batch[i].Sequence, SeqLen, FeatureDim, Hidden, offsets, cache);
+                var hT2 = cache[SeqLen - 1].H;
+                MlpUtil.MatMulAdd(_params, _woOff, _params, _boOff, hT2, logits, Hidden, OutDim);
+                for (int o = 0; o < OutDim; o++) probs[o] = logits[o] * invTau;
+                MlpUtil.Softmax(probs, OutDim);
+                lossAfter += MlpUtil.CrossEntropy(probs, batch[i].Label);
             }
             lossAfter /= n;
+
+            // Telemetry: push mean normalised entropy for this batch into the reservoir.
+            if (entropyCount > 0 && !degenerate)
+            {
+                Director.TrainerStats.EntropyPush(ModelId.Intent, entropySum / entropyCount);
+            }
+            else if (degenerate)
+            {
+                DebugTAC_AI.LogWarnFileOnly("intent-softmax-degenerate",
+                    "[AIWARN] OpponentIntentClassifier: degenerate softmax sum<1e-12 in batch — INSUFFICIENT_DATA for entropy reservoir");
+            }
+
             return new TrainStepResult(lossBefore, lossAfter, n);
+        }
+
+        /// <summary>
+        /// Shannon entropy / ln(OutDim) — NaN-safe (p[i] <= 1e-9 contributes 0).
+        /// </summary>
+        private static float NormalizedShannonEntropy(float[] p, int len)
+        {
+            float h = 0f;
+            for (int i = 0; i < len; i++)
+            {
+                float pi = p[i];
+                if (pi <= 1e-9f) continue;
+                h -= pi * (float)Math.Log(pi);
+            }
+            // ln(OutDim=6) = 1.7918... — but use the formula so it stays robust if OutDim moves.
+            float lnLen = (float)Math.Log(len);
+            if (lnLen <= 1e-9f) return 0f;
+            return h / lnLen;
         }
 
         /// <summary>
@@ -351,8 +471,13 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         public void LoadParameters(float[] src)
         {
             if (src == null || src.Length != _params.Length) throw new ArgumentException("IntentClassifier: parameter length mismatch.");
-            Array.Copy(src, _params, _params.Length);
-            _publishedParams.Write(Clone(_params));
+            // Lock so a Director rollback / SnapshotManager restore can't race the
+            // trainer's _publishedParams.Write mid-copy.
+            lock (_saveMutex)
+            {
+                Array.Copy(src, _params, _params.Length);
+                _publishedParams.Write(Clone(_params));
+            }
         }
 
         /// <summary>

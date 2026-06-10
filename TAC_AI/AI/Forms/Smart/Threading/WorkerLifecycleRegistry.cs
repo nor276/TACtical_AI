@@ -156,6 +156,10 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                 }
 
                 // Phase 3: verify registry is empty. Any straggler is an invariant violation.
+                // BUG-080: also DROP stragglers from _live + Dispose their CTS. Without this
+                // a straggler stayed pinned forever; on the next Init a stale handle's name
+                // prefix could false-positive DaemonWatchdog.IsAliveByLabel and suppress
+                // legitimate respawns. Logging the invariant violation is retained.
                 lock (_lock)
                 {
                     if (_live.Count > 0)
@@ -165,7 +169,9 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                             DebugTAC_AI.LogError(
                                 "Smart.Threading: worker '" + straggler.Name +
                                 "' still registered after CancelAllAndJoin.");
+                            try { straggler.Cts?.Dispose(); } catch { /* best-effort */ }
                         }
+                        _live.Clear();
                     }
                 }
             }

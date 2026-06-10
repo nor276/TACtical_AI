@@ -65,6 +65,12 @@ namespace TAC_AI.AI.Forms.Smart.World
         private readonly ConcurrentDictionary<TechId, Action> _subs =
             new ConcurrentDictionary<TechId, Action>();
 
+        // BUG-052: shadow Tank map so Clear() / form-swap can iterate per-tech and call
+        // the matching Unsubscribe with the live TechWeapon. Without it we drop closures
+        // but leave them on each live TechWeapon.WeaponsFiredEvent multicast list.
+        private readonly ConcurrentDictionary<TechId, TechWeapon> _wiredWeapons =
+            new ConcurrentDictionary<TechId, TechWeapon>();
+
         // L-028 ITechSidecar wiring.
         public string Name => "WeaponFireBuffer";
         public IReadOnlyCollection<TechId> SnapshotKeys()
@@ -106,6 +112,7 @@ namespace TAC_AI.AI.Forms.Smart.World
             TechId capturedId = attackerId;
             Action handler = () => RecordFireEvent(capturedId, MonoClock.Now());
             _subs[attackerId] = handler;
+            _wiredWeapons[attackerId] = weapons;
             weapons.WeaponsFiredEvent.Subscribe(handler);
         }
 
@@ -124,19 +131,64 @@ namespace TAC_AI.AI.Forms.Smart.World
             Action prior;
             if (_subs.TryRemove(attackerId, out prior) && weapons != null)
                 weapons.WeaponsFiredEvent.Unsubscribe(prior);
+            _wiredWeapons.TryRemove(attackerId, out _);
         }
 
         public void Forget(TechId attackerId)
         {
-            Action prior;
-            // Subscription drop without the TechWeapon ref — the engine clears
-            // delegate lists on tech destroy; leaking the closure here is bounded by
-            // the Forget call from TechLifecycleRegistry.
-            _subs.TryRemove(attackerId, out prior);
-            Ring _; _byTech.TryRemove(attackerId, out _);
+            // BUG-052: route through the shadow map when present so the engine's delegate
+            // list is properly cleaned. Falls back silently when the weapon ref is gone.
+            TechWeapon weapons;
+            if (_wiredWeapons.TryRemove(attackerId, out weapons) && weapons != null)
+            {
+                Action prior;
+                if (_subs.TryRemove(attackerId, out prior))
+                {
+                    try { weapons.WeaponsFiredEvent.Unsubscribe(prior); }
+                    catch { /* engine may have purged the multicast list */ }
+                }
+            }
+            else
+            {
+                Action discardedAction;
+                _subs.TryRemove(attackerId, out discardedAction);
+            }
+            Ring discardedRing;
+            _byTech.TryRemove(attackerId, out discardedRing);
         }
 
-        public void Clear() { _byTech.Clear(); _subs.Clear(); }
+        /// <summary>
+        /// BUG-052: matched-pair teardown — iterate every live (TechId, TechWeapon)
+        /// wiring and call Unsubscribe with the IDENTICAL Action so the engine's
+        /// multicast list releases the closure. Without this, form-swap Smart→Vanilla
+        /// leaves every per-tech subscription pinned to a dead WeaponFireBuffer.
+        /// MAIN-THREAD ONLY — touches Unity components.
+        /// </summary>
+        public void DetachAll()
+        {
+            var ids = new List<TechId>(_wiredWeapons.Keys);
+            for (int i = 0; i < ids.Count; i++)
+            {
+                TechWeapon w;
+                if (!_wiredWeapons.TryRemove(ids[i], out w)) continue;
+                Action prior;
+                if (_subs.TryRemove(ids[i], out prior) && w != null)
+                {
+                    try { w.WeaponsFiredEvent.Unsubscribe(prior); }
+                    catch { /* engine may have already purged */ }
+                }
+            }
+        }
+
+        public void Clear()
+        {
+            // BUG-052: detach live subscriptions before dropping the dicts so per-tank
+            // TechWeapon.WeaponsFiredEvent doesn't walk a dead closure on the next shot.
+            DetachAll();
+            _byTech.Clear();
+            _subs.Clear();
+            _wiredWeapons.Clear();
+        }
 
         public int AttackerCount => _byTech.Count;
     }

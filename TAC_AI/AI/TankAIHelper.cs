@@ -339,7 +339,47 @@ namespace TAC_AI.AI
         /// IN WORLD SPACE
         /// Handles all Core decisions
         /// </summary>
-        internal Vector3 lastDestinationCore => ControlCore.lastDestination;// Vector3.zero;    // Where we drive to in the world
+        public Vector3 lastDestinationCore => ControlCore.lastDestination;// Vector3.zero;    // Where we drive to in the world
+
+        // Cargo fill fraction. Main-thread accessor used by IdleGatherer sane-exception +
+        // the OverdueDelivery soft-correct path. Delegates to CargoStatePublisher (which
+        // owns the GetTotalCapacityForLimiter sum + chunk-count maintenance via
+        // tank.Holders events) when wired; falls back to a direct holder walk when the
+        // publisher is not up. SelfProbeSnapshot.CargoNumContents / CargoCapacity is the
+        // bg-thread path.
+        public float GetCargoFraction()
+        {
+            if (tank == null) return 0f;
+            var cargo = TAC_AI.AI.Forms.Smart.SmartRuntime.CargoState;
+            if (cargo != null)
+            {
+                var snap = cargo.GetSnapshot(TAC_AI.AI.Forms.Smart.World.TechId.FromTank(tank));
+                if (snap.CapacityChunks > 0) return (float)snap.NumChunks / snap.CapacityChunks;
+            }
+            if (tank.Holders == null) return 0f;
+            int cap = 0;
+            try
+            {
+                foreach (var holder in tank.Holders)
+                {
+                    if (holder == null) continue;
+                    cap += holder.GetTotalCapacityForLimiter();
+                }
+            }
+            catch { return 0f; }
+            if (cap <= 0) return 0f;
+            int contents = 0;
+            try
+            {
+                foreach (var holder in tank.Holders)
+                {
+                    if (holder == null) continue;
+                    if (!holder.IsEmpty) contents += 1;
+                }
+            }
+            catch { return 0f; }
+            return Mathf.Clamp01((float)contents / cap);
+        }
 
         internal float lastOperatorRange { get { return _lastOperatorRange; } private set { _lastOperatorRange = value; } }
         internal float _lastOperatorRange = 0;   // v2: internal so the detached ModifiedNavi brain writes it directly
@@ -366,6 +406,48 @@ namespace TAC_AI.AI
 
         internal float EstTopSped = 0;
         internal float recentSpeed = 1;
+        // Guard-window rings. 4 Hz writer, 480 slots = 120 s (sized for Homesickness).
+        // recentSpeedSigned = Dot(velocity, forward). recentSpeedXZ = horizontal speed.
+        // recentSpeedY = vertical component (Aviator pathology). All filled main-thread
+        // inside UpdatePhysicsInfo via _recentSpeedNextCheck gate. GuardWorker reads via
+        // window-mean / window-fraction helpers; never writes.
+        internal const int GuardRingDepth = 480;
+        internal const float GuardRingTickSec = 0.25f;
+        internal readonly float[] recentSpeedSigned = new float[GuardRingDepth];
+        internal readonly float[] recentSpeedXZ = new float[GuardRingDepth];
+        internal readonly float[] recentSpeedY = new float[GuardRingDepth];
+        internal int recentSpeedCursor = 0;
+        internal bool recentSpeedWrapped = false;
+        internal float recentSpeedNextCheck = 0f;
+        // Net-progress ring (1 Hz; 30 slots = 30 s rolling). True = made net progress in the
+        // last StuckNetProgressWindow. Advanced when netProgressNextCheck fires.
+        internal const int NetProgressRingDepth = 30;
+        internal readonly bool[] _netProgressRing = new bool[NetProgressRingDepth];
+        internal int _netProgressCursor = 0;
+        internal bool _netProgressWrapped = false;
+        // Volatile companion for FrustrationMeter so GuardWorker (bg) can read without a
+        // torn-read on 32-bit JIT. Written main-thread inside UpdatePhysicsInfo.
+        internal volatile int PublishedFrustrationMeter = 0;
+        // Telemetry-only sidecar fields for guards. Long writes are not atomic on 32-bit
+        // x86 - use Interlocked.Exchange to write and Interlocked.Read to read from the bg
+        // guard worker.
+        internal long LastBlockDeliveredMono = 0L;
+        internal long LastAllySightingMono = 0L;
+        internal int AssignedAllyTechId = 0;
+        // MoveStyle cache for guard-side identity hints. 0 = unset; values stamped by
+        // HandlingDetermine path. Guards read for documentation only.
+        internal byte CachedMoveStyle = 0;
+        // Per-tech hard-correct goal mailbox. Indexed by (byte)GuardOrdinal, restricted to
+        // hard-correct ordinals (slot 0 = GroundedAircraft, slot 1 reserved). Slots are
+        // reference cells written by GuardCorrectiveActuator via Interlocked.Exchange and
+        // read by ContinuousController on the main thread. Soft / observe guards have NO
+        // slot - telemetry-only.
+        public const int HardCorrectGuardCount = 2;
+        public readonly TAC_AI.AI.Forms.Smart.Director.Guards.GuardInjectedGoalSlot[] GuardInjectedGoals
+            = new TAC_AI.AI.Forms.Smart.Director.Guards.GuardInjectedGoalSlot[HardCorrectGuardCount];
+        // Last goal kind the controller actually applied after a hard-correct substitution.
+        // Kinematic-detection sidecar for GuardCorrectionInjected attribution.
+        public byte LastAppliedGoalKind = 0;
         internal int anchorAttempts = 0;
         internal float lastTechExtents = 1;
         internal float lastAuxVal = 0;
@@ -965,6 +1047,27 @@ namespace TAC_AI.AI
             ResetAISettings();
             // v2: let the active form tear down its per-tech FormState so pooled tech reuse starts fresh.
             TAC_AI.AI.Forms.AIFormRegistry.Active?.OnTechRecycle(this);
+            // Reduced-scope cleanup for the new guard-window rings + companion fields. Stale
+            // data on a pool-reused tech would otherwise feed the next spawn's first window.
+            System.Array.Clear(recentSpeedSigned, 0, recentSpeedSigned.Length);
+            System.Array.Clear(recentSpeedXZ, 0, recentSpeedXZ.Length);
+            System.Array.Clear(recentSpeedY, 0, recentSpeedY.Length);
+            recentSpeedCursor = 0;
+            recentSpeedWrapped = false;
+            recentSpeedNextCheck = 0f;
+            System.Array.Clear(_netProgressRing, 0, _netProgressRing.Length);
+            _netProgressCursor = 0;
+            _netProgressWrapped = false;
+            PublishedFrustrationMeter = 0;
+            System.Threading.Interlocked.Exchange(ref LastBlockDeliveredMono, 0L);
+            System.Threading.Interlocked.Exchange(ref LastAllySightingMono, 0L);
+            AssignedAllyTechId = 0;
+            CachedMoveStyle = 0;
+            // RM-9: null the hard-correct mailbox so a pool-reused tech does not inherit a
+            // 5-s-old recovery goal from the prior occupant.
+            for (int gi = 0; gi < GuardInjectedGoals.Length; gi++)
+                System.Threading.Interlocked.Exchange(ref GuardInjectedGoals[gi], null);
+            LastAppliedGoalKind = 0;
             enabled = false;
         }
 
@@ -1015,7 +1118,7 @@ namespace TAC_AI.AI
                 {
                     DebugTAC_AI.Log(KickStart.ModID + ": Host changed AI");
                 }
-                if (sender.CurTech?.Team == tank.Team)
+                if (sender == null || sender.CurTech?.Team == tank.Team)
                 {
                     if (type != AIType.Null)
                     {

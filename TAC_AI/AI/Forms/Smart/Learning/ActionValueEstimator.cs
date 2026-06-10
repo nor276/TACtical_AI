@@ -80,6 +80,63 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private readonly object _saveMutex = new object();
         public object SaveMutex => _saveMutex;
 
+        // Director freeze ticket. Plain long with Interlocked accessors —
+        // volatile long is illegal CS0677.
+        private long _frozenUntilTickMono;
+        public bool Frozen
+        {
+            get { return System.Threading.Interlocked.Read(ref _frozenUntilTickMono) > TAC_AI.AI.Forms.Smart.World.MonoClock.Now(); }
+        }
+        public long FrozenUntilTickMono
+        {
+            get { return System.Threading.Interlocked.Read(ref _frozenUntilTickMono); }
+            set { System.Threading.Interlocked.Exchange(ref _frozenUntilTickMono, value); }
+        }
+        public void LoadAdamState(AdamSnapshot snap)
+        {
+            if (snap.M == null || snap.V == null) return;
+            lock (_saveMutex)
+            {
+                if (snap.M.Length == _adam.M.Length) Array.Copy(snap.M, _adam.M, snap.M.Length);
+                if (snap.V.Length == _adam.V.Length) Array.Copy(snap.V, _adam.V, snap.V.Length);
+                _adam.T = snap.T;
+                _adam.LearningRate = snap.LR;
+            }
+        }
+        public AdamSnapshot GetAdamSnapshot()
+        {
+            lock (_saveMutex)
+            {
+                return new AdamSnapshot(
+                    (float[])_adam.M.Clone(),
+                    (float[])_adam.V.Clone(),
+                    _adam.T, _adam.LearningRate, _adam.BaseLearningRate);
+            }
+        }
+        public void ReadAdamMoments(float[] mDest, float[] vDest, out long T, out float lr, out float baseLr)
+        {
+            lock (_saveMutex)
+            {
+                if (mDest != null && mDest.Length >= _adam.M.Length) Array.Copy(_adam.M, mDest, _adam.M.Length);
+                if (vDest != null && vDest.Length >= _adam.V.Length) Array.Copy(_adam.V, vDest, _adam.V.Length);
+                T = _adam.T;
+                lr = _adam.LearningRate;
+                baseLr = _adam.BaseLearningRate;
+            }
+        }
+        public void DrainOneMinibatchDiscard()
+        {
+            ActionValueEvent _;
+            for (int i = 0; i < MinibatchSize; i++) { if (!_events.TryDequeue(out _)) break; }
+        }
+
+        // Rolling EWMA of |reward| — TrainerWorker reads this to normalise the
+        // actionvalue_loss_variance_ratio reservoir push. Updated inside TrainOneMinibatch
+        // under SaveMutex (the trainer thread already holds it).
+        private float _ewmaAbsReward;
+        public float EwmaAbsReward { get { return _ewmaAbsReward; } }
+        private const float EwmaAlpha = 0.05f;
+
         private readonly int _w1Offset, _b1Offset, _w2Offset, _b2Offset, _w3Offset, _b3Offset;
         private readonly int _totalParams;
 
@@ -128,13 +185,18 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             while (n < MinibatchSize && _events.TryDequeue(out var ev)) batch[n++] = ev;
             if (n == 0) return TrainStepResult.Empty;
 
-            // Accumulate gradients across the minibatch.
+            // Accumulate gradients across the minibatch + roll the EWMA of |reward|.
             var grad = new float[_totalParams];
             float lossBefore = 0f;
+            float absRewardMean = 0f;
             for (int i = 0; i < n; i++)
             {
                 lossBefore += SingleStepGradient(batch[i], grad);
+                float r = batch[i].Reward;
+                if (!float.IsNaN(r) && !float.IsInfinity(r)) absRewardMean += r >= 0f ? r : -r;
             }
+            absRewardMean /= n;
+            _ewmaAbsReward = (1f - EwmaAlpha) * _ewmaAbsReward + EwmaAlpha * absRewardMean;
             // Average the gradient.
             float invN = 1f / n;
             for (int i = 0; i < _totalParams; i++) grad[i] *= invN;
@@ -152,22 +214,22 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         }
 
         /// <summary>
-        /// Single-event squared-TD-error gradient. Computes target = r + γ * Q(s', a*)
-        /// using a frozen pass of the model with current params, then back-propagates
+        /// Single-event squared-TD-error gradient. Computes target = r + γ * max_a' Q(s', a')
+        /// by evaluating Q on s' across all <see cref="ActionOneHotCount"/> candidate
+        /// action one-hots (10 forward passes per training step), then back-propagates
         /// δ = Q(s,a) - target through the MLP. Accumulates into <paramref name="gradAccum"/>.
-        /// Returns the per-event squared error.
+        /// Per FEATURE-EXPANSION-PLAN §7.2 — Q-learning, not SARSA.
         /// </summary>
         private float SingleStepGradient(ActionValueEvent ev, float[] gradAccum)
         {
-            // For simplicity v0.1.0 uses single-output Q (not a Q(s,a) for each discrete a).
-            // We embed the candidate action into the state vector (last 10 dims are one-hot
-            // action + 9 dims parameters; see LEARNING-CONTRACT §3.2 input layout). The
-            // target uses the same model on the next state with the SAME action — proper
-            // max_a' Q(s', a') would require evaluating many candidate-action embeddings;
-            // TODO v0.2 once the candidate action enumeration plumbing is in place.
+            // ActionValue slot layout (StrategicStateVector ActionValueSlots): the
+            // event's State[] is the AV slice already, so the one-hot window is at
+            // [ActionOneHotBase .. ActionOneHotBase+ActionOneHotCount). For the max-Q
+            // target we evaluate the next state once per candidate one-hot and keep
+            // the largest output.
             float qSA = ForwardCached(ev.State, out var pre1, out var post1, out var pre2, out var post2);
-            float qSPrimeA = Evaluate(ev.NextState); // uses published params (stable target)
-            float target = ev.Reward + ev.Gamma * qSPrimeA;
+            float maxQNext = MaxQOverActions(ev.NextState);
+            float target = ev.Reward + ev.Gamma * maxQNext;
             float delta = qSA - target;
 
             // Backprop dL/dQ = δ (squared error gradient).
@@ -179,9 +241,34 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private float ComputeLoss(ActionValueEvent ev)
         {
             float qSA = Evaluate(ev.State);
-            float target = ev.Reward + ev.Gamma * Evaluate(ev.NextState);
+            float target = ev.Reward + ev.Gamma * MaxQOverActions(ev.NextState);
             float delta = qSA - target;
             return 0.5f * delta * delta;
+        }
+
+        // Q-learning target: max_a' Q(s', a'). Rewrites the one-hot window in a temp
+        // copy of s' across all 10 candidate actions and returns the maximum output.
+        // 10 forward passes per training step per event — acceptable at the 32-event
+        // minibatch / ~30Hz training cadence (~9600 forward passes/sec; the cached
+        // matmul path is ~1us per call so ~10ms/sec worst case).
+        private float MaxQOverActions(float[] sPrime)
+        {
+            int oneHotBase = Features.ActionValueSlots.ActionOneHotBase;
+            int oneHotCount = Features.ActionValueSlots.ActionOneHotCount;
+            var probe = new float[sPrime.Length];
+            Array.Copy(sPrime, probe, sPrime.Length);
+            // Clear the one-hot window — the event's NextState carries the action
+            // selected at s' time; for max_a' we evaluate each candidate fresh.
+            for (int i = 0; i < oneHotCount; i++) probe[oneHotBase + i] = 0f;
+            float maxQ = float.NegativeInfinity;
+            for (int a = 0; a < oneHotCount; a++)
+            {
+                probe[oneHotBase + a] = 1f;
+                float q = Evaluate(probe);
+                if (q > maxQ) maxQ = q;
+                probe[oneHotBase + a] = 0f;
+            }
+            return maxQ;
         }
 
         /// <summary>
@@ -310,8 +397,13 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         {
             if (src == null || src.Length != _params.Length)
                 throw new ArgumentException("ActionValueEstimator: parameter length mismatch.");
-            Array.Copy(src, _params, _params.Length);
-            _publishedParams.Write(CloneFloats(_params));
+            // Lock so a Director rollback / SnapshotManager restore can't race the
+            // trainer's _publishedParams.Write mid-copy.
+            lock (_saveMutex)
+            {
+                Array.Copy(src, _params, _params.Length);
+                _publishedParams.Write(CloneFloats(_params));
+            }
         }
 
         /// <summary>P11 T3 Item 53: real Glorot reset — 3-weight + 3-bias MLP.</summary>

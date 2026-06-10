@@ -61,6 +61,22 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         // minibatch-size events.
         TrainStepResult TrainOneMinibatch();
 
+        // Director freeze + Adam round-trip surface. Backing field is
+        // `private long _frozenUntilTickMono`; access via Interlocked.Read/Exchange
+        // (volatile long is illegal CS0677).
+        bool Frozen { get; }
+        long FrozenUntilTickMono { get; set; }
+
+        // AdamSnapshot returned BY VALUE — Director cannot mutate _adam directly. The
+        // 7-Action invariant is enforced by language, not just code review.
+        void LoadAdamState(AdamSnapshot snap);
+        AdamSnapshot GetAdamSnapshot();
+        void ReadAdamMoments(float[] mDest, float[] vDest, out long T, out float lr, out float baseLr);
+
+        // Soft-freeze drain hook — Director discards a minibatch-worth of events when
+        // the model is soft-frozen so the queue doesn't grow unbounded.
+        void DrainOneMinibatchDiscard();
+
         // P11 T3 Item 53: deterministic Glorot/orthogonal weight reset + Adam state zero.
         // Each implementer re-runs its constructor's init block under MlpUtil.ResetSeed
         // (seed XOR model id for stream independence), then re-publishes the params via its
@@ -88,6 +104,28 @@ namespace TAC_AI.AI.Forms.Smart.Learning
     }
 
     /// <summary>
+    /// Immutable snapshot of Adam state returned to Director rollback. M / V cloned
+    /// at snapshot time so the caller cannot mutate the model's live buffers.
+    /// </summary>
+    public readonly struct AdamSnapshot
+    {
+        public readonly float[] M;
+        public readonly float[] V;
+        public readonly long T;
+        public readonly float LR;
+        public readonly float BaseLR;
+
+        public AdamSnapshot(float[] m, float[] v, long t, float lr, float baseLr)
+        {
+            M = m;
+            V = v;
+            T = t;
+            LR = lr;
+            BaseLR = baseLr;
+        }
+    }
+
+    /// <summary>
     /// Adam optimizer state for one parameter array. Per LEARNING §4.2.
     /// </summary>
     public sealed class AdamState
@@ -103,6 +141,10 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         public float Beta2 = 0.999f;
         public float Epsilon = 1e-8f;
         public float LearningRate;
+        // Immutable baseline LR captured at construction so rollback can round-trip
+        // the model back to its untouched configuration. LearningRate mutates via
+        // SetLearningRate; BaseLearningRate never does.
+        public readonly float BaseLearningRate;
 
         public AdamState(int paramCount, float learningRate)
         {
@@ -110,6 +152,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             V = new float[paramCount];
             T = 0;
             LearningRate = learningRate;
+            BaseLearningRate = learningRate;
         }
 
         /// <summary>
@@ -304,8 +347,25 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private readonly ILearnedModel _model;
         private readonly string _trainerName;
         private volatile bool _hostLost;
+        // Director pause channel: separate from _hostLost so a rollback can pause
+        // training without going through host migration. volatile long is illegal
+        // (CS0677) — use Volatile.Read/Write static helpers.
+        private long _directorPaused;
         private volatile Phase _phase = Phase.Active;
         public Phase CurrentPhase => _phase;
+
+        // Param-delta snapshot buffers — lazy-allocated on first use so cold-start
+        // trainers don't pay 2 × ParameterCount × float upfront. Lives on the worker
+        // (not the model) per Phase-2 plan: BEFORE/AFTER are trainer-side concerns.
+        private float[] _paramBefore;
+        private float[] _paramAfter;
+        // Step counter: every 32 successful minibatches we push a ‖Δθ‖₂ sample.
+        private int _stepsSinceParamSnapshot;
+        public const int ParamSnapshotEveryNSteps = 32;
+
+        // Diagnostic-freeze drop reporting watermark — only emit [DIAGNOSTIC-DROP] when
+        // BoundedQueue.DroppedCount has advanced by >=100 since the last report.
+        private long _lastDiagDropReport;
 
         public TrainerWorker(ILearnedModel model)
         {
@@ -326,14 +386,42 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             }
         }
 
+        // Per-model BoundedQueue.DroppedCount accessor for the diagnostic-freeze drop
+        // surface. The 4 model types own typed BoundedQueues at EventQueue; we read by
+        // dispatching on the model concrete type.
+        private static long QueueDroppedCount(ILearnedModel model)
+        {
+            var intent = model as OpponentIntentClassifier;
+            if (intent != null) return intent.EventQueue.DroppedCount;
+            var av = model as ActionValueEstimator;
+            if (av != null) return av.EventQueue.DroppedCount;
+            var resid = model as TrajectoryResidualModel;
+            if (resid != null) return resid.EventQueue.DroppedCount;
+            var threat = model as ThreatAssessmentModel;
+            if (threat != null) return threat.EventQueue.DroppedCount;
+            return 0L;
+        }
+
         private void OnHostChanged(TAC_AI.AI.Forms.Smart.World.HostChanged ev)
         {
-            // Worker reads _hostLost on next iteration and walks the FSM.
-            _hostLost = !ev.IsHost;
+            // Pause-token held while we flip _hostLost so a host-change racing a
+            // rollback serialises behind the rollback's pause-token hold.
+            string ownerTag = "OnHostChanged-" + _trainerName;
+            TAC_AI.AI.Forms.Smart.Coordination.TrainerBarrier.AcquirePauseToken(ownerTag);
+            try
+            {
+                _hostLost = !ev.IsHost;
+            }
+            finally
+            {
+                TAC_AI.AI.Forms.Smart.Coordination.TrainerBarrier.ReleasePauseToken(ownerTag);
+            }
         }
 
         public void RunLoop(CancellationToken cancellation)
         {
+            try
+            {
             while (!cancellation.IsCancellationRequested)
             {
                 // Phase 5 (FIX-PLAN.md): pause training on client. Open question #1 in
@@ -352,7 +440,8 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 // L-058: host-loss FSM. Transition Active→Pausing→Paused (signal barrier)
                 // → wait for !_hostLost → Resuming → Active. The legacy IsHost gate below
                 // still works as a fallback (single-player + tests).
-                if (_hostLost && _phase == Phase.Active)
+                // Director pause channel folded in — rollback can demand pause.
+                if ((_hostLost || Volatile.Read(ref _directorPaused) != 0L || SmartRuntime.IsDirectorPaused) && _phase == Phase.Active)
                 {
                     _phase = Phase.Pausing;
                     _pausedAtTickMs = System.Environment.TickCount;
@@ -388,11 +477,16 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                         }
                         catch (Exception ex) { DebugTAC_AI.LogWarning("TrainerWorker TTL drain: " + ex.Message); }
                     }
-                    if (!_hostLost)
+                    // Resume gate requires host returned AND Director released (both the
+                    // per-trainer channel and the SmartRuntime-level pause counter).
+                    if (!_hostLost && Volatile.Read(ref _directorPaused) == 0L && !SmartRuntime.IsDirectorPaused)
                     {
                         _phase = Phase.Resuming;
                         DebugTAC_AI.LogWarnFileOnly("trainer-hostchange-" + _trainerName + "-resuming",
                             "[TRAINER-HOSTCHANGE] trainer='" + _trainerName + "' Paused→Resuming");
+                        // Memory barrier — ensures the _directorPaused read is ordered before
+                        // the _phase write so a concurrent rollback doesn't see Active+paused.
+                        Volatile.Read(ref _directorPaused);
                         _phase = Phase.Active;
                         DebugTAC_AI.LogWarnFileOnly("trainer-hostchange-" + _trainerName + "-active",
                             "[TRAINER-HOSTCHANGE] trainer='" + _trainerName + "' Active");
@@ -409,6 +503,47 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                     if (cancellation.WaitHandle.WaitOne(MillisecondsPerPoll)) return;
                     continue;
                 }
+
+                // Director freeze gate. When the model is frozen we skip the Adam
+                // step + DoubleBuffer.Write entirely. Diagnostic mode leaves the typed
+                // event queue alone (lets it backpressure-drop at capacity; the BoundedQueue
+                // drop counter surfaces the data loss). Soft mode drains a minibatch worth
+                // of events via DrainOneMinibatchDiscard so the queue does not grow unbounded.
+                // AdamState.T is preserved (not reset) so bias-correction stays consistent
+                // on resume.
+                byte freezeMode;
+                if (TAC_AI.AI.Forms.Smart.Director.Actions.FreezeModelAction.IsFrozen(_model, out freezeMode))
+                {
+                    if (freezeMode == TAC_AI.AI.Forms.Smart.Director.Actions.FreezeModelAction.ModeSoft)
+                    {
+                        try { _model.DrainOneMinibatchDiscard(); }
+                        catch (Exception ex)
+                        {
+                            DebugTAC_AI.LogWarnFileOnly("trainer-freeze-drain-" + _model.Id,
+                                "[TRAINER-FREEZE] drain threw " + ex.GetType().Name + ": " + ex.Message);
+                        }
+                    }
+                    else
+                    {
+                        // Diagnostic: surface backpressure-driven drops at a per-100-events
+                        // cadence so the operator can see data loss without spamming.
+                        // BoundedQueue.DroppedCount is monotonic; we coarse-bucket on /100.
+                        long dropped = QueueDroppedCount(_model);
+                        long lastReported = Interlocked.Read(ref _lastDiagDropReport);
+                        if (dropped - lastReported >= 100)
+                        {
+                            if (Interlocked.CompareExchange(ref _lastDiagDropReport, dropped, lastReported) == lastReported)
+                            {
+                                DebugTAC_AI.LogWarnFileOnly("director-diagnostic-drop-" + _model.Id,
+                                    "[DIAGNOSTIC-DROP] model=" + _model.Id + " dropped=" + dropped
+                                    + " mode=diagnostic");
+                            }
+                        }
+                    }
+                    if (cancellation.WaitHandle.WaitOne(MillisecondsPerPoll)) return;
+                    continue;
+                }
+
                 try
                 {
                     // L-013: serialise TrainOneMinibatch against StoreParameters/
@@ -416,14 +551,53 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                     // half-step (Adam Step mid-pass over _params). Lock granularity is the
                     // whole minibatch — fine because batches are 32 events / ~1ms typical.
                     TrainStepResult result;
+                    // Param snapshot due? Capture BEFORE under the same lock so the L2
+                    // diff is consistent with the AFTER snapshot.
+                    bool snapshotDue = _stepsSinceParamSnapshot >= ParamSnapshotEveryNSteps - 1;
+                    if (snapshotDue && _paramBefore == null)
+                    {
+                        _paramBefore = new float[_model.ParameterCount];
+                        _paramAfter = new float[_model.ParameterCount];
+                    }
                     lock (_model.SaveMutex)
                     {
+                        if (snapshotDue) _model.StoreParameters(_paramBefore);
                         result = _model.TrainOneMinibatch();
+                        if (snapshotDue) _model.StoreParameters(_paramAfter);
                     }
                     // If no batch was ready, sleep to avoid busy-spin.
                     if (result.BatchSize == 0)
                     {
                         if (cancellation.WaitHandle.WaitOne(MillisecondsPerPoll)) return;
+                    }
+                    else
+                    {
+                        // Push loss into the reservoir. Source==Live gating wires up once
+                        // IdentityReplayBank has separable Live/Replay channels (deferred).
+                        float normReward = 0f;
+                        var av = _model as ActionValueEstimator;
+                        if (av != null) normReward = av.EwmaAbsReward;
+                        Director.TrainerStats.LossPush(_model.Id, result.LossBefore, result.LossAfter, result.BatchSize, normReward);
+
+                        // Every 32 steps push a ‖Δθ‖₂ / sqrt(N) sample.
+                        if (snapshotDue)
+                        {
+                            float sumSq = 0f;
+                            int len = _paramAfter.Length;
+                            for (int i = 0; i < len; i++)
+                            {
+                                float d = _paramAfter[i] - _paramBefore[i];
+                                sumSq += d * d;
+                            }
+                            float l2 = (float)Math.Sqrt(sumSq);
+                            float archInvariant = len > 0 ? l2 / (float)Math.Sqrt(len) : 0f;
+                            Director.TrainerStats.ParamDeltaPush(_model.Id, archInvariant);
+                            _stepsSinceParamSnapshot = 0;
+                        }
+                        else
+                        {
+                            _stepsSinceParamSnapshot++;
+                        }
                     }
                 }
                 catch (OperationCanceledException) { return; }
@@ -439,6 +613,21 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 {
                     DebugTAC_AI.LogWarning("Smart.Learning.Trainer[" + _model.Id + "]: " + ex.GetType().Name + ": " + ex.Message);
                     if (cancellation.WaitHandle.WaitOne(MillisecondsPerPoll)) return;
+                }
+            }
+            }
+            finally
+            {
+                // Pair the ctor's HostChanged subscribe. Without this the LearningService
+                // respawn factory pins every dead TrainerWorker in WorldEventBus's
+                // multicast list, growing per Init/Shutdown cycle (BUG-012).
+                try
+                {
+                    TAC_AI.AI.Forms.Smart.World.WorldEventBus.Unsubscribe<TAC_AI.AI.Forms.Smart.World.HostChanged>(OnHostChanged);
+                }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogWarning("TrainerWorker[" + _trainerName + "] HostChanged unsubscribe failed: " + ex.Message);
                 }
             }
         }

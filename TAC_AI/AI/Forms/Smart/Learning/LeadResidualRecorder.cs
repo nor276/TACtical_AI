@@ -118,7 +118,14 @@ namespace TAC_AI.AI.Forms.Smart.Learning
 
             var residualModel = LearningService.Residual;
             if (residualModel != null)
-                residualModel.EventQueue.Enqueue(new ResidualEvent(target, features, residual));
+            {
+                var residualEvent = new ResidualEvent(target, features, residual);
+                residualModel.EventQueue.Enqueue(residualEvent);
+                // Tee into IdentityReplayBank. Identity is the target's (the residual is
+                // about predicting THIS target's motion).
+                var identity = TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.ResolveIdentity(target);
+                TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.TeeResidual(identity, residualEvent);
+            }
 
             // Pending consumed.
             { Pending _; _pending.TryRemove(target, out _); }

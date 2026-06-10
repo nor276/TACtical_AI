@@ -78,6 +78,18 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             {
                 if (LearningService.IsRunning)
                 {
+                    // BUG-018 / BUG-055: do not write profile from a client process. Even
+                    // though LearningService.SaveProfile itself gates on IsHost, the
+                    // FlushPendingForPersist pass below mutates model params (runs one
+                    // final minibatch) — pointless work on a client that received no
+                    // training events. Bail early so a client quit/crash never touches
+                    // model state OR the on-disk profile.
+                    if (!SmartRuntime.IsHost)
+                    {
+                        DebugTAC_AI.LogWarnFileOnly("quit-save-nonhost-" + source,
+                            "[PROFILE-QUIT-SAVE] source=" + source + " saved=0 (non-host; skipping flush+save)");
+                        return;
+                    }
                     // Flush each model so unsaved minibatches reach the disk image.
                     var models = new ILearnedModel[]
                     {

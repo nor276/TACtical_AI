@@ -113,7 +113,6 @@ namespace TAC_AI.AI.Movement
             maxPathedTillFail = Mathf.CeilToInt(mag * maxPathedTillFailDistMulti);
             DebugTAC_AI.Info("AIEAutoPather.Recalc_Internal() - MoveGridScale" + MoveGridScale +" |  maxPathedTillFail: " + maxPathedTillFail);
         }
-        private List<IntVector2> iterateAround4 = IterateAroundExpand(6);
         private Vector3 FindIdealStart(Vector3 Initial)
         {
             IntVector2 loc = ToLocal(Initial);
@@ -188,6 +187,11 @@ namespace TAC_AI.AI.Movement
         private static HashSet<IntVector2> pos = new HashSet<IntVector2>();
         private static HashSet<IntVector2> posPre = new HashSet<IntVector2>();
         private static HashSet<IntVector2> posPre2 = new HashSet<IntVector2>();
+        // FindIdealStart's 6-radius dilation produces a 169-entry list; identical across
+        // every pather instance — promoted to static readonly. MUST appear after the
+        // pos / posPre / posPre2 statics above; IterateAroundExpand mutates those, so
+        // they have to be constructed before this initializer runs.
+        private static readonly List<IntVector2> iterateAround4 = IterateAroundExpand(6);
         private static List<IntVector2> IterateAroundExpand(int rad)
         {
             pos.Clear();

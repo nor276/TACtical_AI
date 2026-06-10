@@ -95,18 +95,27 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
         private const int DefaultRequestQueueCapacity = 64;
 
         private static WorkerPool _pool;
-        private static TerrainMap _terrain;
+        // BUG-013 / BUG-050: TerrainPublication is the L-033 atomic-swap holder. Readers
+        // (worker threads) do a single Volatile.Read and see either old or new — never
+        // half-published. OnWorldReset publishes a fresh TerrainMap via the holder rather
+        // than mutating a field directly.
+        private static readonly TerrainPublication _terrainPub = new TerrainPublication();
         private static ConcurrentDictionary<TeamId, DoubleBuffer<ThreatFieldSnapshot>> _threatFields;
         private static BoundedQueue<PathRequest> _requestQueue;
         private static ConcurrentDictionary<TechId, Trajectory> _lastPaths;
         private static int _running; // 0 = stopped, 1 = running
+        // BUG-051: WorldResetRegistry has no Unregister; without this latch a form-swap
+        // sequence (DeInit → Init) appends three entries (plus the bp closure pin) every
+        // cycle and accumulates linearly with form-swap count. SmartForm.EnsureLegacyResetsRegistered
+        // uses the same Interlocked.Exchange latch pattern.
+        private static int _worldResetRegistered;
         // L-018: singleton backpressure. Constructed in Init, nulled in Shutdown. PathSolveLoop
         // reads via the field directly (same-assembly internal access); external consumers
         // (debug GUI, console, watchdog) read the read-only interface via the Backpressure
         // accessor below. Volatile read so accessors see Init→Shutdown transitions promptly.
         private static TAC_AI.AI.Forms.Smart.Threading.PathRequestBackpressure _backpressure;
 
-        public static TerrainMap CurrentTerrain => _terrain;
+        public static TerrainMap CurrentTerrain => _terrainPub.Read();
         public static bool IsRunning => Volatile.Read(ref _running) == 1;
         /// <summary>L-018: read-only backpressure surface. null when !IsRunning.</summary>
         public static IPathingBackpressureReadout Backpressure
@@ -121,7 +130,7 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             if (Interlocked.CompareExchange(ref _running, 1, 0) != 0) return; // already running
 
             _pool = pool;
-            _terrain = new TerrainMap();
+            _terrainPub.Publish(new TerrainMap());
             _threatFields = new ConcurrentDictionary<TeamId, DoubleBuffer<ThreatFieldSnapshot>>();
             _requestQueue = new BoundedQueue<PathRequest>(DefaultRequestQueueCapacity, "Pathing.PathRequests");
             _lastPaths = new ConcurrentDictionary<TechId, Trajectory>();
@@ -133,14 +142,35 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             // with WorldResetRegistry so OnWorldReset hits all path-cache surfaces in one
             // collapsed call (L-069 in Wave 3 replaces SmartForm's OnWorldReset body with
             // a single ResetAll invocation).
-            WorldResetRegistry.Register(bp);
-            WorldResetRegistry.RegisterLambda("PathingService.ThreatFields",
-                () => _threatFields?.Clear());
-            WorldResetRegistry.RegisterLambda("PathingService.LastPaths",
-                () => _lastPaths?.Clear());
+            // BUG-051: one-time latch — WorldResetRegistry has no Unregister and the entries
+            // would pin the prior-cycle backpressure closure via capture. The lambdas read
+            // the live static fields each invocation, so re-registration is unnecessary;
+            // the backpressure reset routes through the _backpressure field for the same
+            // reason.
+            if (Interlocked.Exchange(ref _worldResetRegistered, 1) == 0)
+            {
+                WorldResetRegistry.RegisterLambda("PathingService.Backpressure",
+                    () => Volatile.Read(ref _backpressure)?.ResetForWorldChange());
+                WorldResetRegistry.RegisterLambda("PathingService.ThreatFields",
+                    () => _threatFields?.Clear());
+                WorldResetRegistry.RegisterLambda("PathingService.LastPaths",
+                    () => _lastPaths?.Clear());
+            }
 
             _pool.EnqueueLongRunning(ThreatFieldRebuildLoop, "ThreatFieldRebuild");
             _pool.EnqueueLongRunning(PathSolveLoop, "PathSolve");
+
+            // BUG-004: register both pathing daemons with the watchdogs. The canonical
+            // roster lists ThreatFieldRebuild + PathSolve but no factory was registered,
+            // so a TAE or unhandled escape leaves them dead permanently. Capture the pool
+            // by closure with null-guard against a racing Shutdown.
+            var poolRef = _pool;
+            Func<string> threatFactory = () => poolRef?.EnqueueLongRunning(ThreatFieldRebuildLoop, "ThreatFieldRebuild");
+            Func<string> solveFactory = () => poolRef?.EnqueueLongRunning(PathSolveLoop, "PathSolve");
+            Threading.DaemonWatchdog.RegisterCanonical("ThreatFieldRebuild", threatFactory);
+            Threading.DaemonWatchdog.RegisterCanonical("PathSolve", solveFactory);
+            Threading.WorkerHealthMonitor.RegisterCanonical("ThreatFieldRebuild", threatFactory);
+            Threading.WorkerHealthMonitor.RegisterCanonical("PathSolve", solveFactory);
         }
 
         /// <summary>
@@ -152,7 +182,7 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             if (Interlocked.Exchange(ref _running, 0) == 0) return;
             _threatFields?.Clear();
             _lastPaths?.Clear();
-            _terrain = null;
+            _terrainPub.Clear();
             _pool = null;
             // L-018: drop singleton ref so external Backpressure readers see null until next Init.
             System.Threading.Volatile.Write(ref _backpressure, null);
@@ -170,20 +200,24 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             if (!IsRunning) return;
             _threatFields?.Clear();
             _lastPaths?.Clear();
+            _lastFailedMono.Clear();
             // Rebuild a fresh TerrainMap so the next refresh samples the new world's
             // terrain — keeping the old grid would treat the new mission's elevations
             // as the old mission's heights (AUDIT-R2 §2.R2.B TerrainMap origin frozen).
-            _terrain = new TerrainMap();
+            // BUG-013 / BUG-050: atomic swap via TerrainPublication so a worker mid-read
+            // sees old-or-new, never a half-published reference.
+            _terrainPub.Publish(new TerrainMap());
         }
 
         // ---- Public query / submit API (any thread) ----
 
         public static IThreatField GetThreatField(TeamId team)
         {
-            if (_threatFields == null) return new ThreatField(ThreatFieldSnapshot.Empty, _terrain);
+            var terrain = _terrainPub.Read();
+            if (_threatFields == null) return new ThreatField(ThreatFieldSnapshot.Empty, terrain);
             var buf = _threatFields.GetOrAdd(team,
                 _ => new DoubleBuffer<ThreatFieldSnapshot>(ThreatFieldSnapshot.Empty));
-            return new ThreatField(buf.Read(), _terrain);
+            return new ThreatField(buf.Read(), terrain);
         }
 
         public static ThreatFieldSnapshot GetThreatFieldSnapshot(TeamId team)
@@ -243,6 +277,78 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             }
         }
 
+        // Per-(techId, dest-bucket) last-failed timestamp ring. Bucket = world XZ
+        // quantised at 64 m so re-querying the same general area within a few seconds
+        // shares the same suppression entry. Capacity-bounded to avoid leak in
+        // long-running sessions; LRU evicts on overflow.
+        private const int LastFailedCapacity = 256;
+        private const float LastFailedBucketSizeM = 64f;
+        private static readonly ConcurrentDictionary<long, long> _lastFailedMono =
+            new ConcurrentDictionary<long, long>();
+
+        private static long PackTechDestBucket(TechId tech, Vector3 dest)
+        {
+            int bx = Mathf.FloorToInt(dest.x / LastFailedBucketSizeM);
+            int bz = Mathf.FloorToInt(dest.z / LastFailedBucketSizeM);
+            // 16-bit X, 16-bit Z, 32-bit tech.
+            uint bxU = unchecked((uint)bx) & 0xFFFFu;
+            uint bzU = unchecked((uint)bz) & 0xFFFFu;
+            return ((long)tech.Value << 32) | ((long)bxU << 16) | bzU;
+        }
+
+        /// <summary>
+        /// O(1) traversability check via the published TerrainMap. When the map is
+        /// freshly allocated (no refresh yet) we return true (assume-reachable) so
+        /// guards do not fire on cold-start. A* fallback deferred; this is the cheap
+        /// O(1) traversability gate.
+        /// </summary>
+        public static bool IsReachable(Vector3 origin, Vector3 dest, VehicleCapability capability)
+        {
+            var terrain = _terrainPub.Read();
+            if (terrain == null) return true;
+            if (terrain.IsFreshlyAllocated) return true;
+            var oXZ = new Vector2(origin.x, origin.z);
+            var dXZ = new Vector2(dest.x, dest.z);
+            if (!terrain.IsTraversable(oXZ, capability)) return false;
+            if (!terrain.IsTraversable(dXZ, capability)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Returns true when (tech, dest-bucket) had a failed query within the last
+        /// <paramref name="secondsBack"/>. Guards consult this to suppress repeat
+        /// pathology fires on terrain the solver already knows is unreachable.
+        /// </summary>
+        public static bool LastQueryFailedRecently(TechId techId, Vector3 dest, float secondsBack)
+        {
+            long key = PackTechDestBucket(techId, dest);
+            long stamp;
+            if (!_lastFailedMono.TryGetValue(key, out stamp)) return false;
+            float age = MonoClock.Seconds(stamp, MonoClock.Now());
+            return age < secondsBack;
+        }
+
+        /// <summary>Stamps a (tech, dest-bucket) failed-query timestamp. LRU-evicts at capacity.</summary>
+        public static void RecordQueryFailed(TechId techId, Vector3 dest)
+        {
+            long key = PackTechDestBucket(techId, dest);
+            _lastFailedMono[key] = MonoClock.Now();
+            if (_lastFailedMono.Count > LastFailedCapacity)
+            {
+                // Cheap LRU: drop one arbitrary stale entry (older than 5 min).
+                long now = MonoClock.Now();
+                foreach (var kv in _lastFailedMono)
+                {
+                    if (MonoClock.Seconds(kv.Value, now) > 300f)
+                    {
+                        long ignore;
+                        _lastFailedMono.TryRemove(kv.Key, out ignore);
+                        break;
+                    }
+                }
+            }
+        }
+
         public static void RequestPath(PathRequest req)
         {
             if (_requestQueue == null) return;
@@ -269,8 +375,9 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
         /// </summary>
         public static void MainThreadTick()
         {
-            if (_terrain != null && _terrain.IsRefreshDue())
-                _terrain.RefreshFromMainThread();
+            var terrain = _terrainPub.Read();
+            if (terrain != null && terrain.IsRefreshDue())
+                terrain.RefreshFromMainThread();
         }
 
         // ---- Workers ----
@@ -421,9 +528,13 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
                     _lastPaths.TryGetValue(req.Tech, out var warm);
                     // L-041: time the solve for the p50/p99 reservoir.
                     var solveSw = System.Diagnostics.Stopwatch.StartNew();
+                    // BUG-013 / BUG-050: pull the terrain via the atomic publication holder
+                    // so the worker observes a fully-published TerrainMap rather than racing
+                    // the OnWorldReset reference swap.
+                    var terrainSnapshot = _terrainPub.Read();
                     var result = optimizer.Solve(
                         req.Start, req.StartVelocity, req.Goal, req.GoalVelocity,
-                        req.Duration, threatField, _terrain, req.Capability,
+                        req.Duration, threatField, terrainSnapshot, req.Capability,
                         warm, token);
                     solveSw.Stop();
                     backpressure.RecordSolveLatency((float)solveSw.Elapsed.TotalMilliseconds);

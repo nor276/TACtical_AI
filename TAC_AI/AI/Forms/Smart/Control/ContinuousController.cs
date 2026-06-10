@@ -90,6 +90,11 @@ namespace TAC_AI.AI.Forms.Smart.Control
         // identity dispatch only runs when external is absent. See Docs/SMART-IDENTITY-DESIGN.md.
         private readonly Func<ISmartGoalSource> _readGoalSource;
         private readonly Func<IdentityContext> _readIdentityCtx;
+        // Hard-correct mailbox reader (GroundedAircraft slot). Returns the live slot or null.
+        // Wired by SmartPerTechState; reads helper.GuardInjectedGoals on the main thread.
+        private readonly Func<Director.Guards.GuardInjectedGoalSlot> _readGuardGoal;
+        // [GUARD-MAILBOX-STALE] counter — slots whose deadline is older than ceiling + 2 s.
+        private long _guardMailboxStaleCount;
 
         private readonly DoubleBuffer<TacticalGoal> _tacticalGoalBuffer;
         private readonly DoubleBuffer<ControlProfile> _controlProfileBuffer;
@@ -170,6 +175,7 @@ namespace TAC_AI.AI.Forms.Smart.Control
             Func<List<Vector3>> readFriendlyPositions = null,
             Func<ISmartGoalSource> readGoalSource = null,
             Func<IdentityContext> readIdentityCtx = null,
+            Func<Director.Guards.GuardInjectedGoalSlot> readGuardGoal = null,
             int mpcSeed = 0)
         {
             _pool = pool;
@@ -187,6 +193,7 @@ namespace TAC_AI.AI.Forms.Smart.Control
             _readFriendlyPositions = readFriendlyPositions;
             _readGoalSource = readGoalSource;
             _readIdentityCtx = readIdentityCtx;
+            _readGuardGoal = readGuardGoal;
 
             // P6 Item 27: capture per-controller TacticalGoalHandle that closes over _tactical.
             // GenericGoalSource.Produce invokes this via ctx.TacticalGoalHandle to delegate
@@ -226,7 +233,22 @@ namespace TAC_AI.AI.Forms.Smart.Control
             // method needs SelfTechId on every tick to slice StrategicVectors. baseCtx
             // is also reused as the identity-source ctx when src != null.
             var baseCtx = _readIdentityCtx != null ? _readIdentityCtx() : default(IdentityContext);
-            if (external.HasValue)
+
+            // Priority 0: hard-correct mailbox PREEMPTS the coordinator. A burning aircraft
+            // recovery goal must win over coordinated engagement — safety > coordination.
+            // Soft / observe guards never reach here (telemetry-only, no slot). The goal
+            // flows into the same MPC dispatch + weapon pass below so the tech actually
+            // climbs; we only short-circuit the external / identity / tactical selection.
+            TacticalGoal hardCorrectGoal;
+            bool usedHardCorrect = TryReadHardCorrectGoal(kinematic, out hardCorrectGoal);
+            if (usedHardCorrect)
+            {
+                goal = hardCorrectGoal;
+                // Preserve Adam-reseed semantics: next non-AntiCrash tick sees the right
+                // external-transition edge.
+                _lastTickHadExternalGoal = external.HasValue;
+            }
+            else if (external.HasValue)
             {
                 goal = external.Value;
                 _lastTickHadExternalGoal = true;
@@ -284,7 +306,8 @@ namespace TAC_AI.AI.Forms.Smart.Control
             if (_goalDispatchLogCount < GoalDispatchLogCap)
             {
                 _goalDispatchLogCount++;
-                string branch = usedExternal ? "EXTERNAL"
+                string branch = usedHardCorrect ? "GUARD-HARDCORRECT"
+                              : usedExternal ? "EXTERNAL"
                               : usedIdentity ? ("IDENTITY=" + dispatchIdentity)
                               : "TACTICAL";
                 float deltaPos = (goal.Position - ownBelief.PositionMean).magnitude;
@@ -416,6 +439,39 @@ namespace TAC_AI.AI.Forms.Smart.Control
             }
         }
 
+        // Priority-0 hard-correct mailbox read. Returns true + the recovery goal when a live
+        // non-expired slot is present. Stale slots (deadline + 2 s buffer past) are rejected
+        // and counted under [GUARD-MAILBOX-STALE]. NaN/Inf positions fall back to AtCurrent.
+        private bool TryReadHardCorrectGoal(KinematicState kinematic, out TacticalGoal goal)
+        {
+            goal = default(TacticalGoal);
+            if (_readGuardGoal == null) return false;
+            var slot = _readGuardGoal();
+            if (slot == null) return false;
+
+            long now = World.MonoClock.Now();
+            long staleCeiling = slot.ExpiresMono + World.MonoClock.FromSeconds(2.0);
+            if (now > staleCeiling)
+            {
+                Interlocked.Increment(ref _guardMailboxStaleCount);
+                DebugTAC_AI.LogWarnFileOnly("guard-mailbox-stale",
+                    "[GUARD-MAILBOX-STALE] count=" + Interlocked.Read(ref _guardMailboxStaleCount));
+                return false;
+            }
+            if (now > slot.ExpiresMono) return false; // expired but inside grace — let it lapse
+
+            var g = slot.Goal;
+            if (float.IsNaN(g.Position.x) || float.IsNaN(g.Position.y) || float.IsNaN(g.Position.z)
+                || float.IsInfinity(g.Position.x) || float.IsInfinity(g.Position.y) || float.IsInfinity(g.Position.z)
+                || float.IsNaN(g.Heading) || float.IsInfinity(g.Heading))
+            {
+                goal = TacticalGoal.AtCurrent(kinematic.PositionWorld, 0f);
+                return true;
+            }
+            goal = g;
+            return true;
+        }
+
         // FEATURE-EXPANSION-PLAN §3.4 R2-04: slice the Residual block out of the
         // StrategicStateVector published for the AimTarget. Returns a float[] of length
         // TrajectoryResidualModel.FeatureDim — null when the buffer hasn't been ctored
@@ -451,8 +507,16 @@ namespace TAC_AI.AI.Forms.Smart.Control
             SmartIdentity dispatchIdentity,
             TechId? coordinationTarget)
         {
-            // L-059 producer gate — drop while trainer drain is in progress.
-            if (!SmartRuntime.AcceptingTrainingEvents) return;
+            // L-059 producer gate — drop while trainer drain is in progress. Also
+            // clear the pending (s, a, r) slot so when the gate later re-opens we
+            // don't enqueue a (state, action, reward, s') tuple whose state pre-dates
+            // the pause and s' lands gigaseconds later. Per BUG-066.
+            if (!SmartRuntime.AcceptingTrainingEvents)
+            {
+                _pendingActionValid = false;
+                _pendingActionState = null;
+                return;
+            }
 
             var learning = Learning.LearningService.ActionValue;
             if (learning == null) return;   // subsystem not running
@@ -503,9 +567,13 @@ namespace TAC_AI.AI.Forms.Smart.Control
             // is its own array — no aliasing across events.
             if (_pendingActionValid && _pendingActionState != null)
             {
-                learning.EventQueue.Enqueue(new Learning.ActionValueEvent(
+                var avEvent = new Learning.ActionValueEvent(
                     _pendingActionState, _pendingActionIndex, _pendingActionReward,
-                    currentState, ActionValueGamma));
+                    currentState, ActionValueGamma);
+                learning.EventQueue.Enqueue(avEvent);
+                // Tee into IdentityReplayBank. Source-tech is selfTechId.
+                var avIdentity = TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.ResolveIdentity(selfTechId);
+                TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.TeeActionValue(avIdentity, avEvent);
             }
 
             // Seed the next pending tuple. currentState is now BOTH s' of the just-

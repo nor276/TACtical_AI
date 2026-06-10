@@ -23,9 +23,10 @@ namespace TAC_AI.AI.Forms.Smart.Coordination
     /// and ComputeLOS scans all enemies for it. Cap at <see cref="MaxRaysPerFrame"/>
     /// total raycasts per tick across all teams (~enemy_count per observer).
     ///
-    /// Default OFF (<see cref="Enabled"/> = false). When false, MainThreadTick is a
-    /// no-op, snapshots stay empty, and TeamRuntime.BuildTeamSnapshot falls back to
-    /// the REV 3 S1 per-tech empty sentinel — preserves v0.1 NeedsScout TRUE-always.
+    /// P11 post-flip default ON (<see cref="Enabled"/> = true). When toggled false,
+    /// MainThreadTick is a no-op, snapshots stay empty, and TeamRuntime.BuildTeamSnapshot
+    /// falls back to the REV 3 S1 per-tech empty sentinel — preserves v0.1 NeedsScout
+    /// TRUE-always.
     /// </summary>
     public static class LineOfSightProducer
     {

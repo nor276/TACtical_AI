@@ -292,6 +292,10 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
         // Called on lifecycle reset (OnTechRecycle / DeregisterTech). Increments
         // Generation so any pending vector read on the bg side will see the
         // stale-generation discard signal.
+        // BUG-042: no in-tree caller invokes this today; SmartPerTechState's recycle
+        // path GC's the whole probe via Forget so the stale-generation signal isn't
+        // needed for correctness. Retained as the documented primitive for future
+        // mid-life recycle wiring (e.g. host-handover without GC).
         public void OnLifecycleReset()
         {
             _generation++;
@@ -418,6 +422,21 @@ namespace TAC_AI.AI.Forms.Smart.Learning.Features
                     attackerPos = _lastAttackerPosWorld;
                     attackerSeen = _lastAttackerSeenMono;
                     hasAttacker = true;
+                }
+                else
+                {
+                    // Falling edge — attacker disengaged or its Visible/.tank went null.
+                    // Without this clear the latch sticks the LAST-stamped position into
+                    // every subsequent vector, drifting AV[34]/[35] indefinitely.
+                    if (_hadAttacker)
+                    {
+                        _hadAttacker = false;
+                        _lastAttackerSeenMono = 0L;
+                        _lastAttackerPosWorld = Vector3.zero;
+                    }
+                    attackerPos = Vector3.zero;
+                    attackerSeen = 0L;
+                    hasAttacker = false;
                 }
             }
             catch

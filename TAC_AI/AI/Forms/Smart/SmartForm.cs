@@ -39,6 +39,9 @@ namespace TAC_AI.AI.Forms.Smart
         private static int _spawnTimingCounter = 0;
         private const int SpawnTimingCap = 10;
 
+        // Training Director panel scroll position (persistent across OnGUI frames).
+        private UnityEngine.Vector2 _directorPanelScrollPos;
+
         // [TEMP DIAGNOSTIC] Same shape, for Operations sub-call timing. Captures the first
         // OperationsTimingCap Operations invocations across all techs. First-invocation
         // allocations (MPC sample buffers, controller warm-up, first PathingService.MainThreadTick)
@@ -105,6 +108,12 @@ namespace TAC_AI.AI.Forms.Smart
             // state is owned by this form. Without this, each Smart-driven helper retains
             // a SmartPerTechState transitively holding 1-10 MB of per-tech state (MPC
             // arrays, PUCT trees via OwnerTeam, etc.) — leaking across every form swap.
+            //
+            // BUG-073: also explicitly unwire cargo + weapon-fire per tank here, mirroring
+            // AttachPerTank's three-surface install (damage + cargo + weapon-fire). The
+            // damage path is detached via DetachPerTank below; the cargo/fire calls below
+            // it cover the case where a prior DetachPerTank early-returned on a missing
+            // damage handler shadow entry (would otherwise skip cargo + fire teardown).
             try
             {
                 foreach (var helper in AIECore.IterateAllHelpers())
@@ -116,6 +125,29 @@ namespace TAC_AI.AI.Forms.Smart
                         // reference, mirroring OnTechRecycle's cleanup path.
                         try { Integration.SmartEventBridge.DetachPerTank(helper.tank); }
                         catch { /* tank may already be gone */ }
+                        // Symmetric cargo + weapon-fire teardown matching AttachPerTank's
+                        // three-surface install. Called unconditionally so the leak path
+                        // BUG-073 / BUG-052 / BUG-053 describes (live tech still bound to
+                        // a dead WeaponFireBuffer / CargoState closure after Shutdown)
+                        // cannot occur even if a prior detach already cleared the damage
+                        // shadow map and short-circuited DetachPerTank's later steps.
+                        try
+                        {
+                            var tank = helper.tank;
+                            if (tank != null)
+                            {
+                                var techId = World.TechId.FromTank(tank);
+                                try { SmartRuntime.CargoState?.DetachPerTank(tank); }
+                                catch { /* cargo may already be gone */ }
+                                try
+                                {
+                                    if (SmartRuntime.WeaponFires != null && tank.Weapons != null)
+                                        SmartRuntime.WeaponFires.Unwire(techId, tank.Weapons);
+                                }
+                                catch { /* weapons may already be gone */ }
+                            }
+                        }
+                        catch { /* tank fully purged */ }
                         helper.FormState = null;
                     }
                 }
@@ -142,7 +174,9 @@ namespace TAC_AI.AI.Forms.Smart
             if (doing)
             {
                 World.WorldEventBus.Publish(new World.WorldSaving());
-                if (LearningService.IsRunning)
+                // host-only: clients never train, so saving their non-training state would
+                // overwrite the per-player profile with empty/stale weights (BUG-019).
+                if (LearningService.IsRunning && SmartRuntime.IsHost)
                 {
                     // L-032: uniform tag so the manual-save path is greppable distinct from
                     // L-060 [PROFILE-AUTOSAVE] and L-078 [PROFILE-QUIT-SAVE].
@@ -175,10 +209,10 @@ namespace TAC_AI.AI.Forms.Smart
             else
             {
                 World.WorldEventBus.Publish(new World.WorldLoaded());
-                // The loaded save's profile is reloaded by LearningService — but at v0.1.0
-                // the profile path is derived from a stable _currentPlayerId, so the next
-                // SaveProfile/LoadProfile cycle picks up the right file automatically.
-                // Phase 5 (FIX-PLAN.md) hardens the player-id resolution for MP.
+                // Smart's in-memory weights persist across world reloads by design —
+                // AI keeps learning across missions instead of resetting on every load.
+                // The on-disk profile is loaded once at LearningService.Init and only
+                // overwritten on Save; intentional cross-mission carryover.
             }
         }
 
@@ -390,6 +424,18 @@ namespace TAC_AI.AI.Forms.Smart
         public void OnTechRecycle(TankAIHelper helper)
         {
             if (helper == null) return;
+            // Restore vanilla collision-avoidance which OnTechSpawn disabled while Smart
+            // owned the tech. Without this, a tech that survives a host->client transition
+            // or a Smart->Vanilla form swap keeps avoidance stuck off (BUG-020).
+            try
+            {
+                if (helper.tank?.control?.m_Movement != null)
+                    helper.tank.control.m_Movement.m_USE_AVOIDANCE = true;
+            }
+            catch (System.Exception ex)
+            {
+                DebugTAC_AI.LogWarning("Smart: m_USE_AVOIDANCE restore failed: " + ex.Message);
+            }
             if (helper.FormState is SmartPerTechState state)
             {
                 // Aether/T3: single unified cleanup fan-out (see SmartRuntime.Deregister).
@@ -432,6 +478,11 @@ namespace TAC_AI.AI.Forms.Smart
             // main-thread dispatch. The drain is per-tick and bounded; runs even when
             // FormState is missing so non-Smart techs still flush Smart's marshal queue.
             WorldEventBus.DrainMainThreadQueue();
+
+            // Drain scenario / chunk-regen / relations / anger envelopes on main thread.
+            // Debounced internally to ~200 ms so per-tech-per-frame Operations invocation
+            // collapses to one drain per interval.
+            Director.Scenarios.SpawnEnvelopeExecutor.MaybeDrain();
 
             // P5 Item 23: LOS producer tick. Default OFF (no-op); when Enabled, computes
             // round-robin per-team LOS via Physics.Raycast and publishes per-team snapshot
@@ -710,6 +761,29 @@ namespace TAC_AI.AI.Forms.Smart
                     + "   threatQ=" + (LearningService.Threat?.EventQueue.ApproximateCount ?? 0));
                 y += 18;
             }
+
+            DrawDirectorPanel();
+        }
+
+        // Collapsible Training Director panel gated on smart.director.gui.show. Expands to
+        // ~560x400 with a scroll view over the latest digest text.
+        private void DrawDirectorPanel()
+        {
+            if (!Director.DirectorTunables.GuiShow) return;
+            string digest = Director.DirectorState.LatestDigest;
+            const int PX = 300, PY = 138, PW = 560, PH = 400;
+            UnityEngine.GUI.Box(new UnityEngine.Rect(PX, PY, PW, PH), "Training Director");
+            int lineCount = 1;
+            if (!string.IsNullOrEmpty(digest))
+            {
+                for (int i = 0; i < digest.Length; i++) if (digest[i] == '\n') lineCount++;
+            }
+            var viewport = new UnityEngine.Rect(PX + 4, PY + 22, PW - 8, PH - 28);
+            var content = new UnityEngine.Rect(0, 0, PW - 28, lineCount * 18 + 8);
+            _directorPanelScrollPos = UnityEngine.GUI.BeginScrollView(viewport, _directorPanelScrollPos, content);
+            UnityEngine.GUI.Label(new UnityEngine.Rect(2, 2, content.width - 4, content.height - 4),
+                string.IsNullOrEmpty(digest) ? "(no digest yet)" : digest);
+            UnityEngine.GUI.EndScrollView();
         }
 
         public IMovementAIController CreateMovementController(TankAIHelper helper, MovementContainerKind kind, EnemyMind mind)

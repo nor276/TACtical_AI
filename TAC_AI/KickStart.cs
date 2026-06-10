@@ -69,6 +69,9 @@ namespace TAC_AI
         /// <summary> Interact with NPTss </summary>
         internal static KeyCode NPTInteract = KeyCode.T;
         public static int NPTInteractKeySav = (int)NPTInteract;
+        /// <summary> Ctrl + this opens the Training Director panel </summary>
+        internal static KeyCode DirectorPanelKey = KeyCode.Backslash;
+        public static int DirectorPanelKeySav = (int)DirectorPanelKey;
 
         public static float TerrainHeight => ManWorldGeneratorExt.CurrentTotalHeight;
         public static float TerrainHeightOffset => ManWorldGeneratorExt.CurrentMinHeight;
@@ -621,6 +624,7 @@ namespace TAC_AI
             TankAIManager.Initiate();
             AIGlobals.InitSharedMenu();
             GUIAIManager.Initiate();
+            TAC_AI.AI.Forms.Smart.Director.DirectorPanel.Initiate();
             RawTechExporter.Initiate();
             RLoadedBases.BaseFunderManager.Initiate();
             ManEnemyWorld.Initiate();
@@ -690,6 +694,7 @@ namespace TAC_AI
 
             AIGlobals.InitSharedMenu();
             GUIAIManager.Initiate();
+            TAC_AI.AI.Forms.Smart.Director.DirectorPanel.Initiate();
             yield return 0.30f;
 
             RawTechExporter.Initiate();
@@ -934,6 +939,7 @@ namespace TAC_AI
             RLoadedBases.BaseFunderManager.DeInit();
             RawTechExporter.DeInit();
             GUIAIManager.DeInit();
+            TAC_AI.AI.Forms.Smart.Director.DirectorPanel.DeInit();
             TankAIManager.DeInit();
             ManBaseTeams.DeInit();
             try
@@ -979,6 +985,7 @@ namespace TAC_AI
                 TankAIManager.Initiate();
                 AIGlobals.InitSharedMenu();
                 GUIAIManager.Initiate();
+            TAC_AI.AI.Forms.Smart.Director.DirectorPanel.Initiate();
                 RawTechExporter.Initiate();
                 RLoadedBases.BaseFunderManager.Initiate();
                 ManEnemyWorld.Initiate();

@@ -301,6 +301,10 @@ namespace TAC_AI.AI.Enemy
                 // REVISED: now formally locks pursuit via SetPursuit (was a bare lastEnemy hold); drops use ReleaseTarget()
                 // above so KeepEnemyFocus is cleared rather than leaving stale focus from a raw lastEnemy = null.
                 helper.SetPursuit(helper.lastEnemyGet);
+                // Re-check .tank between SetPursuit and the Team read - tank can be destroyed mid-tick
+                // (single-frame race; same class as the IsLiveTechTarget guards elsewhere).
+                if (helper.lastEnemyGet?.tank == null)
+                    return;
                 if (ManBaseTeams.IsEnemy(tank.Team, helper.lastEnemyGet.tank.Team))
                     helper.WantsToFight = true;
             }

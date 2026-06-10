@@ -30,18 +30,15 @@ namespace TAC_AI.AI.Movement.AICores
             if (controller.Helper.Allied && controller.Helper.AutoAnchor)
             {
                 if (tank.IsAnchored && !controller.Helper.PlayerAllowAutoAnchoring)
-                    DebugTAC_AI.Log(KickStart.ModID + ": LandAICore - Should NOT be active when anchored UNLESS we have autoAnchor [" +
+                    DebugTAC_AI.LogWarnFileOnly("LandAICore-anchored-" + tank.name,
+                        "[AIWARN] LandAICore - Should NOT be active when anchored UNLESS we have autoAnchor [" +
                         controller.Helper.AutoAnchor.ToString() + "]!  StaticAICore should be in control!");
             }
             else if (tank.IsAnchored)
             {
-                DebugTAC_AI.Log(KickStart.ModID + ": LandAICore - Should NOT be active when anchored UNLESS we have autoAnchor [NPT]!  StaticAICore should be in control!");
+                DebugTAC_AI.LogWarnFileOnly("LandAICore-anchored-NPT-" + tank.name,
+                    "[AIWARN] LandAICore - Should NOT be active when anchored UNLESS we have autoAnchor [NPT]!  StaticAICore should be in control!");
             }
-        }
-
-        public Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset)
-        {
-            throw new NotImplementedException();
         }
 
         public bool PlanningPathing(Vector3 Target, EDrivePathing aim)

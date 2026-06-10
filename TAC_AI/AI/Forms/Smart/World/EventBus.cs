@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TerraTechETCUtil;
 using UnityEngine;
 
 namespace TAC_AI.AI.Forms.Smart.World
@@ -166,6 +167,152 @@ namespace TAC_AI.AI.Forms.Smart.World
         BaseHeld = 1,         // Base: damage absorbed without falling over a window
         BlockDelivered = 2,   // Gatherer: cargo deposited at delivery point
         AllyProtected = 3,    // AircraftSupport: same-team ally took no damage while we were in support range
+        BaseLost = 4,         // Base: tech died — paired with BaseHeld for retention rate
+        // Guard-bucket violations emitted by BehaviorGuardWorker on pathology edge
+        // transitions. Source-byte high-nibble carries the guard ordinal so the
+        // aggregator can attribute the dominant sub-guard. Reward channel is muted
+        // by construction (LearningTuning.OutcomeWeights[GuardViolation_*] = 0).
+        GuardViolation_Movement = 5,
+        GuardViolation_Role = 6,
+        GuardViolation_Combat = 7,
+        // Sentinel must stay LAST so array sizing tracks cardinality.
+        Count = 8,
+    }
+
+    // Director envelope structs — background daemons PublishFromWorker these;
+    // SmartForm.Operations drains and executes on the main thread. Each carries
+    // ScenarioGeneration so post-rollback/teardown writes that re-arrive stamped
+    // with a stale generation get rejected at drain time.
+
+    /// <summary>
+    /// Background-scenario asks main thread to mint teams + spawn the initial recipe
+    /// population for a scenario. Routed by ScenarioWorker on first tick of a new scenario.
+    /// Main-thread executor materializes the teams (ManBaseTeams non-concurrent path) +
+    /// fires the initial spawn batch.
+    /// </summary>
+    public readonly struct ScenarioBootRequest
+    {
+        public readonly int ScenarioId;
+        public readonly int ScenarioGeneration;
+        public readonly float Intensity;
+        public readonly UnityEngine.Vector3 Centroid;
+        public ScenarioBootRequest(int scenarioId, int generation, float intensity,
+            UnityEngine.Vector3 centroid)
+        {
+            ScenarioId = scenarioId; ScenarioGeneration = generation;
+            Intensity = intensity; Centroid = centroid;
+        }
+    }
+
+    /// <summary>Background-scenario asks main thread to spawn one mobile tech.</summary>
+    public readonly struct ScenarioSpawnRequest
+    {
+        public readonly UnityEngine.Vector3 Position;
+        public readonly UnityEngine.Vector3 Forwards;
+        public readonly int Team;
+        public readonly int ScenarioId;
+        public readonly int ScenarioGeneration;
+        public readonly BaseTerrain Terrain;
+        public readonly BasePurpose Purpose;
+        public readonly FactionLevel Progression;
+        public readonly FactionSubTypes Faction;
+        public readonly int MaxPrice;
+        public readonly int Grade;
+        public readonly TAC_AI.Templates.RawTechOffset Offset;
+        public readonly bool ExcludeErad;
+        // Curated role folder to pull from (null => use the global filter). IsBase routes
+        // through the anchored base-spawn path instead of the mobile prefab path.
+        public readonly string DirectorFolder;
+        public readonly bool IsBase;
+        public ScenarioSpawnRequest(UnityEngine.Vector3 pos, UnityEngine.Vector3 fwd, int team,
+            int scenarioId, int generation, BaseTerrain terrain,
+            BasePurpose purpose, FactionLevel progression,
+            FactionSubTypes faction, int maxPrice, int grade,
+            TAC_AI.Templates.RawTechOffset offset, bool excludeErad)
+            : this(pos, fwd, team, scenarioId, generation, terrain, purpose, progression,
+                  faction, maxPrice, grade, offset, excludeErad, null, false)
+        {
+        }
+        public ScenarioSpawnRequest(UnityEngine.Vector3 pos, UnityEngine.Vector3 fwd, int team,
+            int scenarioId, int generation, BaseTerrain terrain,
+            BasePurpose purpose, FactionLevel progression,
+            FactionSubTypes faction, int maxPrice, int grade,
+            TAC_AI.Templates.RawTechOffset offset, bool excludeErad,
+            string directorFolder, bool isBase)
+        {
+            Position = pos; Forwards = fwd; Team = team;
+            ScenarioId = scenarioId; ScenarioGeneration = generation;
+            Terrain = terrain; Purpose = purpose; Progression = progression;
+            Faction = faction; MaxPrice = maxPrice; Grade = grade;
+            Offset = offset; ExcludeErad = excludeErad;
+            DirectorFolder = directorFolder; IsBase = isBase;
+        }
+    }
+
+    /// <summary>Background-chunkregen asks main thread to spawn a chunk of one type at a position.</summary>
+    public readonly struct ChunkSpawnRequest
+    {
+        public readonly UnityEngine.Vector3 Centroid;
+        public readonly float InnerRadius;
+        public readonly float OuterRadius;
+        public readonly int CountBudget;
+        public readonly int ScenarioId;
+        public readonly int ScenarioGeneration;
+        public ChunkSpawnRequest(UnityEngine.Vector3 centroid, float innerR, float outerR,
+            int countBudget, int scenarioId, int generation)
+        {
+            Centroid = centroid; InnerRadius = innerR; OuterRadius = outerR;
+            CountBudget = countBudget; ScenarioId = scenarioId; ScenarioGeneration = generation;
+        }
+    }
+
+    /// <summary>Background-scenario asks main thread to anchor inter-team relations.</summary>
+    public readonly struct ScenarioRelationsRequest
+    {
+        public readonly int TeamA;
+        public readonly int TeamB;
+        public readonly byte RelationCode; // matches TeamRelations enum byte
+        public readonly int ScenarioGeneration;
+        public ScenarioRelationsRequest(int teamA, int teamB, byte relationCode, int generation)
+        {
+            TeamA = teamA; TeamB = teamB; RelationCode = relationCode; ScenarioGeneration = generation;
+        }
+    }
+
+    /// <summary>
+    /// One-shot ask: executor should subscribe ScenarioWorker's TeamRemovedEvent handler.
+    /// Fired by the worker on first tick of any scenario; executor idempotent.
+    /// </summary>
+    public readonly struct ScenarioTeamSubscribeRequest
+    {
+    }
+
+    /// <summary>
+    /// Background guard worker asks main thread to gather rare Unity-only reads (terrain
+    /// height, AILimitSettings flags, FrustrationMeter) for a tech. RequestFields is a
+    /// bitmask of which fields the caller wants — main-thread executor fills only those.
+    /// Round-trip via a result slot keyed by (techId, monoTick) on SpawnEnvelopeExecutor.
+    /// </summary>
+    public readonly struct GuardEvaluationRequest
+    {
+        public readonly TechId TechId;
+        public readonly long MonoTick;
+        public readonly ushort RequestFields;
+        public GuardEvaluationRequest(TechId techId, long monoTick, ushort requestFields)
+        {
+            TechId = techId; MonoTick = monoTick; RequestFields = requestFields;
+        }
+    }
+
+    /// <summary>Background-scenario asks main thread to zero a team's angerThreshold.</summary>
+    public readonly struct ScenarioAngerResetRequest
+    {
+        public readonly int TeamId;
+        public readonly int ScenarioGeneration;
+        public ScenarioAngerResetRequest(int teamId, int generation)
+        {
+            TeamId = teamId; ScenarioGeneration = generation;
+        }
     }
 
     public readonly struct IdentityOutcome
@@ -174,13 +321,24 @@ namespace TAC_AI.AI.Forms.Smart.World
         public readonly TAC_AI.AI.Forms.Smart.Identity.SmartIdentity Identity;
         public readonly OutcomeKind Kind;
         public readonly float Magnitude;
+        // Low-nibble = Live(0) / Replay(1). High-nibble = guard ordinal 0..10 with
+        // 15 = wildcard / no-guard sentinel. Phase 5 wires the guard high-nibble.
+        public readonly byte Source;
+        // Backcompat 4-arg ctor — Source defaults to wildcard sentinel (15<<4) so old
+        // callers stamp "no guard, live".
         public IdentityOutcome(TechId techId, TAC_AI.AI.Forms.Smart.Identity.SmartIdentity identity,
             OutcomeKind kind, float magnitude)
+            : this(techId, identity, kind, magnitude, (byte)(15 << 4))
+        {
+        }
+        public IdentityOutcome(TechId techId, TAC_AI.AI.Forms.Smart.Identity.SmartIdentity identity,
+            OutcomeKind kind, float magnitude, byte source)
         {
             TechId = techId;
             Identity = identity;
             Kind = kind;
             Magnitude = magnitude;
+            Source = source;
         }
     }
 
@@ -333,6 +491,16 @@ namespace TAC_AI.AI.Forms.Smart.World
             ClearSubscribers<WorldResetCompleted>();   // L-036
             // P6 Item 27 + P7 Item 21: IdentityOutcome consumer in IdentityOutcomeConsumer.
             ClearSubscribers<IdentityOutcome>();
+            // Director scenario / chunk-regen envelopes — main-thread executor in
+            // SmartForm.Operations is the only subscriber, but ClearAll still hits these
+            // for completeness.
+            ClearSubscribers<ScenarioBootRequest>();
+            ClearSubscribers<ScenarioSpawnRequest>();
+            ClearSubscribers<ChunkSpawnRequest>();
+            ClearSubscribers<ScenarioRelationsRequest>();
+            ClearSubscribers<ScenarioAngerResetRequest>();
+            ClearSubscribers<ScenarioTeamSubscribeRequest>();
+            ClearSubscribers<GuardEvaluationRequest>();
             // Phase 10 (FIX-PLAN.md): obsolete event types still allocate per-T statics
             // when first JITted; clear them inside #pragma so the [Obsolete] warning is
             // contained to this one place. When v0.2+ wires their producers, remove from

@@ -71,6 +71,26 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         public static bool IsRunning => Volatile.Read(ref _running) == 1;
         public static string CurrentPlayerId => _currentPlayerId;
 
+        /// <summary>
+        /// Fired after AutosaveWorker.TickOnce successfully saves the profile (host-only via
+        /// BUG-055 SaveProfile gate). The Director piggy-backs its checkpoint sibling JSON
+        /// writes here so the disk-tier auto-checkpoint shares the profile save's I/O.
+        /// </summary>
+        public static event Action ProfileSaved;
+
+        /// <summary>Raised by AutosaveWorker after a successful save. Swallows handler faults.</summary>
+        public static void RaiseProfileSaved()
+        {
+            var h = ProfileSaved;
+            if (h == null) return;
+            try { h(); }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarnFileOnly("learning-profilesaved-handler",
+                    "[LEARNING] ProfileSaved handler threw " + ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
         /// <summary>Start the learning subsystem. Idempotent.</summary>
         public static void Init(WorkerPool pool, string modDirectory)
         {
@@ -125,6 +145,19 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             EnqueueWithFactory("Trainer-Residual", Residual);
             EnqueueWithFactory("Trainer-Threat", Threat);
 
+            // Director lifecycle plug — fires AFTER the 4 trainers are enqueued so
+            // the canonical roster watchdog sees the daemon name immediately.
+            try { TAC_AI.AI.Forms.Smart.Director.TrainingDirector.Init(pool, modDirectory); }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarning("LearningService.Init: TrainingDirector.Init threw: " + ex.Message);
+            }
+
+            // Hand the identity lookup to IdentityReplayBank so tee sites can
+            // stamp the source-tech's SmartIdentity without walking teams themselves.
+            TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.SetIdentityLookup(
+                id => SmartRuntime.TryGetSmartIdentity(id));
+
             // L-060: AutosaveWorker — 30s dirty-only autosave.
             AutosaveWorker.Reset();
             AutosaveWorker.Enqueue(pool);
@@ -142,6 +175,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             TAC_AI.AI.Forms.Smart.World.TechLifecycleRegistry.Register(LeadResidualRecorder.Instance);
             IdentityOutcomes = new IdentityOutcomeConsumer();
             IdentityOutcomeConsumer.Install(IdentityOutcomes);
+            // Hand the consumer reference to the ConstraintEngine so 0.2 Hz constraint
+            // evaluations can query GetRatePerMin / GetWeightedRatePerMin.
+            TAC_AI.AI.Forms.Smart.Director.ConstraintEngine.SetOutcomeConsumer(IdentityOutcomes);
 
             _damageHandler = OnDamageObserved;
             WorldEventBus.Subscribe(_damageHandler);
@@ -176,8 +212,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private static void OnHostLost(HostChanged ev)
         {
             const int BarrierWaitMs = 500;
-            // L-059: stop accepting new training events while we drain.
-            SmartRuntime.AcceptingTrainingEvents = false;
+            // L-059: ref-counted Inc so a concurrent rollback's Dec/Inc pair doesn't
+            // race a clobber-write.
+            SmartRuntime.AcceptingTrainingEvents_Inc();
 
             bool allParked = TAC_AI.AI.Forms.Smart.Coordination.TrainerBarrier.WaitAll(BarrierWaitMs);
             if (!allParked)
@@ -187,7 +224,11 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             }
             try
             {
-                if (IsRunning) SaveProfile(_currentPlayerId);
+                // L-070 / BUG-055: SmartRuntime.IsHost is already false by the time HostChanged
+                // fires (SmartForm.Operations writes it before notifying). The host-loss
+                // checkpoint MUST still write so a takeover client has fresh weights, so we
+                // bypass the host gate here by routing through SaveProfileInternal directly.
+                if (IsRunning) SaveProfileInternal(_currentPlayerId);
                 DebugTAC_AI.LogWarnFileOnly("learning-hostchange-lost",
                     "[LEARNING-HOSTCHANGE] OnHostLost player=" + _currentPlayerId
                     + " barrierParked=" + allParked + " phase=" + ev.PhaseSource);
@@ -216,12 +257,19 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                         : 0L;
                     if (diskMs > _profileLoadedAtMs)
                     {
-                        var profile = ProfilePersistence.Load(path, baselineBytes: null);
+                        // BUG-075: include the baseline tier here too — if the host's
+                        // disk image was corrupted between Init and host-handover, the
+                        // baseline file is the last-ditch recovery.
+                        var profile = ProfilePersistence.Load(path, baselineBytes: TryReadBaselineBytes());
                         if (profile != null)
                         {
                             // Per-model load: catch arch-mismatch + keep in-memory params.
                             ApplyProfileSafe(profile);
                             _profileLoadedAtMs = diskMs;
+                            // BUG-023: refresh the UnknownTag preservation buffer with the
+                            // newest disk image so the next Save re-emits forward-compat
+                            // fields the takeover host's profile carried.
+                            lock (_saveSyncRoot) _lastLoadedProfile = profile;
                         }
                     }
                 }
@@ -234,47 +282,75 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             }
             finally
             {
-                // L-059: producers may enqueue again.
-                SmartRuntime.AcceptingTrainingEvents = true;
+                // L-059: pair the Inc from OnHostLost. Effective flag is
+                // (disableCount == 0 && IsHost).
+                SmartRuntime.AcceptingTrainingEvents_Dec();
                 DebugTAC_AI.LogWarnFileOnly("learning-hostchange-gained",
                     "[LEARNING-HOSTCHANGE] OnHostGained player=" + _currentPlayerId
                     + " phase=" + ev.PhaseSource);
             }
         }
 
-        // L-070: per-model load with arch-mismatch guard. ApplyProfile (existing) calls
-        // LoadParameters which throws on length-mismatch; we want partial-tolerance here.
+        // L-070 / BUG-074: per-model load with arch-mismatch guard. ApplyProfile's
+        // per-section catch covers exceptions in the iteration loop, but the documented
+        // "wrap LoadParameters in try/catch" contract requires PER-MODEL recovery so
+        // partial-tolerance survives even if one model's blob is the wrong arch. This
+        // path drives the load through the per-model Try helper so arch-mismatch on
+        // any single model leaves the others' weights honored.
         private static void ApplyProfileSafe(LoadedProfile profile)
         {
-            void Try(string name, ILearnedModel model, byte[] bytes)
+            if (profile == null || profile.Sections == null) return;
+            void Try(string name, ILearnedModel model, LoadedProfile.Section section)
             {
-                if (model == null || bytes == null) return;
+                if (model == null || section == null || section.Weights == null) return;
+                // BUG-024: explicit on-disk vs live ArchitectureVersion check at the
+                // per-model entry so a same-ParameterCount arch bump doesn't silently
+                // load old weights into new arch. LoadParameters-only catches length
+                // changes, not permutation/re-weighting.
+                if (section.ArchitectureVersion != model.ArchitectureVersion)
+                {
+                    DebugTAC_AI.LogWarnFileOnly("learning-hostchange-archver-" + name,
+                        "[LEARNING-HOSTCHANGE] reload-skip model=" + name
+                        + " reason=arch-version-mismatch (disk=" + section.ArchitectureVersion
+                        + " live=" + model.ArchitectureVersion + "); keeping in-memory params");
+                    return;
+                }
                 try
                 {
-                    var floats = new float[bytes.Length / 4];
-                    System.Buffer.BlockCopy(bytes, 0, floats, 0, bytes.Length);
-                    model.LoadParameters(floats);
+                    // BUG-047: serialise per-model load against in-flight TrainOneMinibatch
+                    // (TrainerWorker locks SaveMutex around Adam.Step) so Array.Copy doesn't
+                    // race element-wise writes during host promotion.
+                    // BUG-046: restore Adam state under the same lock so the resumed model
+                    // doesn't run a Glorot-fresh M/V/T against trained weights.
+                    lock (model.SaveMutex)
+                    {
+                        model.LoadParameters(section.Weights);
+                        if (section.AdamStatePayload != null)
+                            ProfilePersistence.ApplyAdamStatePayload(model, section.AdamStatePayload);
+                    }
                 }
                 catch (ArgumentException)
                 {
                     DebugTAC_AI.LogWarnFileOnly("learning-hostchange-archmismatch-" + name,
                         "[LEARNING-HOSTCHANGE] reload-skip model=" + name
-                        + " reason=arch-mismatch (host schema differs); keeping in-memory params");
+                        + " reason=arch-mismatch (param-count differs); keeping in-memory params");
                 }
                 catch (Exception ex)
                 {
                     DebugTAC_AI.LogWarning("LearningService.ApplyProfileSafe " + name + ": " + ex.Message);
                 }
             }
-            // ApplyProfile's existing structure is sufficient when arches match; the safe
-            // path above only kicks in when there's a mismatch on a particular model.
-            try { ApplyProfile(profile); }
-            catch (Exception ex)
+            for (int i = 0; i < profile.Sections.Length; i++)
             {
-                DebugTAC_AI.LogWarnFileOnly("learning-hostchange-applyprofile-fail",
-                    "[LEARNING-HOSTCHANGE] ApplyProfile threw — falling back to per-model safe loads: " + ex.Message);
-                // ApplyProfile failed wholesale; we still have in-memory params, which is
-                // the correct fallback per the plan invariant.
+                var s = profile.Sections[i];
+                if (s == null) continue;
+                switch (s.Id)
+                {
+                    case ModelId.Intent: Try("Intent", Intent, s); break;
+                    case ModelId.ActionValue: Try("ActionValue", ActionValue, s); break;
+                    case ModelId.TrajectoryResidual: Try("Residual", Residual, s); break;
+                    case ModelId.ThreatAssessment: Try("Threat", Threat, s); break;
+                }
             }
         }
 
@@ -308,6 +384,11 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             }
             catch (Exception ex) { DebugTAC_AI.LogWarning("Smart.Learning.Shutdown: save failed: " + ex.Message); }
 
+            // Drop the per-cell replay queues before the models are nulled so
+            // dangling envelopes don't outlive their target trainers.
+            TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.SetIdentityLookup(null);
+            TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.Reset();
+
             // P7 sidecars: tear down before nulling the models (LeadResidualRecorder
             // enqueues into Residual.EventQueue, so the recorder must stop accepting
             // new commits before Residual is nulled). Unsubscribe IdentityOutcomeConsumer
@@ -339,12 +420,56 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             return Path.Combine(_profileDir, safe + ".bin");
         }
 
+        /// <summary>
+        /// Director rollback disk-tier source — the current player's live profile path.
+        /// Null when the profile dir isn't initialised yet.
+        /// </summary>
+        public static string RollbackProfilePath()
+        {
+            if (string.IsNullOrEmpty(_profileDir)) return null;
+            return ProfilePath(_currentPlayerId);
+        }
+
+        // BUG-023: cache the LoadedProfile so Save can re-emit any UnknownTags the disk
+        // contained (forward-compat TLV slots a newer client wrote that we don't know
+        // about). _saveSyncRoot guards reads/writes of this field across Load/Save.
+        private static LoadedProfile _lastLoadedProfile;
+        private static readonly object _saveSyncRoot = new object();
+
+        // BUG-075: convention baseline file location. Sibling of the per-player profile
+        // dir; PretrainingPipeline.Run writes the cross-player baseline here so the load
+        // chain's fourth tier (embedded baseline) actually has bytes to fall through to
+        // when current + .previous + .penultimate are all corrupt.
+        private static string BaselinePath()
+        {
+            if (string.IsNullOrEmpty(_profileDir)) return null;
+            return Path.Combine(_profileDir, "baseline.bin");
+        }
+
+        private static byte[] TryReadBaselineBytes()
+        {
+            try
+            {
+                var bp = BaselinePath();
+                if (!string.IsNullOrEmpty(bp) && File.Exists(bp))
+                    return File.ReadAllBytes(bp);
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarning("Smart.Learning.Baseline: read failed: " + ex.Message);
+            }
+            return null;
+        }
+
         private static void LoadProfile(string playerId)
         {
             try
             {
                 string path = ProfilePath(playerId);
-                var profile = ProfilePersistence.Load(path, baselineBytes: null);
+                // BUG-075: surface the on-disk baseline file (if any) as the fourth-tier
+                // fallback. Pre-fix every caller passed null, making the documented
+                // four-tier chain functionally three-tier.
+                var profile = ProfilePersistence.Load(path, baselineBytes: TryReadBaselineBytes());
                 if (profile == null)
                 {
                     // L-015: cold start (no primary, no .previous, no .penultimate, no
@@ -352,6 +477,7 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                     // genuine fallback (one or more tiers were corrupt).
                     DebugTAC_AI.Log("[PROFILE-COLD-START] player=" + playerId + " — Glorot init");
                     Interlocked.Exchange(ref _modifiedSinceLoad, 0);
+                    lock (_saveSyncRoot) _lastLoadedProfile = null;
                     return;
                 }
                 // L-015: tier-aware log. Primary success = quiet; anything else = a
@@ -370,6 +496,8 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                                 + ", fromBaseline=" + profile.FromBaseline
                                 + ", tier=" + tier + ").");
                 Interlocked.Exchange(ref _modifiedSinceLoad, 0);
+                // BUG-023: stash the in-memory profile for UnknownTag re-emission on Save.
+                lock (_saveSyncRoot) _lastLoadedProfile = profile;
             }
             catch (Exception ex)
             {
@@ -467,19 +595,48 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             DebugTAC_AI.LogWarnFileOnly("learning-outcomes", sb.ToString());
         }
 
+        /// <summary>
+        /// BUG-055 (root): host gate at the entry — clients never own training state, so
+        /// they must never overwrite the per-player profile with model state that received
+        /// no training events. Closes BUG-018 (QuitSaveCoordinator), BUG-019 (SmartForm
+        /// OnEngineSave), BUG-078 (AutosaveWorker host-loss race), and BUG-054
+        /// (SnapshotManager client-restore overwrites) in one place. The internal entry
+        /// (<see cref="SaveProfileInternal"/>) bypasses this gate for the OnHostLost
+        /// checkpoint, which fires AFTER SmartRuntime.IsHost has already flipped false.
+        /// </summary>
         public static void SaveProfile(string playerId)
         {
-            try
+            if (!SmartRuntime.IsHost)
             {
-                string path = ProfilePath(playerId);
-                var models = new ILearnedModel[] { Intent, ActionValue, Residual, Threat };
-                ProfilePersistence.Save(path, models);
-                Interlocked.Exchange(ref _modifiedSinceLoad, 0);
-                DebugTAC_AI.Log("Smart.Learning: saved profile for " + playerId + " → " + path);
+                DebugTAC_AI.LogWarnFileOnly("profile-save-nonhost",
+                    "[PROFILE-SAVE-SKIP] non-host — refusing to overwrite profile for player=" + playerId);
+                return;
             }
-            catch (Exception ex)
+            SaveProfileInternal(playerId);
+        }
+
+        // BUG-055 bypass entry — only OnHostLost should call this directly. Shutdown's
+        // last-save also routes through the public gate so a non-host process doesn't
+        // poison disk on quit (training never accumulates locally on clients).
+        private static void SaveProfileInternal(string playerId)
+        {
+            // BUG-022 + BUG-023 + BUG-076: serialise the entire Save against concurrent
+            // Load calls via _saveSyncRoot, and re-emit UnknownTags from the most-recent
+            // load so forward-compat TLV slots survive a save-after-load roundtrip.
+            lock (_saveSyncRoot)
             {
-                DebugTAC_AI.LogWarning("Smart.Learning.Save: " + ex.Message);
+                try
+                {
+                    string path = ProfilePath(playerId);
+                    var models = new ILearnedModel[] { Intent, ActionValue, Residual, Threat };
+                    ProfilePersistence.Save(path, models, _lastLoadedProfile);
+                    Interlocked.Exchange(ref _modifiedSinceLoad, 0);
+                    DebugTAC_AI.Log("Smart.Learning: saved profile for " + playerId + " → " + path);
+                }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogWarning("Smart.Learning.Save: " + ex.Message);
+                }
             }
         }
 
@@ -491,12 +648,40 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 if (section == null) continue;
                 try
                 {
+                    // BUG-024: arch-version guard at ApplyProfile entry. LoadParameters only
+                    // catches ParameterCount mismatch; a same-count arch bump (permutation /
+                    // re-weighting) would silently load stale weights into new arch.
+                    ILearnedModel target = null;
                     switch (section.Id)
                     {
-                        case ModelId.Intent: Intent.LoadParameters(section.Weights); break;
-                        case ModelId.ActionValue: ActionValue.LoadParameters(section.Weights); break;
-                        case ModelId.TrajectoryResidual: Residual.LoadParameters(section.Weights); break;
-                        case ModelId.ThreatAssessment: Threat.LoadParameters(section.Weights); break;
+                        case ModelId.Intent: target = Intent; break;
+                        case ModelId.ActionValue: target = ActionValue; break;
+                        case ModelId.TrajectoryResidual: target = Residual; break;
+                        case ModelId.ThreatAssessment: target = Threat; break;
+                    }
+                    if (target == null) continue;
+                    if (section.ArchitectureVersion != target.ArchitectureVersion)
+                    {
+                        DebugTAC_AI.LogWarnFileOnly("profile-arch-version-skip-" + section.Id,
+                            "[PROFILE-ARCH-VERSION-SKIP] model=" + section.Id
+                            + " disk=" + section.ArchitectureVersion
+                            + " live=" + target.ArchitectureVersion
+                            + " — keeping Glorot/in-memory params");
+                        continue;
+                    }
+                    // BUG-047: lock SaveMutex so LoadParameters' Array.Copy doesn't race
+                    // against an in-flight TrainerWorker Adam.Step (which the worker takes
+                    // under the same mutex). At Init this is uncontended; at OnHostGained
+                    // the workers are live and concurrently writing to _params.
+                    // BUG-046: also restore Adam state under the same lock so the model
+                    // resumes optimization at the saved T/M/V instead of re-pinging Adam
+                    // bias-correction (which would multiply effective LR ~10× on the first
+                    // post-load step against trained weights).
+                    lock (target.SaveMutex)
+                    {
+                        target.LoadParameters(section.Weights);
+                        if (section.AdamStatePayload != null)
+                            ProfilePersistence.ApplyAdamStatePayload(target, section.AdamStatePayload);
                     }
                 }
                 catch (Exception ex)
@@ -548,7 +733,12 @@ namespace TAC_AI.AI.Forms.Smart.Learning
 
                 float[] features = BuildThreatEventFeatures(evt);
                 float observedThreat = Mathf.Clamp01(evt.Damage.Damage / 100f);
-                Threat.EventQueue.Enqueue(new ThreatEvent(evt.Id, features, observedThreat));
+                var threatEvent = new ThreatEvent(evt.Id, features, observedThreat);
+                Threat.EventQueue.Enqueue(threatEvent);
+                // Tee into IdentityReplayBank. Identity is the victim's (training is about
+                // this tech's threat surface).
+                var threatIdentity = TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.ResolveIdentity(evt.Id);
+                TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.TeeThreat(threatIdentity, threatEvent);
                 Interlocked.Exchange(ref _modifiedSinceLoad, 1);
             }
             catch (Exception ex)

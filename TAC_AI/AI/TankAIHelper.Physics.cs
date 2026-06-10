@@ -37,7 +37,16 @@ namespace TAC_AI.AI
                 }
                 netProgressLastPos = curProgressPos;
                 netProgressNextCheck = Time.time + AIGlobals.StuckNetProgressWindow;
+                // Advance the guard-side net-progress ring at the same 1 Hz cadence so
+                // WedgedNoProgress can interrogate a window of net-progress booleans.
+                _netProgressRing[_netProgressCursor] = MakingNetProgress;
+                _netProgressCursor = (_netProgressCursor + 1) % NetProgressRingDepth;
+                if (_netProgressCursor == 0) _netProgressWrapped = true;
             }
+            // Snapshot FrustrationMeter once per tick so the bg GuardWorker reads via the
+            // volatile companion without racing the unjam FSM writer.
+            PublishedFrustrationMeter = FrustrationMeter;
+
             if (tank.rbody.IsNotNull())
             {
                 var velo = tank.rbody.velocity;
@@ -48,6 +57,21 @@ namespace TAC_AI.AI
                     DodgeSphereRadius = lastTechExtents + Mathf.Clamp(recentSpeed / 2f, 1f, 63f);
                     SafeVelocity = velo;
                     LocalSafeVelocity = tank.rootBlockTrans.InverseTransformVector(velo);
+                    // 4 Hz guard-ring writes. Gated on the same NaN guard above. Forward
+                    // projection uses rootBlockTrans.forward (the steering axis).
+                    if (Time.time >= recentSpeedNextCheck)
+                    {
+                        Vector3 fwd = tank.rootBlockTrans.forward;
+                        float signed = Vector3.Dot(velo, fwd);
+                        Vector3 horiz = Vector3.ProjectOnPlane(velo, Vector3.up);
+                        float speedXZ = horiz.magnitude;
+                        recentSpeedSigned[recentSpeedCursor] = signed;
+                        recentSpeedXZ[recentSpeedCursor] = speedXZ;
+                        recentSpeedY[recentSpeedCursor] = velo.y;
+                        recentSpeedCursor = (recentSpeedCursor + 1) % GuardRingDepth;
+                        if (recentSpeedCursor == 0) recentSpeedWrapped = true;
+                        recentSpeedNextCheck = Time.time + GuardRingTickSec;
+                    }
                     return;
                 }
             }
@@ -55,6 +79,27 @@ namespace TAC_AI.AI
             DodgeSphereRadius = lastTechExtents;
             SafeVelocity = Vector3.zero;
             LocalSafeVelocity = Vector3.zero;
+        }
+
+        // Count of "made net progress" ticks in the trailing windowSec. Used by
+        // WedgedNoProgressGuard; the accessor lands here so other guards can rely on it
+        // during their own pathology tests. windowSec clamped to ring depth.
+        internal int WedgeNetProgressCount(int windowSec)
+        {
+            if (windowSec <= 0) return 0;
+            int slots = Mathf.Min(windowSec, NetProgressRingDepth);
+            int total = _netProgressWrapped ? NetProgressRingDepth : _netProgressCursor;
+            if (total <= 0) return 0;
+            int read = Mathf.Min(slots, total);
+            int hits = 0;
+            int idx = _netProgressCursor - 1;
+            for (int i = 0; i < read; i++)
+            {
+                if (idx < 0) idx += NetProgressRingDepth;
+                if (_netProgressRing[idx]) hits++;
+                idx--;
+            }
+            return hits;
         }
     }
 }

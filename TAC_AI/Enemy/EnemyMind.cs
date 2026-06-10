@@ -227,7 +227,10 @@ namespace TAC_AI.AI.Enemy
                     ManBaseTeams.AttackComplainPlayer(Tank.boundsCentreWorldNoCheck, Tank.Team);
                 if (teamKnown && ManBaseTeams.TryGetBaseTeamDynamicOnly(Tank.Team, out var ETD))
                 {
-                    ETD.DegradeRelations(srcTeam, dingus.Damage);
+                    // host-only mutation: ManBaseTeams replicates host->client only; a client
+                    // running this would diverge from authoritative state (BUG-021).
+                    if (ManNetwork.IsHost)
+                        ETD.DegradeRelations(srcTeam, dingus.Damage);
                     return;
                 }
             }

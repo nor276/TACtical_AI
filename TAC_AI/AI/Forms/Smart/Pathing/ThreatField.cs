@@ -65,9 +65,11 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
     /// arc_anisotropy and los_factor are treated as locally constant for the gradient
     /// per §2.2 CHOMP-style relaxation.
     ///
-    /// LOS factor at v0.1.0 is a constant 1.0 (no LOS test) — activating it requires
-    /// passing a TerrainMap reference into Evaluate. TODO v0.2: ThreatField holds a
-    /// reference to the active TerrainMap snapshot for raycast-based LOS shading.
+    /// LOS shading IS active: when constructed with a non-null TerrainMap (the
+    /// PathingService production path), <see cref="LosFactor"/> raycasts the
+    /// terrain-height grid between source and query point and returns 0.3 when
+    /// occluded, 1.0 otherwise. Constructions that pass terrain=null (test fixtures)
+    /// fall back to a constant 1.0.
     /// </summary>
     public sealed class ThreatField : IThreatField
     {

@@ -28,7 +28,9 @@ namespace TAC_AI.AI.Forms
         // ---- v2 global lifecycle (this form becoming / leaving active). Modified registers nothing extra here;
         // the shared AIModuleBootstrap handles module/tunable/profile registration globally. ----
         public void InitGlobal() { }
-        public void DeInitGlobal() { }
+        // Drop cached IBehavior instances so a re-Init (form swap, AIModuleRegistry rebind) doesn't
+        // dispatch into stale module IDs whose registrations were swapped out.
+        public void DeInitGlobal() { cache.Clear(); }
 
         // ---- v2 per-tech lifecycle: own the per-tech brain state in the shell's FormState slot ----
         public void OnTechSpawn(TankAIHelper helper) { helper.FormState = new ModifiedTechState(); }
@@ -196,6 +198,10 @@ namespace TAC_AI.AI.Forms
             }
             else
             {
+                // Demotion path: no behavior ran this tick. Clear stale operator flags (DriveDest, FIRE_ALL,
+                // etc.) so the freshly-defaulted Escort run next tick doesn't pick up last tick's drive state.
+                ref EControlOperatorSet op = ref ctx.OperatorRef();
+                BGeneral.ResetValues(helper, ref op);
                 DebugTAC_AI.Log(KickStart.ModID + ": AIType is set to an invalid state - " + helper.DediAI);
                 DebugTAC_AI.Log(KickStart.ModID + ": RESETTING TO DEFAULTS");
                 helper.DediAI = AIType.Escort;
@@ -226,6 +232,13 @@ namespace TAC_AI.AI.Forms
                 case AIType.MTTurret:  return "Allied.MultiTech.Static";
                 case AIType.MTStatic:  return "Allied.MultiTech.Static";
                 case AIType.MTMimic:   return "Allied.MultiTech.Mimic";
+                // Legacy AIType values that pair with a non-Tank DriverType (Pilot/Sailor/Astronaut).
+                // KickStart.TransferLegacyIfNeeded maps them to Escort; we follow that mapping here so
+                // save-loaded techs whose DediAI persisted as one of these don't silently demote to Escort
+                // each tick (ReValidateAI keeps the legacy DediAI when the corresponding *Avail flag is set).
+                case AIType.Aviator:   return "Allied.Escort";
+                case AIType.Buccaneer: return "Allied.Escort";
+                case AIType.Astrotech: return "Allied.Escort";
                 default:               return null;
             }
         }

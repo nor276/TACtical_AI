@@ -24,7 +24,9 @@ namespace TAC_AI.AI.Forms.Smart.Training
     ///     verified alive predicate (<c>tank.visible.isActive &amp;&amp; tank.blockman.blockCount &gt; 0</c>).
     ///   - <see cref="Run"/> is the synchronous variant retained for CMA-ES math testing
     ///     without a host MonoBehaviour — its sim is a zero-duration stalemate by design.
-    ///   - TerrainSpec/BuildTerrain still stubbed (no programmatic terrain seed API verified).
+    ///   - TerrainSpec carries authored terrain hints but no programmatic seeding hook
+    ///     ships — matches reuse whatever world is currently loaded. The dead BuildTerrain
+    ///     stub was removed; TerrainSpec is informational on the scenario file only.
     ///   - Render suppression still partial (Time.timeScale only).
     /// </summary>
     public sealed class TrainingMatch
@@ -197,7 +199,7 @@ namespace TAC_AI.AI.Forms.Smart.Training
             try
             {
                 ApplyHyperParameters(Candidate);
-                BuildTerrain(Scenario.Terrain);
+                // Terrain is whatever's loaded; Scenario.Terrain is informational.
                 SpawnTechs(Scenario.Spawns, _outcome);
                 if (Headless) EnableHeadlessMode();
                 return _outcome;
@@ -336,13 +338,7 @@ namespace TAC_AI.AI.Forms.Smart.Training
             }
         }
 
-        // ====================== TERRAIN / SPAWN / CLEANUP ======================
-
-        private void BuildTerrain(TerrainSpec spec)
-        {
-            // TODO v0.2: programmatic terrain seeding. Candidates: ManWorld.SetTerrainSeed,
-            // Harmony patch on world loader. v0.1.0 reuses whatever world the dev session loaded.
-        }
+        // ====================== SPAWN / CLEANUP ======================
 
         private void SpawnTechs(IReadOnlyList<SpawnSpec> spawns, MatchOutcome outcome)
         {

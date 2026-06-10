@@ -28,6 +28,11 @@ namespace TAC_AI.AI.Enemy
         // ----------------------------  New Enemy  ----------------------------
         public static void GenerateEnemyAI(this TankAIHelper helper, Tank tank)
         {
+            // host-only: enemy AI setup subscribes Tank.DamageEvent + drives host-authoritative
+            // mutations (DegradeRelations, focus-fire dispatch, network broadcasts). Running on
+            // a client desyncs team relations and double-handles OnHit (BUG-056 / BUG-021).
+            if (ManNetwork.IsNetworked && !ManNetwork.IsHost)
+                return;
             DebugTAC_AI.BeginAICalculationTimer(tank);
             var newMind = tank.gameObject.GetComponent<EnemyMind>();
             if (!newMind)
@@ -815,7 +820,10 @@ namespace TAC_AI.AI.Enemy
                     int teamAttacker = helper.lastEnemyGet.tank.Team;
                     if (ManBaseTeams.IsBaseTeamDynamic(teamAttacker) || teamAttacker == ManPlayer.inst.PlayerTeam)
                     {
-                        if (ManBaseTeams.TryGetBaseTeamDynamicOnly(tank.Team, out var ETD))
+                        // host-only mutation: ManBaseTeams replicates host->client only; a
+                        // client running this would desync team relations (BUG-021).
+                        if (ManNetwork.IsHost
+                            && ManBaseTeams.TryGetBaseTeamDynamicOnly(tank.Team, out var ETD))
                             ETD.DegradeRelations(teamAttacker);
                         helper.EndPursuit();
                         return;

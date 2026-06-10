@@ -105,6 +105,12 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
         public const int DefaultSamplePoints = 16;
 
         // §6.1 cost weights — provisional, OPEN per §10. Globally tuned by CMA-ES (Training §5).
+        // Public assign API preserved for the CMA-ES tuner (TrainingMatch.cs writes directly).
+        // Worker-side reads inside Solve/Cost/TerrainPenalty go through Volatile.Read so a
+        // mid-sweep main-thread write is observed coherently per-field on the next pass. A
+        // sweep that lands across multiple fields can still be observed half-applied; tuner
+        // callers that need atomicity across the bundle issue Thread.MemoryBarrier after the
+        // full set (see TrainingMatch CMA-ES write path).
         public static float WThreat = 1.0f;
         public static float WTerrain = 0.3f;
         public static float WSmooth = 0.1f;
@@ -153,7 +159,16 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             bool cancelled = false;
             float finalCost = float.NaN;
 
-            for (int step = 0; step < GradientSteps; step++)
+            // Snapshot the tuning fields once per Solve via Volatile.Read so the loop sees
+            // a coherent set even if the CMA-ES tuner writes mid-solve. Subsequent Cost()
+            // calls inside this Solve still re-read weights per evaluation (matching the
+            // documented per-tick observability), but loop-bound parameters are stable.
+            int gradientSteps = System.Threading.Volatile.Read(ref GradientSteps);
+            float numericalEps = System.Threading.Volatile.Read(ref NumericalEps);
+            float learningRate = System.Threading.Volatile.Read(ref LearningRate);
+            float convergenceGradientNorm = System.Threading.Volatile.Read(ref ConvergenceGradientNorm);
+
+            for (int step = 0; step < gradientSteps; step++)
             {
                 if (token.IsCancellationRequested) { cancelled = true; break; }
 
@@ -166,7 +181,7 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
                     for (int axis = 0; axis < 3; axis++)
                     {
                         Vector3 saved = cps[cpIdx];
-                        Vector3 perturb = AxisVec(axis, NumericalEps);
+                        Vector3 perturb = AxisVec(axis, numericalEps);
 
                         cps[cpIdx] = saved + perturb;
                         float costPlus = Cost(traj, threatField, terrain, capability, goal, goalVel);
@@ -174,7 +189,7 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
                         float costMinus = Cost(traj, threatField, terrain, capability, goal, goalVel);
                         cps[cpIdx] = saved;
 
-                        grad[axis] = (costPlus - costMinus) / (2f * NumericalEps);
+                        grad[axis] = (costPlus - costMinus) / (2f * numericalEps);
                     }
                     grads[i] = grad;
                 }
@@ -185,10 +200,10 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
                 {
                     var g = grads[i];
                     gradNormSq += g.sqrMagnitude;
-                    cps[firstFree + i] -= LearningRate * g;
+                    cps[firstFree + i] -= learningRate * g;
                 }
                 stepsRun++;
-                if (Mathf.Sqrt(gradNormSq) < ConvergenceGradientNorm) break;
+                if (Mathf.Sqrt(gradNormSq) < convergenceGradientNorm) break;
             }
 
             finalCost = Cost(traj, threatField, terrain, capability, goal, goalVel);
@@ -210,7 +225,8 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             VehicleCapability capability,
             Vector3 goal, Vector3 goalVel)
         {
-            int M = SamplePoints;
+            int M = System.Threading.Volatile.Read(ref SamplePoints);
+            if (M < 2) M = 2;
             float threatInt = 0f, terrainInt = 0f, smoothInt = 0f, lengthInt = 0f;
             float dt = 1f / (M - 1);
 
@@ -237,12 +253,21 @@ namespace TAC_AI.AI.Forms.Smart.Pathing
             float reachSq = (endP - goal).sqrMagnitude;
             float velSq = (endV - goalVel).sqrMagnitude;
 
-            return WThreat * threatInt
-                 + WTerrain * terrainInt
-                 + WSmooth * smoothInt
-                 + WLength * lengthInt
-                 + WReach * reachSq
-                 + WVelocity * velSq;
+            // Snapshot weights via Volatile.Read so a mid-evaluation main-thread write to
+            // any weight is observed coherently per-field (no torn float on x86; barrier
+            // discipline for cross-arch correctness on Mono/IL2CPP backends).
+            float wThreat = System.Threading.Volatile.Read(ref WThreat);
+            float wTerrain = System.Threading.Volatile.Read(ref WTerrain);
+            float wSmooth = System.Threading.Volatile.Read(ref WSmooth);
+            float wLength = System.Threading.Volatile.Read(ref WLength);
+            float wReach = System.Threading.Volatile.Read(ref WReach);
+            float wVelocity = System.Threading.Volatile.Read(ref WVelocity);
+            return wThreat * threatInt
+                 + wTerrain * terrainInt
+                 + wSmooth * smoothInt
+                 + wLength * lengthInt
+                 + wReach * reachSq
+                 + wVelocity * velSq;
         }
 
         private static float TerrainPenalty(ITerrainMap terrain, Vector3 p, VehicleCapability cap)

@@ -14,7 +14,8 @@ namespace TAC_AI
     {
         //Handles the display that's triggered on AI change
         //  Circle hud wheel when the player assigns a new AI state
-        //  TODO - add the hook needed to get the UI to pop up on Guard selection
+        //  Guard-selection hook lives in UIPatches.UIRadialTechControlMenuPatches.OnAIOptionSelected_Prefix
+        //   (command == PlayerCommands.AIGuard, value 3); it calls LaunchSubMenuClickable here.
         // NOTE: HANDLES RTS SELECTED AIS AS WELL
         private static GUIAIManager inst;
         public static Vector3 PlayerLoc = Vector3.zero;

@@ -971,15 +971,103 @@ namespace TAC_AI.Templates
             DebugTAC_AI.Log(KickStart.ModID + ": - SpawnLandBase: Spawning Land Base " + toSpawn.techName + ", ID (Still pending...)");
             return toSpawn.baseCost + SpawnBB;
         }
+        // Sea base: spawn at WaterHeight so the first block floats on the water plane, then anchor.
+        // If the water mod isn't present, fall back to land (no water to float on).
         private static int SpawnSeaBase(Vector3 spawnerForwards, Vector3 pos, int Team, RawTech toSpawn, bool Starting, bool storeBB, int SpawnBB = 0)
-        {   // N/A!!! WIP!!!
-            DebugTAC_AI.Log(KickStart.ModID + ": - SpawnSeaBase: There's no sea bases stored in the prefab pool.  Consider suggesting one!");
-            return SpawnLandBase(spawnerForwards, pos, Team, toSpawn, storeBB, Starting, SpawnBB);
+        {
+            if (!KickStart.isWaterModPresent)
+            {
+                DebugTAC_AI.Log(KickStart.ModID + ": - SpawnSeaBase: water mod not present; falling back to SpawnLandBase");
+                return SpawnLandBase(spawnerForwards, pos, Team, toSpawn, Starting, storeBB, SpawnBB);
+            }
+            if ((Starting && AIGlobals.StartingBasesAreAirdropped) || !KickStart.AISelfRepair)
+            {
+                new BombSpawnTech(pos, spawnerForwards, Team, toSpawn, storeBB, SpawnBB);
+                return toSpawn.baseCost + SpawnBB;
+            }
+            Vector3 position = pos;
+            position.y = KickStart.WaterHeight;
+            Quaternion quat = AIGlobals.LookRot(spawnerForwards, Vector3.up);
+
+            BlockTypes bType = toSpawn.GetFirstBlock();
+            TankBlock block = SpawnBlockS(bType, position, quat, out bool worked);
+            if (!worked)
+            {
+                DebugTAC_AI.Log(KickStart.ModID + ": SpawnSeaBase - FAILIURE TO SPAWN TECH!!!  FIRST BLOCK WAS NULL OR TILE NOT LOADED");
+                return 0;
+            }
+            var effect = ManSpawn.inst.GetCustomSpawnEffectPrefabs(ManSpawn.CustomSpawnEffectType.Smoke);
+            if (effect)
+            {
+                effect.transform.Spawn(block.centreOfMassWorld);
+            }
+            ResetSkinIDSet();
+            block.SetSkinByUniqueID(GetSkinIDSetForTeam(Team, (int)ManSpawn.inst.GetCorporation(bType)));
+
+            Tank theBase;
+            if (storeBB)
+                theBase = TechFromBlock(block, Team, toSpawn.techName + " ¥¥");
+            else
+                theBase = TechFromBlock(block, Team, toSpawn.techName + " " + turretChar);
+
+            theBase.FixupAnchors(true);
+            theBase.Anchors.TryAnchorAll(true, true);
+            theBase.gameObject.GetOrAddComponent<RequestAnchored>();
+            var namesav = BookmarkBuilder.Init(theBase, toSpawn);
+            namesav.infBlocks = GetEnemyBaseSupplies(toSpawn);
+            namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.curSessionFaction);
+            namesav.unprovoked = false;
+            namesav.instant = false;
+            DebugTAC_AI.Log(KickStart.ModID + ": - SpawnSeaBase: Spawning Sea Base " + toSpawn.techName + " at waterY=" + position.y);
+            return toSpawn.baseCost + SpawnBB;
         }
+        // Air base: spawn at a fixed altitude above terrain. Anchored techs honor their suspended position;
+        // for an air base we leave the anchor active so the base hangs at altitude (the Smart/Vanilla anchor
+        // logic keeps it from settling). Falls back to land if altitude can't be resolved.
         private static int SpawnAirBase(Vector3 spawnerForwards, Vector3 pos, int Team, RawTech toSpawn, bool Starting, bool storeBB, int SpawnBB = 0)
-        {   // N/A!!! WIP!!!
-            DebugTAC_AI.Log(KickStart.ModID + ": - SpawnAirBase: There's no air bases stored in the prefab pool.  Consider suggesting one!");
-            return SpawnLandBase(spawnerForwards, pos, Team, toSpawn, storeBB, Starting, SpawnBB);
+        {
+            if ((Starting && AIGlobals.StartingBasesAreAirdropped) || !KickStart.AISelfRepair)
+            {
+                new BombSpawnTech(pos, spawnerForwards, Team, toSpawn, storeBB, SpawnBB);
+                return toSpawn.baseCost + SpawnBB;
+            }
+            Singleton.Manager<ManWorld>.inst.GetTerrainHeight(pos, out float groundY);
+            const float AirBaseAltitude = 64f;
+            Vector3 position = pos;
+            position.y = groundY + AirBaseAltitude;
+            Quaternion quat = AIGlobals.LookRot(spawnerForwards, Vector3.up);
+
+            BlockTypes bType = toSpawn.GetFirstBlock();
+            TankBlock block = SpawnBlockS(bType, position, quat, out bool worked);
+            if (!worked)
+            {
+                DebugTAC_AI.Log(KickStart.ModID + ": SpawnAirBase - FAILIURE TO SPAWN TECH!!!  FIRST BLOCK WAS NULL OR TILE NOT LOADED");
+                return 0;
+            }
+            var effect = ManSpawn.inst.GetCustomSpawnEffectPrefabs(ManSpawn.CustomSpawnEffectType.Smoke);
+            if (effect)
+            {
+                effect.transform.Spawn(block.centreOfMassWorld);
+            }
+            ResetSkinIDSet();
+            block.SetSkinByUniqueID(GetSkinIDSetForTeam(Team, (int)ManSpawn.inst.GetCorporation(bType)));
+
+            Tank theBase;
+            if (storeBB)
+                theBase = TechFromBlock(block, Team, toSpawn.techName + " ¥¥");
+            else
+                theBase = TechFromBlock(block, Team, toSpawn.techName + " " + turretChar);
+
+            theBase.FixupAnchors(true);
+            theBase.Anchors.TryAnchorAll(true, true);
+            theBase.gameObject.GetOrAddComponent<RequestAnchored>();
+            var namesav = BookmarkBuilder.Init(theBase, toSpawn);
+            namesav.infBlocks = GetEnemyBaseSupplies(toSpawn);
+            namesav.faction = RawTechUtil.CorpExtToCorp(toSpawn.curSessionFaction);
+            namesav.unprovoked = false;
+            namesav.instant = false;
+            DebugTAC_AI.Log(KickStart.ModID + ": - SpawnAirBase: Spawning Air Base " + toSpawn.techName + " at altitude=" + position.y);
+            return toSpawn.baseCost + SpawnBB;
         }
 
         // UNLOADED
@@ -1103,6 +1191,118 @@ namespace TAC_AI.Templates
             AIECore.StampAuthoredIntent(theTech, toSpawn.terrain, toSpawn.purposes);
 
             return theTech;
+        }
+
+        /// <summary>
+        /// Director scenario hand-off. Wraps SpawnMobileTechPrefab + stamps the Tank
+        /// into DirectorState.ScenarioOwnedTechs by TechId so renames don't break
+        /// ownership. Must be called from main thread (Unity Transform.SetParent at
+        /// ManLooseBlocks.cs:1166 throws from background). Note: filter.ForceAnchor is
+        /// always wiped for mobile spawns (see SpawnMobileTechPrefab body).
+        /// </summary>
+        public static Tank SpawnScenarioMobileTech(Vector3 pos, Vector3 forwards, int Team,
+            RawTechPopParams filter, int scenarioId)
+        {
+            if (filter == null) return null;
+            RawTech RT = FilteredSelectFromAll(filter, true, true);
+            if (RT == null) return null;
+            Tank theTech = SpawnMobileTechPrefab(pos, forwards, Team, RT, filter);
+            if (theTech != null)
+            {
+                try
+                {
+                    var techId = TAC_AI.AI.Forms.Smart.World.TechId.FromTank(theTech);
+                    TAC_AI.AI.Forms.Smart.Director.DirectorState.ScenarioOwnedTechs.TryAdd(
+                        techId.Value, (byte)scenarioId);
+                }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogWarnFileOnly("scenario-stamp-throw",
+                        "[SCENARIO] ScenarioOwnedTechs stamp threw "
+                        + ex.GetType().Name + ": " + ex.Message);
+                }
+            }
+            return theTech;
+        }
+
+        // Director curated-folder spawn. Picks a tech from the role folder (price/grade/
+        // terrain capped) and spawns it — mobiles via the prefab path, bases via the
+        // auto-determine path so anchored blueprints set up as bases. Returns null when the
+        // folder is empty or nothing passes the caps, and the caller degrades the slot.
+        public static Tank SpawnScenarioFromFolder(Vector3 pos, Vector3 forwards, int Team,
+            RawTechPopParams filter, int scenarioId, string folder, bool asBase)
+        {
+            if (filter == null) return null;
+            RawTech RT = SelectFromDirectorFolder(folder, filter);
+            if (RT == null) return null;
+            Tank theTech = asBase
+                ? SpawnTechAutoDetermine(pos, forwards, Team, RT, false, true, false, true, 0)
+                : SpawnMobileTechPrefab(pos, forwards, Team, RT, filter);
+            if (theTech != null)
+            {
+                try
+                {
+                    var techId = TAC_AI.AI.Forms.Smart.World.TechId.FromTank(theTech);
+                    TAC_AI.AI.Forms.Smart.Director.DirectorState.ScenarioOwnedTechs.TryAdd(
+                        techId.Value, (byte)scenarioId);
+                }
+                catch (Exception ex)
+                {
+                    DebugTAC_AI.LogWarnFileOnly("scenario-stamp-throw",
+                        "[SCENARIO] ScenarioOwnedTechs stamp threw " + ex.GetType().Name + ": " + ex.Message);
+                }
+            }
+            return theTech;
+        }
+
+        private static RawTech SelectFromDirectorFolder(string folder, RawTechPopParams filter)
+        {
+            var names = TAC_AI.AI.Forms.Smart.Director.Scenarios.DirectorTechFolders.NamesIn(folder);
+            if (names == null || names.Count == 0) return null;
+            List<RawTech> matches = new List<RawTech>();
+            for (int i = 0; i < names.Count; i++)
+            {
+                RawTech rt = ModTechsDatabase.ExtPopTechsAllFindByName(names[i]);
+                if (rt == null) continue;
+                if (filter.MaxPrice > 0 && rt.startingFunds > filter.MaxPrice) continue;
+                if (filter.Terrain != BaseTerrain.Any && rt.terrain != BaseTerrain.Any
+                    && rt.terrain != filter.Terrain) continue;
+                if (filter.TargetFactionGrade > 0 && rt.IntendedGrade > filter.TargetFactionGrade) continue;
+                matches.Add(rt);
+            }
+            if (matches.Count == 0) return null;
+            return matches[UnityEngine.Random.Range(0, matches.Count)];
+        }
+
+        /// <summary>
+        /// Count of cached RawTech entries (external + internal) matching the filter.
+        /// Used by S4 graceful-degrade gate to detect "not enough Air mobile templates,
+        /// degrade to S1". Must be called from main thread because GetExternalIndexes
+        /// uses non-concurrent SearchSingleUse / ShufflerSingleUse caches.
+        /// </summary>
+        public static int MatchCount(RawTechPopParams filter)
+        {
+            if (filter == null) return 0;
+            if (SearchSingleUse.Any() || ShufflerSingleUse.Any()) return 0;
+            try
+            {
+                int extCount = GetExternalIndexes(filter, SearchSingleUse, false).Count;
+                int prefabCount = GetEnemyBaseTypes(filter, ShufflerSingleUse, false).Count;
+                // GetExternalIndexes returns a singleton [-1] when nothing matched.
+                if (extCount == 1 && SearchSingleUse.Count == 1 && SearchSingleUse[0] == -1) extCount = 0;
+                return extCount + prefabCount;
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarnFileOnly("scenario-match-count-throw",
+                    "[SCENARIO] MatchCount threw " + ex.GetType().Name + ": " + ex.Message);
+                return 0;
+            }
+            finally
+            {
+                SearchSingleUse.Clear();
+                ShufflerSingleUse.Clear();
+            }
         }
 
         internal static bool SpawnAttractTech(Vector3 pos, Vector3 forwards, int Team, BaseTerrain terrainType = BaseTerrain.Land,

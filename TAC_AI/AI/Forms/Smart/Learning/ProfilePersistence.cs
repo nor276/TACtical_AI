@@ -22,6 +22,13 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             public byte ArchitectureVersion;
             public float[] Weights;
             /// <summary>
+            /// BUG-046: serialized Adam optimizer state (M, V, T, LR). Null when the disk
+            /// image lacks the 0x0002 tag (pre-fix profiles). ApplyProfile reflects this
+            /// back into the model's _adam field so training continues across reloads
+            /// without the documented ~10× first-step LR spike from a T=1 reset.
+            /// </summary>
+            public byte[] AdamStatePayload;
+            /// <summary>
             /// L-079: TLV body — preserved unknown tags from disk so re-emit on next Save
             /// keeps fields we don't yet understand. Tag 0x0001 = Weights (canonical view);
             /// any other tag id stays in this list verbatim. Empty for v≤2 files.
@@ -54,50 +61,48 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         // dispatches to ApplyProfile's per-model LoadParameters catch (Glorot re-init).
         public const uint CurrentSchemaVersion = 4;
         public const ushort TagId_Weights = 0x0001;
+        // BUG-046: Adam optimizer state TLV tag. Payload layout per section:
+        //   uint  : paramCount       (sanity vs section header — bail if mismatched)
+        //   long  : T (step counter)
+        //   float : LearningRate
+        //   float[paramCount] : M
+        //   float[paramCount] : V
+        // Reading the tag is non-fatal: a v4 reader that doesn't know 0x0002 stashes it
+        // as an UnknownTag and re-emits on next Save (BUG-023). No schema bump required.
+        public const ushort TagId_AdamState = 0x0002;
         public static readonly byte[] Magic = { (byte)'S', (byte)'M', (byte)'R', (byte)'T' };
 
-        /// <summary>Serialize the four model snapshots into the profile binary at <paramref name="filePath"/>.</summary>
+        /// <summary>
+        /// Serialize the model snapshots into the profile binary at <paramref name="filePath"/>.
+        /// Two-arg overload preserved for callers that have no LoadedProfile context.
+        /// </summary>
         public static void Save(string filePath, ILearnedModel[] models)
+        {
+            Save(filePath, models, priorLoaded: null);
+        }
+
+        /// <summary>
+        /// BUG-023 / BUG-076: full Save with optional <paramref name="priorLoaded"/> for
+        /// UnknownTag re-emission. When supplied, per-section UnknownTags (forward-compat
+        /// TLV payload from a newer client) are written verbatim after the weights tag, so
+        /// a save-from-old client doesn't strip fields a future client knew about.
+        ///
+        /// BUG-076 ordering: the new save's bytes are built INTO .tmp BEFORE any backup
+        /// rotation. If StoreParameters / write throws, .previous and .penultimate are
+        /// untouched and the prior generations survive. The rotation block only runs once
+        /// the tmp file is fully written + fsync'd.
+        /// </summary>
+        public static void Save(string filePath, ILearnedModel[] models, LoadedProfile priorLoaded)
         {
             EnsureDirectory(filePath);
             string tmp = filePath + ".tmp";
             string previous = filePath + ".previous";
             string penultimate = filePath + ".penultimate";
 
-            // L-015: rotate two-deep backup ring BEFORE the new save.
-            //   .previous → .penultimate  (delete old penultimate first to free the slot)
-            //   current   → .previous
-            //   new save  → .tmp → File.Replace into current
-            // If any rotation step fails, log + continue: a fresh save is more valuable than
-            // perfect backup chain. Recover via primary on next load; on primary corruption
-            // the fallback chain in Load still tries .previous and .penultimate independently.
-            try
-            {
-                if (File.Exists(previous))
-                {
-                    if (File.Exists(penultimate)) File.Delete(penultimate);
-                    File.Move(previous, penultimate);   // promote previous → penultimate
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugTAC_AI.LogWarning("Smart.Learning.Save: previous→penultimate rotation failed: " + ex.Message);
-            }
-            try
-            {
-                if (File.Exists(filePath))
-                {
-                    if (File.Exists(previous)) File.Delete(previous);
-                    File.Copy(filePath, previous);   // snapshot current → previous
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugTAC_AI.LogWarning("Smart.Learning.Save: current→previous snapshot failed: " + ex.Message);
-                // Don't abort the save — better to have a fresh save than nothing.
-            }
-
-            // Build the byte stream.
+            // ---- Step 1: build the byte stream entirely in memory (so any failure here
+            // leaves the existing on-disk ring intact — BUG-076 root fix).
+            byte[] body;
+            uint crc;
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms, Encoding.ASCII, leaveOpen: true))
             {
@@ -108,51 +113,124 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 for (int i = 0; i < models.Length; i++)
                 {
                     var m = models[i];
+                    if (m == null) continue;   // defensive — Shutdown nulls model refs
                     var weights = new float[m.ParameterCount];
-                    m.StoreParameters(weights);
+                    // BUG-022 + BUG-046: serialise StoreParameters + Adam state read under
+                    // SaveMutex. TrainerWorker takes the same lock around Adam.Step, so
+                    // weights and M/V/T are sampled from the same consistent moment.
+                    byte[] adamPayload;
+                    lock (m.SaveMutex)
+                    {
+                        m.StoreParameters(weights);
+                        adamPayload = BuildAdamPayload(GetAdamStateOrNull(m));
+                    }
                     bw.Write((byte)m.Id);
                     bw.Write(m.ArchitectureVersion);
                     bw.Write((uint)m.ParameterCount);
-                    // L-079: schema 3 TLV body. tag_count[2] then per-tag (tag_id[2], byte_length[4], payload).
-                    // Tag 0x0001 = weights. UnknownTags from a prior Load (forward-compat
-                    // payload from a newer schema) are re-emitted verbatim so a save-from-old
-                    // doesn't strip fields a future client knew about. Save() takes
-                    // ILearnedModel[] so we have no Section reference here for UnknownTags —
-                    // re-emit only the weights tag for the live-model path. The
-                    // UnknownTag preservation path activates only on Load→ApplyProfile
-                    // re-Save flows that pass through a LoadedProfile.Section (LearningService
-                    // currently rebuilds via per-model LoadParameters so UnknownTags drop on
-                    // intentional save-after-load — documented limitation; future Wave can
-                    // route Save through LoadedProfile to preserve them across roundtrips).
-                    int weightBytes = m.ParameterCount * 4;
-                    ushort tagCount = 1;
+
+                    // Schema 3+ TLV body. Tag 0x0001 = weights, 0x0002 = AdamState (BUG-046).
+                    // Any UnknownTags carried in priorLoaded for this section get re-emitted
+                    // verbatim so a save-after-load roundtrip doesn't strip forward-compat
+                    // fields (BUG-023). UnknownTags that overlap a tag id we now understand
+                    // (e.g. priorLoaded carried 0x0002 from a future client and we emit our
+                    // own 0x0002 too) get skipped from the unknown re-emit so disk doesn't
+                    // duplicate the tag.
+                    LoadedProfile.Section priorSection = FindSection(priorLoaded, m.Id);
+                    int knownTags = 1 + (adamPayload != null ? 1 : 0);
+                    int unknownTagCount = 0;
+                    if (priorSection != null && priorSection.UnknownTags != null)
+                    {
+                        for (int u = 0; u < priorSection.UnknownTags.Count; u++)
+                        {
+                            ushort uid = priorSection.UnknownTags[u].Key;
+                            if (uid == TagId_Weights || uid == TagId_AdamState) continue;
+                            unknownTagCount++;
+                        }
+                    }
+                    ushort tagCount = (ushort)(knownTags + unknownTagCount);
                     bw.Write(tagCount);
+
+                    int weightBytes = m.ParameterCount * 4;
                     bw.Write(TagId_Weights);
                     bw.Write((uint)weightBytes);
                     for (int j = 0; j < weights.Length; j++) bw.Write(weights[j]);
+
+                    if (adamPayload != null)
+                    {
+                        bw.Write(TagId_AdamState);
+                        bw.Write((uint)adamPayload.Length);
+                        bw.Write(adamPayload, 0, adamPayload.Length);
+                    }
+
+                    if (unknownTagCount > 0)
+                    {
+                        for (int u = 0; u < priorSection.UnknownTags.Count; u++)
+                        {
+                            var kv = priorSection.UnknownTags[u];
+                            if (kv.Key == TagId_Weights || kv.Key == TagId_AdamState) continue;
+                            bw.Write(kv.Key);
+                            bw.Write((uint)(kv.Value != null ? kv.Value.Length : 0));
+                            if (kv.Value != null && kv.Value.Length > 0)
+                                bw.Write(kv.Value, 0, kv.Value.Length);
+                        }
+                    }
                 }
                 bw.Flush();
 
-                byte[] body = ms.ToArray();
-                uint crc = Crc32(body, 0, body.Length);
-
-                // Write tmp + atomic rename per §6.1 steps 3-5.
-                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
-                using (var w = new BinaryWriter(fs, Encoding.ASCII))
-                {
-                    w.Write(body);
-                    w.Write(crc);
-                    w.Flush();
-                    fs.Flush(flushToDisk: true);
-                }
+                body = ms.ToArray();
+                crc = Crc32(body, 0, body.Length);
             }
 
-            // Phase 4 (FIX-PLAN.md) — R1 §3.9 / R2 1.R2-D atomic save: previous code
-            // did `Delete(filePath); Move(tmp, filePath)` — a non-atomic Windows pattern
-            // where a Move failure (AV lock, transient I/O, disk full) lost the most-
-            // recent save. File.Replace IS atomic on NTFS and additionally swaps the
-            // prior file into a sidecar slot, giving us a free generation cushion.
-            // First-save fallback: target doesn't exist yet → File.Move works.
+            // ---- Step 2: write tmp + fsync. If this throws, the backup ring is still
+            // intact because we haven't touched it yet.
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
+            using (var w = new BinaryWriter(fs, Encoding.ASCII))
+            {
+                w.Write(body);
+                w.Write(crc);
+                w.Flush();
+                fs.Flush(flushToDisk: true);
+            }
+
+            // ---- Step 3: rotate backup ring NOW that tmp is committed.
+            // L-015 / BUG-058: each step uses File.Move (atomic on NTFS) so a partial
+            // failure leaves a coherent ring tier. current→previous copies via a
+            // previousTmp sidecar so an aborted Copy never leaves a half-written
+            // .previous. The Replace below needs the current file in place; once Replace
+            // consumes tmp the current file is gone, so we snapshot first.
+            try
+            {
+                if (File.Exists(previous))
+                {
+                    if (File.Exists(penultimate)) File.Delete(penultimate);
+                    File.Move(previous, penultimate);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarning("Smart.Learning.Save: previous→penultimate rotation failed: " + ex.Message);
+            }
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    // BUG-058 hygiene: atomic-ish snapshot — Copy to previousTmp first,
+                    // then File.Move into place so an aborted Copy doesn't leave a
+                    // truncated .previous (which Load would CRC-fail-classify as corrupt).
+                    string previousTmp = previous + ".tmp";
+                    File.Copy(filePath, previousTmp, overwrite: true);
+                    if (File.Exists(previous)) File.Delete(previous);
+                    File.Move(previousTmp, previous);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarning("Smart.Learning.Save: current→previous snapshot failed: " + ex.Message);
+            }
+
+            // ---- Step 4: atomic swap tmp → current.
+            // Phase 4 (FIX-PLAN.md) — File.Replace is atomic on NTFS; falls back to the
+            // delete-then-move pattern on non-NTFS filesystems (degrades gracefully).
             if (File.Exists(filePath))
             {
                 try
@@ -161,7 +239,6 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 }
                 catch (PlatformNotSupportedException)
                 {
-                    // Non-NTFS filesystem; fall back to the old pattern.
                     File.Delete(filePath);
                     File.Move(tmp, filePath);
                 }
@@ -169,6 +246,97 @@ namespace TAC_AI.AI.Forms.Smart.Learning
             else
             {
                 File.Move(tmp, filePath);
+            }
+        }
+
+        // BUG-023 helper: locate the prior-load section matching this model id so we can
+        // re-emit its UnknownTags. Linear scan over <=4 sections — negligible.
+        private static LoadedProfile.Section FindSection(LoadedProfile prior, ModelId id)
+        {
+            if (prior == null || prior.Sections == null) return null;
+            for (int i = 0; i < prior.Sections.Length; i++)
+            {
+                var s = prior.Sections[i];
+                if (s != null && s.Id == id) return s;
+            }
+            return null;
+        }
+
+        // BUG-046: per-model AdamState accessor. The four concrete model classes carry a
+        // `private readonly AdamState _adam` field; the ILearnedModel interface does NOT
+        // expose it (and is out of save-load-cluster ownership). Reflection-based access
+        // is the conservative path: every model uses the same field name + AdamState type,
+        // and the field is set once in the ctor (readonly), so we hand back a reference
+        // the caller can read M/V/T from under model.SaveMutex. Cached at first call per
+        // type so the reflection cost is paid exactly four times per process.
+        private static readonly System.Collections.Generic.Dictionary<Type, System.Reflection.FieldInfo> _adamFieldCache
+            = new System.Collections.Generic.Dictionary<Type, System.Reflection.FieldInfo>();
+        private static AdamState GetAdamStateOrNull(ILearnedModel model)
+        {
+            if (model == null) return null;
+            var t = model.GetType();
+            System.Reflection.FieldInfo fi;
+            lock (_adamFieldCache)
+            {
+                if (!_adamFieldCache.TryGetValue(t, out fi))
+                {
+                    fi = t.GetField("_adam",
+                        System.Reflection.BindingFlags.Instance
+                        | System.Reflection.BindingFlags.NonPublic);
+                    _adamFieldCache[t] = fi;   // null-cache too — don't re-search a missing field
+                }
+            }
+            if (fi == null) return null;
+            return fi.GetValue(model) as AdamState;
+        }
+
+        // BUG-046: serialize Adam state into a TLV 0x0002 payload. Layout:
+        //   uint paramCount | long T | float LR | float[paramCount] M | float[paramCount] V
+        // Returns null when the model has no Adam state (defensive — should be unreachable
+        // for the four real models). Computed under model.SaveMutex.
+        private static byte[] BuildAdamPayload(AdamState adam)
+        {
+            if (adam == null || adam.M == null || adam.V == null) return null;
+            int n = adam.M.Length;
+            if (adam.V.Length != n) return null;   // corrupted Adam state — drop tag
+            int size = 4 + 8 + 4 + n * 4 + n * 4;
+            using (var ms = new MemoryStream(size))
+            using (var bw = new BinaryWriter(ms, Encoding.ASCII))
+            {
+                bw.Write((uint)n);
+                bw.Write(adam.T);
+                bw.Write(adam.LearningRate);
+                for (int i = 0; i < n; i++) bw.Write(adam.M[i]);
+                for (int i = 0; i < n; i++) bw.Write(adam.V[i]);
+                bw.Flush();
+                return ms.ToArray();
+            }
+        }
+
+        // BUG-046: load Adam state from a TLV 0x0002 payload back into the model's
+        // _adam field. Silent no-op on any inconsistency (paramCount mismatch, model has
+        // no _adam, payload truncated) — the model just continues with its Glorot-init
+        // Adam state, which is the documented fallback semantics ("training continues
+        // across reloads" invariant becomes best-effort rather than guaranteed when
+        // the saved state is incompatible with the live arch).
+        // Caller MUST hold model.SaveMutex (we mutate _adam in place).
+        public static void ApplyAdamStatePayload(ILearnedModel model, byte[] payload)
+        {
+            if (model == null || payload == null || payload.Length < 4 + 8 + 4) return;
+            var adam = GetAdamStateOrNull(model);
+            if (adam == null) return;
+            using (var ms = new MemoryStream(payload, writable: false))
+            using (var br = new BinaryReader(ms, Encoding.ASCII))
+            {
+                uint n = br.ReadUInt32();
+                if (n != (uint)adam.M.Length) return;   // arch mismatch — keep fresh state
+                if (payload.Length < 4 + 8 + 4 + n * 4 + n * 4) return;
+                long t = br.ReadInt64();
+                float lr = br.ReadSingle();
+                for (int i = 0; i < n; i++) adam.M[i] = br.ReadSingle();
+                for (int i = 0; i < n; i++) adam.V[i] = br.ReadSingle();
+                adam.T = t;
+                adam.LearningRate = lr;
             }
         }
 
@@ -263,10 +431,16 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                     {
                         SchemaVersion = br.ReadUInt32(),
                         SavedAtUnixMs = br.ReadInt64(),
-                        Sections = new LoadedProfile.Section[4],
                     };
 
-                    for (int i = 0; i < 4; i++)
+                    // BUG-077: read sections until end-of-body rather than hardcoding 4.
+                    // The stream is bounded to the body (CRC footer excluded by the
+                    // MemoryStream length above), so PeekChar==-1 / Position>=Length is the
+                    // section-loop terminator. Lets a future Save emit 3 sections (partial
+                    // flush) or 5+ sections (added models, BaselineMetadata footer per
+                    // BUG-064) without a hardcoded Load-side bump.
+                    var sectionList = new System.Collections.Generic.List<LoadedProfile.Section>(4);
+                    while (ms.Position < ms.Length)
                     {
                         byte idByte = br.ReadByte();
                         byte archVer = br.ReadByte();
@@ -301,6 +475,14 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                                     for (uint j = 0; j < paramCount; j++) weights[j] = br.ReadSingle();
                                     section.Weights = weights;
                                 }
+                                else if (tagId == TagId_AdamState)
+                                {
+                                    // BUG-046: stash Adam state for ApplyProfile to reflect
+                                    // into the model's _adam field. Treat as best-effort —
+                                    // an arch mismatch or truncation just keeps the model's
+                                    // fresh Adam state.
+                                    section.AdamStatePayload = br.ReadBytes((int)bodyLen);
+                                }
                                 else
                                 {
                                     // Unknown tag — preserve verbatim so Save re-emits it.
@@ -315,8 +497,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                                 failureCategory = "tlv-missing-weights"; return false;
                             }
                         }
-                        p.Sections[i] = section;
+                        sectionList.Add(section);
                     }
+                    p.Sections = sectionList.ToArray();
 
                     if (p.SchemaVersion < CurrentSchemaVersion)
                     {
@@ -393,6 +576,87 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 crc = (crc >> 8) ^ _crcTable[(crc ^ bytes[offset + i]) & 0xFF];
             return ~crc;
         }
+
+        /// <summary>
+        /// Director rollback (T2 disk tier): load <paramref name="profilePath"/> (or its
+        /// chosen rotation slot) and apply the section matching <paramref name="model"/>
+        /// onto the live model under its SaveMutex. slot ∈ {"", ".previous", ".penultimate"}.
+        /// Arch-version guard layers on top of the existing Load chain. Returns true if a
+        /// section was applied. Reuses the existing byte format + Load fallback.
+        /// </summary>
+        public static bool RestoreFromCheckpoint(string profilePath, string slot, ILearnedModel model)
+        {
+            if (string.IsNullOrEmpty(profilePath) || model == null) return false;
+            string targetPath = string.IsNullOrEmpty(slot) ? profilePath : profilePath + slot;
+            try
+            {
+                LoadedProfile profile = Load(targetPath, baselineBytes: null);
+                if (profile == null || profile.Sections == null) return false;
+                for (int i = 0; i < profile.Sections.Length; i++)
+                {
+                    var section = profile.Sections[i];
+                    if (section == null || section.Id != model.Id || section.Weights == null) continue;
+                    if (section.ArchitectureVersion != model.ArchitectureVersion)
+                    {
+                        DebugTAC_AI.LogWarnFileOnly("director-restore-arch-" + model.Id,
+                            "[DIRECTOR-ROLLBACK] restore-skip model=" + model.Id
+                            + " disk=" + section.ArchitectureVersion + " live=" + model.ArchitectureVersion);
+                        return false;
+                    }
+                    lock (model.SaveMutex)
+                    {
+                        model.LoadParameters(section.Weights);
+                        if (section.AdamStatePayload != null)
+                            ApplyAdamStatePayload(model, section.AdamStatePayload);
+                    }
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarnFileOnly("director-restore-throw-" + model.Id,
+                    "[DIRECTOR-ROLLBACK] RestoreFromCheckpoint threw " + ex.GetType().Name + ": " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Director pre-action cleanup: enumerate pre-snapshot checkpoint directories under
+        /// <paramref name="checkpointRoot"/> whose newest-file mtime is older than
+        /// <paramref name="maxAge"/>. The Director prunes these on its tick.
+        /// </summary>
+        public static System.Collections.Generic.List<string> EnumerateExpiredPreSnapshots(string checkpointRoot, TimeSpan maxAge)
+        {
+            var expired = new System.Collections.Generic.List<string>();
+            try
+            {
+                if (string.IsNullOrEmpty(checkpointRoot) || !Directory.Exists(checkpointRoot)) return expired;
+                DateTime cutoff = DateTime.UtcNow - maxAge;
+                string[] dirs = Directory.GetDirectories(checkpointRoot);
+                for (int i = 0; i < dirs.Length; i++)
+                {
+                    try
+                    {
+                        DateTime newest = Directory.GetLastWriteTimeUtc(dirs[i]);
+                        string[] files = Directory.GetFiles(dirs[i]);
+                        for (int f = 0; f < files.Length; f++)
+                        {
+                            DateTime mt = File.GetLastWriteTimeUtc(files[f]);
+                            if (mt > newest) newest = mt;
+                        }
+                        if (newest < cutoff) expired.Add(dirs[i]);
+                    }
+                    catch { /* skip unreadable dir */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugTAC_AI.LogWarnFileOnly("director-enum-expired",
+                    "[DIRECTOR-ROLLBACK] EnumerateExpiredPreSnapshots threw " + ex.GetType().Name + ": " + ex.Message);
+            }
+            return expired;
+        }
     }
 
     /// <summary>
@@ -467,6 +731,19 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                             "Smart.Learning: schema-migration ladder has a hole at v" + v + " → v" + (v + 1)
                             + ". Add a [SmartMigration(fromVersion=" + v + ")] type.");
                     }
+                }
+                // BUG-038: cold-start path never runs RunForward, so a ladder-vs-current
+                // mismatch would stay dormant. Assert at static init that the registered
+                // migration ladder ends EXACTLY at ProfilePersistence.CurrentSchemaVersion
+                // — schema bumps must ship with a matching [SmartMigration] type, no
+                // exceptions, no CI gap, no "future Wave" deferrals.
+                if (maxFrom != ProfilePersistence.CurrentSchemaVersion)
+                {
+                    throw new InvalidOperationException(
+                        "Smart.Learning: schema-migration ladder MaxSchemaVersion=" + maxFrom
+                        + " does not match ProfilePersistence.CurrentSchemaVersion="
+                        + ProfilePersistence.CurrentSchemaVersion
+                        + ". Add or remove [SmartMigration] types so the highest fromVersion+1 equals the current schema.");
                 }
                 MaxSchemaVersion = maxFrom;
             }

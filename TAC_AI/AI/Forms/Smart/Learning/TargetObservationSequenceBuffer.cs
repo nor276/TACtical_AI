@@ -208,6 +208,9 @@ namespace TAC_AI.AI.Forms.Smart.Learning
                 if (TryBuildEvent(kv.Key, ownAnchorWorld, out ev))
                 {
                     classifierQueue.Enqueue(ev);
+                    // Tee into IdentityReplayBank. Identity is the SelfTech for the rolling sequence.
+                    var identity = TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.ResolveIdentity(kv.Key);
+                    TAC_AI.AI.Forms.Smart.Director.IdentityReplayBank.TeeIntent(identity, ev);
                     drained++;
                 }
             }

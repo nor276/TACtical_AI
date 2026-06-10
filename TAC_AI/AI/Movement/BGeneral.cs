@@ -158,7 +158,6 @@ namespace TAC_AI.AI
                 hasMessaged = AIECore.AIMessage(tank, ref hasMessaged, tank.name + ":  Arrived at a base and applying brakes. |Tech is at " + tank.boundsCentreWorldNoCheck);
                 direct.DriveToFacingTowards();
                 helper.AvoidStuff = false;
-                helper.ThrottleState = AIThrottleState.Yield;
                 helper.ThrottleState = AIThrottleState.PivotOnly;
                 helper.SettleDown();
             }
@@ -190,7 +189,6 @@ namespace TAC_AI.AI
             {   // We are at the place, stop moving and hold pos
                 direct.DriveToFacingTowards();
                 helper.AvoidStuff = false;
-                helper.ThrottleState = AIThrottleState.Yield;
                 helper.ThrottleState = AIThrottleState.PivotOnly;
                 helper.SettleDown();
             }

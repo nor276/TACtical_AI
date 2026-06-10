@@ -124,18 +124,20 @@ namespace TAC_AI.AI
             {
                 UIHelpersExt.ClampGUIToScreen(ref HotWindow, true);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                throw new Exception("Display is null");
+                DebugTAC_AI.LogWarnFileOnly("npt-clamp", "GUINPTInteraction: ClampGUIToScreen failed", e);
+                return;
             }
 
             try
             {
                 techCost = Mathf.RoundToInt(RawTechBase.GetBBCost(lastTank) * AIGlobals.BribeMulti);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                throw new Exception("techCost is worthless");
+                DebugTAC_AI.LogWarnFileOnly("npt-techcost", "GUINPTInteraction: techCost calc failed", e);
+                techCost = 0;
             }
             try
             {
@@ -148,9 +150,10 @@ namespace TAC_AI.AI
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                throw new Exception("IsValid is worthless");
+                DebugTAC_AI.LogWarnFileOnly("npt-teamcost", "GUINPTInteraction: teamCost lookup failed", e);
+                teamCost = 0;
             }
             try
             {
@@ -160,13 +163,12 @@ namespace TAC_AI.AI
 
                 teamName = TeamNamer.GetTeamName(lastTank.Team).ToString();
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                throw new Exception("teamName is worthless");
+                DebugTAC_AI.LogWarnFileOnly("npt-teamname", "GUINPTInteraction: teamName lookup failed", e);
+                teamName = "Unknown";
             }
             LaunchSubMenuClickable();
-            // BROKEN!!!!
-            //AIGlobals.ModularMenu.OpenGUI(lastTank.blockman.IterateBlocks().FirstOrDefault());
         }
         public static bool IsTankNull()
         {

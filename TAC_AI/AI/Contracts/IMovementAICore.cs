@@ -38,8 +38,6 @@ namespace TAC_AI.AI.Movement.AICores
         /// <summary> Director </summary>
         bool TryAdjustForCombatEnemy(Enemy.EnemyMind mind, ref Vector3 pos, ref EControlCoreSet core);
 
-        Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset);
-
         float GetDrive { get; }
     }
 

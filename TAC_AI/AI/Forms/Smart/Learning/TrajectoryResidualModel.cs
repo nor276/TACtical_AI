@@ -65,6 +65,56 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         private readonly object _saveMutex = new object();
         public object SaveMutex => _saveMutex;
 
+        // Director freeze ticket. Plain long with Interlocked accessors —
+        // volatile long is illegal CS0677.
+        private long _frozenUntilTickMono;
+        public bool Frozen
+        {
+            get { return System.Threading.Interlocked.Read(ref _frozenUntilTickMono) > TAC_AI.AI.Forms.Smart.World.MonoClock.Now(); }
+        }
+        public long FrozenUntilTickMono
+        {
+            get { return System.Threading.Interlocked.Read(ref _frozenUntilTickMono); }
+            set { System.Threading.Interlocked.Exchange(ref _frozenUntilTickMono, value); }
+        }
+        public void LoadAdamState(AdamSnapshot snap)
+        {
+            if (snap.M == null || snap.V == null) return;
+            lock (_saveMutex)
+            {
+                if (snap.M.Length == _adam.M.Length) Array.Copy(snap.M, _adam.M, snap.M.Length);
+                if (snap.V.Length == _adam.V.Length) Array.Copy(snap.V, _adam.V, snap.V.Length);
+                _adam.T = snap.T;
+                _adam.LearningRate = snap.LR;
+            }
+        }
+        public AdamSnapshot GetAdamSnapshot()
+        {
+            lock (_saveMutex)
+            {
+                return new AdamSnapshot(
+                    (float[])_adam.M.Clone(),
+                    (float[])_adam.V.Clone(),
+                    _adam.T, _adam.LearningRate, _adam.BaseLearningRate);
+            }
+        }
+        public void ReadAdamMoments(float[] mDest, float[] vDest, out long T, out float lr, out float baseLr)
+        {
+            lock (_saveMutex)
+            {
+                if (mDest != null && mDest.Length >= _adam.M.Length) Array.Copy(_adam.M, mDest, _adam.M.Length);
+                if (vDest != null && vDest.Length >= _adam.V.Length) Array.Copy(_adam.V, vDest, _adam.V.Length);
+                T = _adam.T;
+                lr = _adam.LearningRate;
+                baseLr = _adam.BaseLearningRate;
+            }
+        }
+        public void DrainOneMinibatchDiscard()
+        {
+            ResidualEvent _;
+            for (int i = 0; i < MinibatchSize; i++) { if (!_events.TryDequeue(out _)) break; }
+        }
+
         private readonly int _w1Offset, _b1Offset, _w2Offset, _b2Offset, _w3Offset, _b3Offset, _totalParams;
 
         public BoundedQueue<ResidualEvent> EventQueue => _events;
@@ -214,8 +264,13 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         public void LoadParameters(float[] src)
         {
             if (src == null || src.Length != _params.Length) throw new ArgumentException("ResidualModel: parameter length mismatch.");
-            Array.Copy(src, _params, _params.Length);
-            _publishedParams.Write(Clone(_params));
+            // Lock so a Director rollback / SnapshotManager restore can't race the
+            // trainer's _publishedParams.Write mid-copy.
+            lock (_saveMutex)
+            {
+                Array.Copy(src, _params, _params.Length);
+                _publishedParams.Write(Clone(_params));
+            }
         }
 
         /// <summary>P11 T3 Item 53: real Glorot reset — same shape as ThreatAssessmentModel.</summary>

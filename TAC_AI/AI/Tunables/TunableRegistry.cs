@@ -17,17 +17,19 @@ namespace TAC_AI.AI.Tunables
 
         public static IReadOnlyList<Tunable> All => ordered;
 
-        private static Tunable AddOrGet(string key, string category, TunableKind kind)
+        private static Tunable AddOrGet(string key, string category, TunableKind kind, out bool isNew)
         {
             if (byKey.TryGetValue(key, out var existing))
             {
                 if (existing.Kind != kind)
                     DebugTAC_AI.Exception("TunableRegistry: key '" + key + "' re-registered with a different kind.");
+                isNew = false;
                 return existing;
             }
             var t = new Tunable(key, category, kind);
             byKey.Add(key, t);
             ordered.Add(t);
+            isNew = true;
             return t;
         }
 
@@ -36,7 +38,7 @@ namespace TAC_AI.AI.Tunables
             bool menuVisible = true, string menuLabel = null, Func<float, string> display = null,
             Action onApply = null, Action onDeInit = null, string[] readSites = null, Action<float> bind = null)
         {
-            var t = AddOrGet(key, category, TunableKind.Float);
+            var t = AddOrGet(key, category, TunableKind.Float, out bool isNew);
             t.ApplyMode = applyMode;
             t.MenuVisible = menuVisible;
             t.MenuLabel = menuLabel;
@@ -46,9 +48,12 @@ namespace TAC_AI.AI.Tunables
             t.OnDeInit = onDeInit;
             t.ReadSites = readSites;
             t.DefaultFloat = defaultValue;
-            t.CurFloat = defaultValue;
+            // Re-init symmetry: only stamp the value on first registration. Re-Register* on an existing
+            // key preserves the live (operator-tuned / CMA-ES / preset / persisted-profile) value, so a
+            // DeInit/Init cycle (mod toggle, scene reload) does not nuke tuning back to compile defaults.
+            if (isNew) t.CurFloat = defaultValue;
             t.BindFloat = bind;
-            bind?.Invoke(defaultValue);   // sync the backing static field to the default
+            bind?.Invoke(t.CurFloat);   // sync the backing static field to whichever value we kept
             return new FloatHandle(t);
         }
 
@@ -57,7 +62,7 @@ namespace TAC_AI.AI.Tunables
             bool menuVisible = true, string menuLabel = null,
             Action onApply = null, Action onDeInit = null, string[] readSites = null, Action<int> bind = null)
         {
-            var t = AddOrGet(key, category, TunableKind.Int);
+            var t = AddOrGet(key, category, TunableKind.Int, out bool isNew);
             t.ApplyMode = applyMode;
             t.MenuVisible = menuVisible;
             t.MenuLabel = menuLabel;
@@ -66,9 +71,9 @@ namespace TAC_AI.AI.Tunables
             t.OnDeInit = onDeInit;
             t.ReadSites = readSites;
             t.DefaultInt = defaultValue;
-            t.CurInt = defaultValue;
+            if (isNew) t.CurInt = defaultValue;
             t.BindInt = bind;
-            bind?.Invoke(defaultValue);
+            bind?.Invoke(t.CurInt);
             return new IntHandle(t);
         }
 
@@ -77,7 +82,7 @@ namespace TAC_AI.AI.Tunables
             bool menuVisible = true, string menuLabel = null,
             Action onApply = null, Action onDeInit = null, string[] readSites = null, Action<bool> bind = null)
         {
-            var t = AddOrGet(key, category, TunableKind.Bool);
+            var t = AddOrGet(key, category, TunableKind.Bool, out bool isNew);
             t.ApplyMode = applyMode;
             t.MenuVisible = menuVisible;
             t.MenuLabel = menuLabel;
@@ -85,9 +90,9 @@ namespace TAC_AI.AI.Tunables
             t.OnDeInit = onDeInit;
             t.ReadSites = readSites;
             t.DefaultBool = defaultValue;
-            t.CurBool = defaultValue;
+            if (isNew) t.CurBool = defaultValue;
             t.BindBool = bind;
-            bind?.Invoke(defaultValue);
+            bind?.Invoke(t.CurBool);
             return new BoolHandle(t);
         }
 
@@ -139,29 +144,28 @@ namespace TAC_AI.AI.Tunables
         }
     }
 
-    /// <summary>Short read-side facade. Resolve a handle once (at install), then read Value per-frame O(1).</summary>
+    /// <summary>Short read-side facade. Resolve a handle once (at install), then read Value per-frame O(1).
+    /// Unknown / mismatched-kind keys throw ArgumentException at lookup - cheaper to debug than the
+    /// silent default(Handle) the lookup used to return (whose Value NRE'd at first per-frame read).</summary>
     public static class Tune
     {
         public static FloatHandle Float(string key)
         {
             if (TunableRegistry.TryGet(key, out var t) && t.Kind == TunableKind.Float)
                 return new FloatHandle(t);
-            DebugTAC_AI.Exception("Tune.Float: unknown/mismatched key '" + key + "'");
-            return default(FloatHandle);
+            throw new ArgumentException("Tune.Float: unknown or non-Float tunable key '" + key + "'", "key");
         }
         public static IntHandle Int(string key)
         {
             if (TunableRegistry.TryGet(key, out var t) && t.Kind == TunableKind.Int)
                 return new IntHandle(t);
-            DebugTAC_AI.Exception("Tune.Int: unknown/mismatched key '" + key + "'");
-            return default(IntHandle);
+            throw new ArgumentException("Tune.Int: unknown or non-Int tunable key '" + key + "'", "key");
         }
         public static BoolHandle Bool(string key)
         {
             if (TunableRegistry.TryGet(key, out var t) && t.Kind == TunableKind.Bool)
                 return new BoolHandle(t);
-            DebugTAC_AI.Exception("Tune.Bool: unknown/mismatched key '" + key + "'");
-            return default(BoolHandle);
+            throw new ArgumentException("Tune.Bool: unknown or non-Bool tunable key '" + key + "'", "key");
         }
     }
 }

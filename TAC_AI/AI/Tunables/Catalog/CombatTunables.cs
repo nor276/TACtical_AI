@@ -121,8 +121,8 @@ namespace TAC_AI.AI.Tunables.Catalog
                 bind: v => AIGlobals.StuckNetProgressFraction = v,
                 readSites: new[] { "UpdatePhysicsInfo: net-progress threshold" });
 
-            TunableRegistry.RegisterInt(
-                "Combat.StuckNetProgressFloor", "Combat", 1, 0, 50, 1,
+            TunableRegistry.RegisterFloat(
+                "Combat.StuckNetProgressFloor", "Combat", 1f, 0f, 50f, 0.25f,
                 menuVisible: false,
                 bind: v => AIGlobals.StuckNetProgressFloor = v,
                 readSites: new[] { "UpdatePhysicsInfo: net-progress floor" });

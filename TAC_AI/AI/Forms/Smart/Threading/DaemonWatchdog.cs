@@ -6,7 +6,7 @@ namespace TAC_AI.AI.Forms.Smart.Threading
     /// <summary>
     /// L-049: canonical-roster scanner that respawns missing long-running daemons.
     /// Distinct from <see cref="WorkerHealthMonitor"/> (L-047) in two ways:
-    ///   - The roster is HARD-CODED to the 9 long-running daemon label strings (matches
+    ///   - The roster is HARD-CODED to the 18 long-running daemon label strings (matches
     ///     <see cref="WorkerPool.EnqueueLongRunning"/>'s label parameter exactly). A
     ///     missing daemon here means a process-correctness regression.
     ///   - The respawn factory is registered at SmartRuntime.Init time, not later — so
@@ -27,6 +27,9 @@ namespace TAC_AI.AI.Forms.Smart.Threading
         // Canonical roster — LITERAL strings matching EnqueueLongRunning label parameters.
         // Verifier note (§9): names must match exactly; paraphrased names break the
         // WorkerHealthMonitor.IsAliveByLabel prefix match.
+        // BUG-025 + BUG-036: added StrategicStateExtractor + TeamReaper + Autosave +
+        // TechLeakWatchdog — all four were enqueued as long-running daemons but missing
+        // from the roster, so DaemonWatchdog.DoScan never checked their liveness.
         private static readonly string[] CanonicalRoster = new[]
         {
             "AetherFuser",
@@ -38,6 +41,21 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             "Trainer-ActionValue",
             "Trainer-Residual",
             "Trainer-Threat",
+            "StrategicStateExtractor",
+            "TeamReaper",
+            "Autosave",
+            "TechLeakWatchdog",
+            // Director phase 1 — TrainingDirector ships its factory; DirectorInbox factory
+            // arrives in Phase 9. Until then ScanAndRespawn logs factory=missing once
+            // per session for DirectorInbox (dedup'd by name).
+            "TrainingDirector",
+            "DirectorInbox",
+            // Scenario planner + chunk regen. Both spin at Director.Init; idle until
+            // ActiveScenario is non-zero.
+            "ScenarioWorker",
+            "ChunkRegen",
+            // L3 guard worker. 1 Hz tick, idle when no Smart-driven techs or paused.
+            "GuardWorker",
         };
 
         private static int _lastDaemonWatchdogTickMs;
@@ -161,6 +179,17 @@ namespace TAC_AI.AI.Forms.Smart.Threading
                     DebugTAC_AI.LogWarnFileOnly("daemon-respawn-ok-" + daemonName,
                         "[DAEMON-RESPAWN] daemon=" + daemonName + " factory=ok newThread=" + newName);
                     lock (_missingLock) _previouslyMissing.Remove(daemonName);
+                    // Phase 9 promotes this to a typed DaemonRespawned event on WorldEventBus.
+                    // Until then, the digest §6.2 TRIG=respawn:<daemon> source is the
+                    // file-only tag the line above carries.
+                    try
+                    {
+                        DebugTAC_AI.LogWarnFileOnly("daemon-respawned-event-" + daemonName,
+                            "[DAEMON-RESPAWNED] name=" + daemonName
+                            + " tickMono=" + TAC_AI.AI.Forms.Smart.World.MonoClock.Now()
+                            + " reason=respawn-success");
+                    }
+                    catch { /* defensive */ }
                 }
                 else
                 {

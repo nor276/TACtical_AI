@@ -32,13 +32,5 @@ namespace TAC_AI.AI.Forms.Smart.Identity
         /// Tunable: <c>smart.identity.enablePatrol</c>.
         /// </summary>
         public static bool EnablePatrol = true;
-
-        /// <summary>
-        /// P6 Item 25 reserved tunable: future v0.3 boost for Drill-bearing techs in the
-        /// Gatherer classification. Body in classifier is a `// TODO v0.3` no-op for v0.2 —
-        /// kept here so the flag's name is reserved and P3-style spawn-test telemetry can
-        /// reference it before the consumer lands.
-        /// </summary>
-        public static bool UseDrillForGathererBoost = false;
     }
 }

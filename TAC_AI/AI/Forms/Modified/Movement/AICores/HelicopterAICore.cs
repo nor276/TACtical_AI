@@ -547,60 +547,6 @@ namespace TAC_AI.AI.Movement.AICores
             return true;
         }
 
-        public Vector3 AvoidAssist(Vector3 targetIn, Vector3 predictionOffset)
-        {
-            //The method to determine if we should avoid an ally nearby while navigating to the target
-            TankAIHelper helper = pilot.Helper;
-            Tank tank = pilot.Tank;
-
-            try
-            {
-                Tank lastCloseAlly;
-                float lastAllyDist;
-                HashSet<Tank> AlliesAlt = AIEPathing.AllyList(tank);
-                if (helper.SecondAvoidence && AlliesAlt.Count > 1)// MORE processing power
-                {
-                    lastCloseAlly = AIEPathing.SecondClosestAllyPrecision(AlliesAlt, predictionOffset, out Tank lastCloseAlly2,
-                        out lastAllyDist, out float lastAuxVal, helper);
-                    float predictOffset = (predictionOffset - tank.boundsCentreWorldNoCheck).magnitude;
-                    if (lastCloseAlly && lastAllyDist < helper.lastTechExtents + lastCloseAlly.GetCheapBounds() + 12 + predictOffset)
-                    {
-                        if (lastCloseAlly2 && lastAuxVal < helper.lastTechExtents + lastCloseAlly2.GetCheapBounds() + 12 + predictOffset)
-                        {
-                            IntVector3 ProccessedVal2 = helper.GetOtherDir(lastCloseAlly) + helper.GetOtherDir(lastCloseAlly2);
-                            return (targetIn + ProccessedVal2) / 3;
-                        }
-                        IntVector3 ProccessedVal = helper.GetOtherDir(lastCloseAlly);
-                        return (targetIn + ProccessedVal) / 2;
-                    }
-
-                }
-                lastCloseAlly = AIEPathing.ClosestAllyPrecision(AlliesAlt, predictionOffset, out lastAllyDist, pilot.Helper);
-                // REVISED: a null closest-ally now bails out (return targetIn) instead of falling through
-                // and dereferencing it.
-                if (lastCloseAlly == null)
-                {
-                    DebugTAC_AI.Log(KickStart.ModID + ": ALLY IS NULL");
-                    return targetIn;
-                }
-                if (lastAllyDist < helper.lastTechExtents + lastCloseAlly.GetCheapBounds() + 12 + (predictionOffset - tank.boundsCentreWorldNoCheck).magnitude)
-                {
-                    IntVector3 ProccessedVal = helper.GetOtherDir(lastCloseAlly);
-                    return (targetIn + ProccessedVal) / 2;
-                }
-            }
-            catch (Exception e)
-            {
-                DebugTAC_AI.Log(KickStart.ModID + ": Crash on AvoidAssistAir " + e);
-                return targetIn;
-            }
-            if (targetIn.IsNaN())
-            {
-                DebugTAC_AI.Log(KickStart.ModID + ": AvoidAssistAir IS NaN!!");
-            }
-            return targetIn;
-        }
-
         public bool TryAdjustForCombat(bool between, ref Vector3 pos, ref EControlCoreSet core)
         {
             TankAIHelper helper = pilot.Helper;

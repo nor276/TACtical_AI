@@ -18,7 +18,7 @@ namespace TAC_AI.AI.Forms.Smart.Tooling
         // Smart-key prefixes Smart tooling cares about (lowercase match against Tunable.Key).
         private static readonly string[] SmartPrefixes =
         {
-            "smart.", "aether.", "chassis.", "threading.", "weaponspec.", "armormap.", "los.",
+            "smart.", "aether.", "chassis.", "threading.", "weaponspec.", "armormap.", "los.", "training.",
         };
 
         /// <summary>Enumerable of every Tunable whose key starts with a Smart-relevant prefix.</summary>

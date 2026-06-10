@@ -506,12 +506,14 @@ namespace TAC_AI.Templates
         public static List<RawTechTemplate> LoadAllEnemyTechs()
         {
             ValidateEnemyFolder();
+            TAC_AI.AI.Forms.Smart.Director.Scenarios.DirectorTechFolders.ClearIndex();
             List<string> Dirs = GetALLDirectoriesInFolder(Path.Combine(RawTechsDirectory, "Enemies"));
             List<RawTechTemplate> temps = new List<RawTechTemplate>();
             List<string> names;
             DebugTAC_AI.Log(KickStart.ModID + ": LoadAllEnemyTechs - Total directories found in Enemies Folder: " + Dirs.Count());
             foreach (string Dir in Dirs)
             {
+                string folderName = GetNameDirectory(Dir);
                 names = GetTechNameListDir(Dir);
                 DebugTAC_AI.Log(KickStart.ModID + ": LoadAllEnemyTechs - Total RAW Techs found in " + GetNameDirectory(Dir) + ": " + names.Count());
                 foreach (string name in names)
@@ -542,6 +544,7 @@ namespace TAC_AI.Templates
                         temp.terrain = terra;
 
                         temps.Add(temp);
+                        TAC_AI.AI.Forms.Smart.Director.Scenarios.DirectorTechFolders.IndexTech(folderName, temp.techName);
                         DebugTAC_AI.Info(KickStart.ModID + ": Added " + name + " to the RAW Enemy Tech Pool, grade " + minCorpGrade + " " + MainCorp.ToString() + ", of BB Cost " + temp.startingFunds + ".");
                     }
                     catch (Exception e)
@@ -898,7 +901,10 @@ namespace TAC_AI.Templates
         }
         private static void SaveEnemyTechToFile(string TechName, string RawBaseTechJSON)
         {
-            string destination = Path.Combine(RawTechsDirectory, "Enemies", "eLocal");
+            // Name-prefix curation: "Brawl - X" lands in Director_Brawl, etc. Unprefixed
+            // techs go to eLocal as before.
+            string sub = TAC_AI.AI.Forms.Smart.Director.Scenarios.DirectorTechFolders.FolderForName(TechName) ?? "eLocal";
+            string destination = Path.Combine(RawTechsDirectory, "Enemies", sub);
             if (!Directory.Exists(RawTechsDirectory))
             {
                 DebugTAC_AI.Info(KickStart.ModID + ": Generating Raw Techs folder.");

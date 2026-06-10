@@ -32,6 +32,13 @@ namespace TAC_AI.AI.Forms.Smart.World
             return Stopwatch.GetTimestamp();
         }
 
+        /// <summary>Seconds → tick delta. Now() returns Stopwatch ticks, NOT ms — a bare
+        /// "+ 5000" expires in microseconds. Use this for every deadline math.</summary>
+        public static long FromSeconds(double sec)
+        {
+            return (long)(sec * Stopwatch.Frequency);
+        }
+
         /// <summary>Dt in seconds between two monotonic ticks. Negative dt clamps to 0.</summary>
         public static float Seconds(long fromMono, long toMono)
         {

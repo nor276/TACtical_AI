@@ -33,7 +33,8 @@ namespace TAC_AI.AI
                 bool wasBlockedThisCheck = false;
                 if (helper.lastEnemyGet)
                 {
-                    if (!helper.lastEnemyGet.isActive || helper.lastEnemyGet.tank.blockman.blockCount == 0 ||
+                    // Visible can outlive its Tank by a frame; IsLiveTechTarget covers the .tank/blockman race.
+                    if (!helper.lastEnemyGet.IsLiveTechTarget() ||
                         !Tank.IsEnemy(helper.tank.Team, helper.lastEnemyGet.tank.Team))
                     {
                         DebugTAC_AI.LogTargeting(helper.tank, "Target released CheckEnemyAndAiming: dead/wrong-team");
@@ -93,7 +94,10 @@ namespace TAC_AI.AI
                         playerTank.control.FireControl &&
                         ManBaseTeams.CanAlterRelations(helper.tank.Team, targTeam))
                     {
-                        ManBaseTeams.DegradeRelations(helper.tank.Team, targTeam, AIGlobals.DamageAngerDropRelations);
+                        // Host-authoritative: ManBaseTeams networking pushes deltas host->clients only,
+                        // so a client-side mutation here desyncs without replicating. SP/host only.
+                        if (!ManNetwork.IsNetworked || ManNetwork.IsHost)
+                            ManBaseTeams.DegradeRelations(helper.tank.Team, targTeam, AIGlobals.DamageAngerDropRelations);
                     }
                     if (ManBaseTeams.IsEnemy(helper.tank.Team, targTeam))
                     {
@@ -220,6 +224,9 @@ namespace TAC_AI.AI
 
         public static bool InRangeOfTarget(this TankAIHelper helper, Visible target, float distance)
         {
+            // Visible can outlive its Tank by a frame; treat the dead-tank case as out-of-range so callers
+            // (UpdateTargetCombatFocus etc.) abort pursuit cleanly instead of NREing.
+            if (!target.IsLiveTechTarget()) return false;
             return (target.tank.boundsCentreWorldNoCheck - helper.tank.boundsCentreWorldNoCheck).sqrMagnitude <= distance * distance;
         }
     }

@@ -1,3 +1,5 @@
+using TAC_AI.AI.Forms.Smart.World;
+
 namespace TAC_AI.AI.Forms.Smart.Learning
 {
     /// <summary>
@@ -20,5 +22,28 @@ namespace TAC_AI.AI.Forms.Smart.Learning
         /// values; only W_o/b_o train. Behavior identical to v0.1 pre-P8.
         /// </summary>
         public static bool UseFullBPTT = true;
+
+        /// <summary>
+        /// Softmax temperature for OpponentIntentClassifier. Read-once-per-batch via
+        /// Volatile.Read at the top of TrainOneMinibatch_FullBptt; that local divides
+        /// the logits before MlpUtil.Softmax. Director temp_adjust writes here.
+        /// </summary>
+        public static volatile float IntentTemperature = 1f;
+
+        /// <summary>
+        /// Per-OutcomeKind reward weight, indexed by (byte)OutcomeKind. Reward-aggregation
+        /// path (IdentityOutcomeConsumer wiring lands in a later phase) reads this. Phase 5
+        /// will insert GuardViolation_* values into the enum before Count and the array
+        /// resizes automatically. Default 1.0 for everything ships today; GuardViolation_*
+        /// will default to 0.0 (observe-only) when Phase 5 lands them.
+        /// </summary>
+        public static readonly float[] OutcomeWeights = NewOutcomeWeights();
+
+        private static float[] NewOutcomeWeights()
+        {
+            var arr = new float[(int)OutcomeKind.Count];
+            for (int i = 0; i < arr.Length; i++) arr[i] = 1f;
+            return arr;
+        }
     }
 }

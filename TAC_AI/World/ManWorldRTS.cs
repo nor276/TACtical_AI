@@ -149,54 +149,55 @@ namespace TAC_AI.World
                     case AIType.Escort:
                         inst.SetOptionAuto(helper, TypeSwitch);
                         helper.SetRTSState(false);
-                        if (ManNetwork.IsNetworked)
-                            return;
+                        // assignment must precede the MP early-return so the order's target is not dropped on clients
                         if (Subject != null)
                         {
                             helper.lastPlayer = Subject;
                         }
+                        if (ManNetwork.IsNetworked)
+                            return;
                         break;
                     case AIType.Aegis:
                         inst.SetOptionAuto(helper, TypeSwitch);
                         helper.SetRTSState(false);
-                        if (ManNetwork.IsNetworked)
-                            return;
                         if (Subject?.tank != null)
                         {
                             Tank tank = Subject?.tank;
                             helper.lastCloseAlly = tank;
                             helper.theResource = Subject;
                         }
+                        if (ManNetwork.IsNetworked)
+                            return;
                         break;
                     case AIType.Assault:
                         inst.SetOptionAuto(helper, TypeSwitch);
                         helper.SetRTSState(false);
-                        if (ManNetwork.IsNetworked)
-                            return;
                         helper.foundBase = false;
                         helper.CollectedTarget = false;
+                        if (ManNetwork.IsNetworked)
+                            return;
                         break;
                     case AIType.Prospector:
                         inst.SetOptionAuto(helper, TypeSwitch);
                         helper.SetRTSState(false);
-                        if (ManNetwork.IsNetworked)
-                            return;
                         if (Subject != null)
                         {
                             helper.theResource = Subject;
                             helper.CollectedTarget = false;
                         }
+                        if (ManNetwork.IsNetworked)
+                            return;
                         break;
                     case AIType.Scrapper:
                         inst.SetOptionAuto(helper, TypeSwitch);
                         helper.SetRTSState(false);
-                        if (ManNetwork.IsNetworked)
-                            return;
                         if (Subject != null)
                         {
                             helper.theResource = Subject;
                             helper.CollectedTarget = false;
                         }
+                        if (ManNetwork.IsNetworked)
+                            return;
                         break;
                     case AIType.Energizer:
                     case AIType.MTTurret:

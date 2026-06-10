@@ -91,8 +91,8 @@ namespace TAC_AI.AI.Forms.Smart.Threading
             {
                 try
                 {
-                    DebugTAC_AI.LogWarnFileOnly("worker-abort-guard-bug",
-                        "[WORKER-ABORT-GUARD-BUG] worker='" + (workerName ?? "<null>") + "' "
+                    DebugTAC_AI.LogWarnFileOnly("worker-abort-guard-fallback",
+                        "[WORKER-ABORT-GUARD-FALLBACK] worker='" + (workerName ?? "<null>") + "' "
                         + "guard threw " + ex.GetType().Name + ": " + ex.Message + " — defaulting to Continue");
                 }
                 catch { /* even logging failed; swallow */ }
